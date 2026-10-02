@@ -40,7 +40,11 @@ function sendState(key,value){
 function toggle(key,nativeKey=key){
   const n=document.createElement('input');
   n.type='checkbox';n.className='sgf-toggle-switch';n.checked=!!sgf.state[key];
-  n.onchange=()=>sendState(nativeKey,n.checked?'1':'0');
+  n.onchange=()=>{
+    sgf.state[key]=n.checked;
+    sgf.send(nativeKey,n.checked?'1':'0');
+    sgf.refreshControls?.();
+  };
   register(key,n);return n;
 }
 function select(key,options,onchange){
@@ -151,7 +155,8 @@ sgf.openSettings=()=>{
   canvasRow.style.display=sgf.state.saveCanvas?'flex':'none';
   const saveCanvas=toggle('saveCanvas');
   saveCanvas.onchange=()=>{
-    sendState('saveCanvas',saveCanvas.checked?'1':'0');
+    sgf.state.saveCanvas=saveCanvas.checked;
+    sgf.send('saveCanvas',saveCanvas.checked?'1':'0');
     canvasRow.style.display=saveCanvas.checked?'flex':'none';
   };
 
