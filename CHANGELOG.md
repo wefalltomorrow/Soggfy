@@ -8,6 +8,8 @@
 - Added RC4's freshness, identity, ambiguity, replay/seek and codec-conflict protections for quality reporting.
 - Added the RC4 Linux and Windows playback-quality regression tests.
 - Kept Soggfy's custom path templates and cached-metadata path enrichment on top of the RC4 engine.
+- Restored the old Soggfy `{release_date}` path token using identity-checked cached metadata.
+- Store optional AAC conversions in an M4A container so metadata and artwork have a proper container.
 
 ## 3.0.0-rc.1
 
