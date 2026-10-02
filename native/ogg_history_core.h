@@ -11,7 +11,7 @@ struct Page {
     bool vorbis_start = false;
 };
 bool ParsePage(const uint8_t* bytes, size_t length, Page& out);
-enum class Result { Ignore, Begin, Append, Complete, Invalid };
+enum class Result { Ignore, Replay, Begin, Append, Complete, Invalid };
 struct Stream {
     bool active = false, complete = false;
     uint32_t serial = 0, next = 0, rate = 0, pages = 0, bitrate = 0;
