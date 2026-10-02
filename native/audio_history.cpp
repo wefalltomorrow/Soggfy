@@ -7,6 +7,8 @@
 #include "hook_init_state.h"
 #include "hook_rollback.h"
 #include "metadata_bridge.h"
+#include "classic_ui_backend.h"
+#include "post_process.h"
 #include "playback_quality.h"
 #include "async_log.h"
 #include "bounded_queue.h"
@@ -201,23 +203,40 @@ static Catalog CatalogFor(const Media& media) {
     return c;
 }
 enum class Publication { Saved,Skipped,Failed };
-static Publication Publish(Capture& c,const Heard& heard,unsigned expected_epoch) {
+struct PublicationResult {
+    Publication state=Publication::Failed;
+    std::wstring path;
+    std::string message;
+};
+static bool WriteSidecar(const std::wstring& path,const void* data,size_t size) {
+    if(path.empty()||!data||!size||size>MAXDWORD)return false;
+    auto parent=path.substr(0,path.find_last_of(L'\\'));
+    if(!Directories(parent))return false;
+    HANDLE file=CreateFileW(WindowsPath(path).c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,
+                            CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+    if(file==INVALID_HANDLE_VALUE)return GetLastError()==ERROR_FILE_EXISTS;
+    DWORD written=0;bool ok=WriteFile(file,data,DWORD(size),&written,nullptr)&&written==size;
+    CloseHandle(file);if(!ok)DeleteFileW(WindowsPath(path).c_str());return ok;
+}
+static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected_epoch) {
     SYSTEMTIME t; GetSystemTime(&t); wchar_t stamp[64];
     swprintf(stamp,64,L"%04u-%02u-%02uT%02u:%02u:%02uZ",t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond);
     auto catalog=CatalogFor(heard.media);
     auto settings=GetSettings();
-    if(settings.capture_epoch!=expected_epoch || !settings.downloads || !(c.lossless ? settings.flac : settings.ogg)) return Publication::Skipped;
+    if(settings.capture_epoch!=expected_epoch || !settings.downloads || !(c.lossless ? settings.flac : settings.ogg)) return {Publication::Skipped,{},"settings changed"};
+    const std::wstring& active_template=(catalog.kind==MediaKind::Podcast && !settings.podcast_template.empty())
+        ?settings.podcast_template:settings.path_template;
     std::wstring destination=OutputPath(settings.root,catalog,c.lossless ? L".flac" : L".ogg",
-        settings.music_folder,settings.path_template,settings.normalize_artist_separators);
+        settings.music_folder,active_template,settings.normalize_artist_separators,settings.invalid_char_repl);
     std::wstring flac=OutputPath(settings.root,catalog,L".flac",
-        settings.music_folder,settings.path_template,settings.normalize_artist_separators);
+        settings.music_folder,active_template,settings.normalize_artist_separators,settings.invalid_char_repl);
     Quality quality=c.Encoding(),lossless;
     if(!c.lossless && ReadQuality(flac,lossless) && lossless.codec==Codec::Flac) {
-        Log(("SKIP existing lossless file "+Utf8(flac)).c_str()); return Publication::Skipped;
+        Log(("SKIP existing lossless file "+Utf8(flac)).c_str()); return {Publication::Skipped,flac,"Already downloaded"};
     }
     SaveDecision decision=DecideSave(destination,quality);
     if(decision==SaveDecision::Skip) {
-        Log(("SKIP existing equal, higher or unverified quality "+Utf8(destination)).c_str()); return Publication::Skipped;
+        Log(("SKIP existing equal, higher or unverified quality "+Utf8(destination)).c_str()); return {Publication::Skipped,destination,"Already downloaded"};
     }
     Tags tags;
     tags.fields={{"TITLE",Utf8(heard.media.title)},{"ARTIST",Utf8(heard.media.artist)},
@@ -233,22 +252,65 @@ static Publication Publish(Capture& c,const Heard& heard,unsigned expected_epoch
       {"HISTORY_SOURCE_BYTES",std::to_string(c.bytes)},
       {"HISTORY_ELAPSED_SECONDS",std::to_string(heard.finish-heard.start)},
       {"HISTORY_SAVED_UTC",Utf8(stamp)},{"HISTORY_CAPTURE",c.lossless ? "native compressed FLAC input" : "native compressed Ogg pages"}};
-    tags.cover=heard.media.cover; tags.mime=heard.media.cover_extension==L".png" ? "image/png" : "image/jpeg";
+    if(settings.embed_cover_art) {
+        tags.cover=heard.media.cover;
+        tags.mime=heard.media.cover_extension==L".png" ? "image/png" : "image/jpeg";
+    }
     if(!heard.media.genre.empty())tags.fields.push_back({"GENRE",Utf8(heard.media.genre)});
     EnrichTags(heard.media,tags);
+    std::string lyrics;
+    for(auto it=tags.fields.begin();it!=tags.fields.end();) {
+        if(it->first=="LYRICS") {
+            lyrics=it->second;
+            if(!settings.embed_lyrics){it=tags.fields.erase(it);continue;}
+        }
+        ++it;
+    }
     std::vector<uint8_t> tagged; std::string error;
     auto source=c.data.Flatten();
     bool tagged_ok=c.lossless ? TagFlac(source,tags,tagged,error) : TagOgg(source,tags,tagged,error);
-    if(!tagged_ok) { Log(("native tagging failed: "+error).c_str()); return Publication::Failed; }
+    if(!tagged_ok) { Log(("native tagging failed: "+error).c_str()); return {Publication::Failed,{},error}; }
     auto latest=GetSettings();
-    if(latest.generation!=settings.generation || !latest.downloads || !(c.lossless ? latest.flac : latest.ogg)) return Publication::Skipped;
-    if(!Directories(destination.substr(0,destination.find_last_of(L'\\')))) return Publication::Failed;
+    if(latest.generation!=settings.generation || !latest.downloads || !(c.lossless ? latest.flac : latest.ogg)) return {Publication::Skipped,{},"settings changed"};
+    if(!Directories(destination.substr(0,destination.find_last_of(L'\\')))) return {Publication::Failed,{},"output directory could not be created"};
     // First and only audio disk write: the complete, tagged file. No scratch
     // paths, sidecars, per-song directories, decoder or encoder are involved.
     auto publication=PublishBytes(destination,quality,tagged.data(),tagged.size());
-    if(publication==FilePublication::Skipped) return Publication::Skipped;
-    if(publication==FilePublication::Failed) { Log("final publication failed; existing file retained"); return Publication::Failed; }
-    std::string line=(publication==FilePublication::Upgraded ? "UPGRADED " : "SAVED ")+Utf8(destination); Log(line.c_str()); return Publication::Saved;
+    if(publication==FilePublication::Skipped) return {Publication::Skipped,destination,"Already downloaded"};
+    if(publication==FilePublication::Failed) {
+        Log("final publication failed; existing file retained");
+        return {Publication::Failed,{},"final publication failed"};
+    }
+    std::string line=(publication==FilePublication::Upgraded ? "UPGRADED " : "SAVED ")+Utf8(destination);
+    Log(line.c_str());
+
+    if(settings.save_cover_art && !heard.media.cover.empty()) {
+        std::wstring sidecar=destination.substr(0,destination.find_last_of(L'\\')+1)+
+            (heard.media.cover_extension==L".png"?L"cover.png":L"cover.jpg");
+        if(!WriteSidecar(sidecar,heard.media.cover.data(),heard.media.cover.size()))
+            Log("cover sidecar could not be written");
+    }
+    if(settings.save_lyrics && !lyrics.empty()) {
+        bool synced=false;
+        for(size_t i=0;i+6<lyrics.size();++i) {
+            if(lyrics[i]=='[' && lyrics[i+1]>='0'&&lyrics[i+1]<='9' &&
+               lyrics[i+2]>='0'&&lyrics[i+2]<='9' && lyrics[i+3]==':' &&
+               lyrics[i+4]>='0'&&lyrics[i+4]<='9' && lyrics[i+5]>='0'&&lyrics[i+5]<='9') {
+                synced=true;break;
+            }
+        }
+        auto lyric_path=destination.substr(0,destination.find_last_of(L'.'))+(synced?L".lrc":L".txt");
+        if(!WriteSidecar(lyric_path,lyrics.data(),lyrics.size()))
+            Log("lyrics sidecar could not be written");
+    }
+
+    auto post=PostProcessPublishedFile(destination,settings,heard.media.cover,heard.media.cover_extension);
+    if(post.state==PostProcessResult::State::Failed) {
+        Log(("post-processing failed: "+post.error).c_str());
+        return {Publication::Failed,post.path,post.error};
+    }
+    return {Publication::Saved,post.path.empty()?destination:post.path,{}};
+
 }
 struct SaveJob {std::unique_ptr<Capture> capture;Heard heard;unsigned epoch=0;size_t reserved=0;};
 static BoundedQueue<SaveJob,2> saves;
@@ -263,13 +325,24 @@ static DWORD WINAPI SaveWorker(LPVOID) {
         if(!saves.Pop(job)){WaitForSingleObject(save_event,200);continue;}
         std::string identity=Utf8(job.heard.media.artist)+" - "+Utf8(job.heard.media.title);
         try {
+            SetClassicTrackStatus(job.heard.media,"CONVERTING","Converting...");
             auto result=Publish(*job.capture,job.heard,job.epoch);
-            if(result==Publication::Saved) {
+            if(result.state==Publication::Saved || (result.state==Publication::Skipped && !result.path.empty())) {
                 auto settings=GetSettings();
-                if(settings.capture_epoch==job.epoch) ++saved_count;
-                LogActivity("finished",identity);
-            } else LogActivity(result==Publication::Failed?"failed":"finished",identity+(result==Publication::Failed?" (publication failed)":" (skipped existing file or changed settings)"));
-        } catch(...) {LogActivity("failed",identity+" (publication exception)");}
+                if(result.state==Publication::Saved && settings.capture_epoch==job.epoch) ++saved_count;
+                SetClassicTrackStatus(job.heard.media,"DONE",result.message,result.path);
+                LogActivity("finished",identity+(result.state==Publication::Skipped?" (already downloaded)":""));
+            } else if(result.state==Publication::Failed) {
+                SetClassicTrackStatus(job.heard.media,"ERROR",result.message.empty()?"Publication failed":result.message,result.path);
+                LogActivity("failed",identity+" ("+(result.message.empty()?std::string("publication failed"):result.message)+")");
+            } else {
+                SetClassicTrackStatus(job.heard.media,"ERROR","Canceled: settings changed");
+                LogActivity("failed",identity+" (settings changed)");
+            }
+        } catch(...) {
+            SetClassicTrackStatus(job.heard.media,"ERROR","Publication exception");
+            LogActivity("failed",identity+" (publication exception)");
+        }
         job.capture.reset();publishing_reserved.fetch_sub(job.reserved);
     }
     return 0;
@@ -281,7 +354,7 @@ static DWORD WINAPI Worker(LPVOID) {
     std::vector<Heard> heard;
     Listen listen; MediaReader reader; Media current; PlaybackQualityTracker quality; std::string client_quality;
     double next_media=0,next_log=0;
-    unsigned generation=~0u,epoch=~0u; bool enabled=false;
+    unsigned generation=~0u,epoch=~0u; bool enabled=false,current_ignored=false;
     try {
         while(workers_running.load(std::memory_order_acquire)) {
             double now=Now();
@@ -305,7 +378,9 @@ static DWORD WINAPI Worker(LPVOID) {
                 WaitForSingleObject(event,200); continue;
             }
             if(dropped!=overflow) {
-                overflow=dropped; active.clear(); ready.clear(); heard.clear(); listen.eligible=false; quality.ClearStreams();
+                overflow=dropped;
+                if(!current.title.empty())SetClassicTrackStatus(current,"ERROR","Canceled: capture queue overflow");
+                active.clear(); ready.clear(); heard.clear(); listen.eligible=false; quality.ClearStreams();
                 Log("capture queue overflow; streams and listening coverage invalidated");
             }
             Slot s;
@@ -415,9 +490,26 @@ static DWORD WINAPI Worker(LPVOID) {
                         char line[300]; snprintf(line,sizeof(line),"listen invalidated old=%.6f/%.6f new=%.6f/%.6f delta=%.3f playing=%d",
                             prior_position,prior_duration,media.position,media.duration,Now()-prior_time,media.playing); Log(line);
                     }
-                    if(!done.empty()) { heard.push_back({current,previous_start,Now()}); Log(("FULL LISTEN "+Utf8(current.title)).c_str()); }
-                    if(previous!=listen.identity && listen.eligible) LogActivity("started",Utf8(media.artist)+" - "+Utf8(media.title));
-                    if(was_eligible && !listen.eligible && done.empty()) LogActivity("failed",Utf8(current.artist)+" - "+Utf8(current.title)+" (incomplete listen)");
+                    if(!done.empty()) {
+                        if(current_ignored) {
+                            SetClassicTrackStatus(current,"IGNORED","Ignored");
+                            LogActivity("finished",Utf8(current.artist)+" - "+Utf8(current.title)+" (ignored)");
+                        } else {
+                            heard.push_back({current,previous_start,Now()});
+                            Log(("FULL LISTEN "+Utf8(current.title)).c_str());
+                        }
+                    }
+                    if(previous!=listen.identity && listen.eligible) {
+                        current_ignored=ClassicCurrentIgnored();
+                        SetClassicTrackStatus(media,current_ignored?"IGNORED":"IN_PROGRESS",current_ignored?"Ignored":"Downloading...");
+                        LogActivity("started",Utf8(media.artist)+" - "+Utf8(media.title));
+                    } else if(previous==listen.identity && listen.eligible) {
+                        current_ignored=ClassicCurrentIgnored();
+                    }
+                    if(was_eligible && !listen.eligible && done.empty()) {
+                        if(!current.title.empty())SetClassicTrackStatus(current,"ERROR","Canceled: track was skipped or listen was incomplete");
+                        LogActivity("failed",Utf8(current.artist)+" - "+Utf8(current.title)+" (incomplete listen)");
+                    }
                     if(previous!=listen.identity) {
                         Log(("TRACK "+Utf8(media.artist)+" - "+Utf8(media.title)).c_str());
                         {
@@ -456,9 +548,14 @@ static DWORD WINAPI Worker(LPVOID) {
                     job.capture=std::move(ready[match]);job.heard=*h;
                     publishing_reserved.fetch_add(job.reserved);
                     if(saves.Push(std::move(job)))SetEvent(save_event);
-                    else {size_t reserved=job.reserved;job.capture.reset();publishing_reserved.fetch_sub(reserved);LogActivity("failed","publication queue full; completed candidate discarded");}
+                    else {
+                        SetClassicTrackStatus(h->media,"ERROR","Publication queue full");
+                        size_t reserved=job.reserved;job.capture.reset();publishing_reserved.fetch_sub(reserved);
+                        LogActivity("failed","publication queue full; completed candidate discarded");
+                    }
                     ready.erase(ready.begin()+match); h=heard.erase(h);
                 } else if(matches>1 || now-h->finish>10) {
+                    SetClassicTrackStatus(h->media,"ERROR",matches>1?"Ambiguous audio stream association":"Completed audio stream was not found");
                     Log("completed listen discarded: missing or ambiguous Ogg association"); h=heard.erase(h);
                 } else ++h;
             }

@@ -38,6 +38,16 @@ int main() {
     auto artists=RelativePathTemplate(t,L".ogg",L"{all_artist_names} - {track_name}.{ext}",true);
     check(artists==L"AC／DC, Guest - Track／Name.ogg","artist separator normalization preserves AC/DC");
     check(RelativePathTemplate(t,L".ogg",L"..\\{track_name}",true).empty(),"template traversal rejected");
+    Catalog issue150; issue150.artist=L"AC/DC"; issue150.album_artist=L"AC/DC"; issue150.album=L"Back in Black";
+    issue150.title=L"Hells Bells"; issue150.track=1;
+    check(RelativePathTemplate(issue150,L".ogg",L"{artist_name}\\{album_name}\\{track_num}. {track_name}.{ext}",true,L"unicode")==
+          L"AC／DC\\Back in Black\\1. Hells Bells.ogg","issue 150 AC/DC path uses the same safe slash");
+    issue150.artist=L"Gary Numan / Tubeway Army"; issue150.album_artist=issue150.artist;
+    check(RelativePathTemplate(issue150,L".ogg",L"{artist_name}\\{track_name}.{ext}",true,L"unicode")==
+          L"Gary Numan, Tubeway Army\\Hells Bells.ogg","spaced artist separator normalization is path-only");
+    check(RelativePathTemplate(issue150,L".ogg",L"{artist_name}\\{track_name}.{ext}",false,L"-")==
+          L"Gary Numan - Tubeway Army\\Hells Bells.ogg","legacy dash replacement mode");
+
     check(OutputPath(L"D:\\Music",t,L".ogg",false,L"{artist_name}\\{track_name}",true)==
           L"D:\\Music\\Album Artist\\Track／Name.ogg","template appends real capture extension");
 

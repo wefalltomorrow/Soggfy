@@ -11,12 +11,16 @@ build/hook-rollback-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/cef_identity_test.cpp -o build/cef-identity-test
 build/cef-identity-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/cef_menu_capability_test.cpp -o build/cef-menu-capability-test
+g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/cef_request_filter_core_test.cpp native/cef_request_filter_core.cpp -o build/cef-request-filter-core-test
+build/cef-request-filter-core-test
 build/cef-menu-capability-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/module_pending_test.cpp -o build/module-pending-test
 build/module-pending-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/pe_imports_test.cpp native/pe_imports.cpp -o build/pe-imports-test
 build/pe-imports-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/spotify_hook_discovery_test.cpp native/spotify_hook_discovery.cpp -o build/spotify-hook-discovery-test
+g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/playback_speed_discovery_test.cpp native/playback_speed_discovery.cpp -o build/playback-speed-discovery-test
+build/playback-speed-discovery-test
 build/spotify-hook-discovery-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/history_core_test.cpp native/ogg_history_core.cpp -o build/history-core-test
 build/history-core-test
@@ -26,6 +30,8 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include \
 build/ogg-tags-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/library_layout_test.cpp native/library_layout.cpp -o build/library-layout-test
 build/library-layout-test
+g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/classic_path_match_test.cpp native/classic_path_match.cpp native/library_layout.cpp -o build/classic-path-match-test
+build/classic-path-match-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include \
     tests/flac_history_test.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/flac-history-test
 build/flac-history-test
@@ -36,7 +42,9 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/rich_metadata_test.cpp native/ric
 build/rich-metadata-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/bounded_queue_test.cpp -o build/bounded-queue-test
 build/bounded-queue-test
-node --check native/soggfy_ui.js
+for script in native/ui/classic_core.js native/ui/classic_settings.js native/ui/classic_status.js native/ui/classic_canvas.js native/ui/classic_m3u.js native/ui/classic_context.js native/ui/classic_boot.js; do
+    node --check "$script"
+done
 node tests/metadata_collector_test.js
 
 python3 tests/create_cache_fixtures.py build/cache-fixtures

@@ -8,6 +8,8 @@
 #include "playback_quality.h"
 #include "cached_metadata.h"
 #include "history_settings.h"
+#include "playback_speed.h"
+#include "classic_ui_backend.h"
 #include "vendor/minhook/include/MinHook.h"
 #include "../build/metadata_script.h"
 #include "../build/soggfy_ui_script.h"
@@ -106,8 +108,36 @@ static std::wstring UiConfigCode() {
  add("log",bit(s.log));
  add("debug",bit(s.debug_log));
  add("normalize",bit(s.normalize_artist_separators));
+ add("skipDownloaded",bit(s.skip_downloaded_tracks));
+ add("skipIgnored",bit(s.skip_ignored_tracks));
+ add("embedCover",bit(s.embed_cover_art));
+ add("saveCover",bit(s.save_cover_art));
+ add("embedLyrics",bit(s.embed_lyrics));
+ add("saveLyrics",bit(s.save_lyrics));
+ add("saveCanvas",bit(s.save_canvas));
+ add("blockTelemetry",bit(s.block_telemetry));
+ add("liftQueue",bit(s.lift_add_to_queue));
+ add("keepNative",bit(s.keep_native_original));
+ add("playbackSpeed",std::to_string(s.playback_speed));
+ add("speedSupported",bit(PlaybackSpeedSupported()));
+ const auto quality=PlaybackQualityLabels(ReadPlaybackQuality());
+ auto quality_value=[](const std::wstring& row) {
+  const auto at=row.find(L": ");
+  return at==std::wstring::npos?row:row.substr(at+2);
+ };
+ add("qualitySong",Utf8(quality_value(quality[0])));
+ add("qualityLevel",Utf8(quality_value(quality[1])));
+ add("qualityFormat",Utf8(quality_value(quality[2])));
+ add("qualitySample",Utf8(quality_value(quality[3])));
  add("root",Utf8(s.root));
  add("template",Utf8(s.path_template));
+ add("podcastTemplate",Utf8(s.podcast_template));
+ add("canvasTemplate",Utf8(s.canvas_template));
+ add("invalidChars",Utf8(s.invalid_char_repl));
+ add("outputPreset",Utf8(s.output_preset));
+ add("outputExt",Utf8(s.output_ext));
+ add("outputArgs",Utf8(s.output_args));
+ add("ffmpegPath",Utf8(s.ffmpeg_path));
  std::wstring wide(payload.begin(),payload.end());
  std::wstring code=L"window.__soggfyNativeConfig=\""+wide+
    L"\";window.__soggfyMetadataEnabled="+(s.metadata?L"true":L"false")+
@@ -128,6 +158,7 @@ static void SyncClassicUi(Frame* preferred=nullptr) {
  }
  if(f){ExecuteFrameCode(f,UiConfigCode(),L"soggfy-config.js");Release(f);}
 }
+static void FlushClassicStatusResponse(Frame* frame);
 static std::atomic<bool> poll_pending{false};static int(*post_task)(int,Task*)=nullptr;
 static void PollAdd(Base* b){++reinterpret_cast<PollTask*>(b)->refs;}
 static int PollDrop(Base* b){auto t=reinterpret_cast<PollTask*>(b);if(--t->refs)return 0;delete t;return 1;}
@@ -139,6 +170,7 @@ static void PollExecute(Task*){
   const wchar_t code_text[]=L"if(window.__floggfyPoll)window.__floggfyPoll();";
   String code={const_cast<wchar_t*>(code_text),wcslen(code_text),nullptr};const wchar_t name[]=L"floggfy-metadata.js";String source={const_cast<wchar_t*>(name),wcslen(name),nullptr};
   reinterpret_cast<void(*)(Frame*,const String*,const String*,int)>(f->methods[14])(f,&code,&source,1);
+  FlushClassicStatusResponse(f);
  }
  Release(f);poll_pending=false;
 }
@@ -154,6 +186,63 @@ static hooks::CallbackCounter metadata_callbacks;
 static std::atomic<bool> metadata_running{false},metadata_polling{false};
 struct Message { ULONGLONG time=0; char data[131073];size_t length=0;};
 static std::array<Message,4> messages;static size_t head=0,tail=0,count=0;static HANDLE message_event=nullptr;
+static SRWLOCK ui_status_lock=SRWLOCK_INIT;
+static std::string ui_status_request,ui_status_response;
+
+static std::vector<ClassicTrackQuery> ParseClassicStatusBatch(const std::string& data) {
+ std::vector<ClassicTrackQuery> out;
+ size_t start=0;
+ while(start<=data.size() && out.size()<128) {
+  size_t end=data.find(char(0x1e),start);if(end==std::string::npos)end=data.size();
+  std::array<std::string,5> fields{};size_t f=0,pos=start;
+  while(f<fields.size()) {
+   size_t sep=data.find(char(0x1f),pos);
+   if(sep==std::string::npos||sep>end)sep=end;
+   fields[f++]=data.substr(pos,sep-pos);
+   if(sep==end)break;
+   pos=sep+1;
+  }
+  if(f>=4 && !fields[0].empty()) {
+   ClassicTrackQuery q;
+   q.uri=fields[0];q.title=WideUtf8(fields[1]);q.artist=WideUtf8(fields[2]);q.album=WideUtf8(fields[3]);
+   if(f>=5)q.all_artists=WideUtf8(fields[4]);
+   if(!q.title.empty())out.push_back(std::move(q));
+  }
+  if(end==data.size())break;
+  start=end+1;
+ }
+ return out;
+}
+static std::string SerializeClassicStatuses(const std::vector<ClassicTrackResult>& results) {
+ std::string out;
+ for(const auto& r:results) {
+  if(!out.empty())out.push_back(char(0x1e));
+  out+=r.uri;out.push_back(char(0x1f));out+=r.status;out.push_back(char(0x1f));
+  out+=Utf8(r.path);out.push_back(char(0x1f));out+=r.message;
+ }
+ return out;
+}
+static void QueueClassicStatusRequest(const std::string& request) {
+ AcquireSRWLockExclusive(&ui_status_lock);ui_status_request=request;ReleaseSRWLockExclusive(&ui_status_lock);
+ if(message_event)SetEvent(message_event);
+}
+static void ProcessClassicStatusRequest() {
+ std::string request;
+ AcquireSRWLockExclusive(&ui_status_lock);request.swap(ui_status_request);ReleaseSRWLockExclusive(&ui_status_lock);
+ if(request.empty())return;
+ auto result=SerializeClassicStatuses(QueryClassicTrackStatuses(ParseClassicStatusBatch(request)));
+ AcquireSRWLockExclusive(&ui_status_lock);ui_status_response=std::move(result);ReleaseSRWLockExclusive(&ui_status_lock);
+ SchedulePoll();
+}
+static void FlushClassicStatusResponse(Frame* frame) {
+ std::string response;
+ AcquireSRWLockExclusive(&ui_status_lock);response.swap(ui_status_response);ReleaseSRWLockExclusive(&ui_status_lock);
+ if(response.empty())return;
+ auto encoded=PercentEncode(response);
+ std::wstring wide(encoded.begin(),encoded.end());
+ std::wstring code=L"if(window.__soggfyReceiveStatuses)window.__soggfyReceiveStatuses(decodeURIComponent(\""+wide+L"\"));";
+ ExecuteFrameCode(frame,code,L"soggfy-status.js");
+}
 static bool Enqueue(const String* value) {
  constexpr wchar_t prefix[]=L"FLOGGFY_METADATA_V1:";constexpr size_t n=sizeof(prefix)/sizeof(*prefix)-1;
  if(!value||value->length<=n||value->length>n+131072||wmemcmp(value->str,prefix,n))return false;
@@ -169,7 +258,10 @@ static bool Enqueue(const String* value) {
 static DWORD WINAPI MetadataWorker(LPVOID) {
  SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL);
  Message m;
- while(metadata_running.load(std::memory_order_acquire)){if(metadata_polling.load(std::memory_order_acquire))SchedulePoll();bool got=false;AcquireSRWLockExclusive(&message_lock);if(count){m=messages[head];head=(head+1)%messages.size();--count;got=true;}ReleaseSRWLockExclusive(&message_lock);
+ while(metadata_running.load(std::memory_order_acquire)){
+  ProcessClassicStatusRequest();
+  if(metadata_polling.load(std::memory_order_acquire))SchedulePoll();
+  bool got=false;AcquireSRWLockExclusive(&message_lock);if(count){m=messages[head];head=(head+1)%messages.size();--count;got=true;}ReleaseSRWLockExclusive(&message_lock);
   if(!got){WaitForSingleObject(message_event,1000);continue;}
   RichMetadata metadata;std::string error;if(!ParseRichMetadata(std::string(m.data,m.length),metadata,error))continue;
   metadata.quality_time=m.time;
@@ -210,10 +302,42 @@ static bool CurrentPlayback(const String* text) {
  }catch(...){PublishClientPlaybackQuality({});}
  return true;
 }
+
+static bool ParseClassicM3U(const std::string& payload,std::wstring& suggested,std::string& playlist,
+                            std::vector<ClassicM3UEntry>& entries) {
+ constexpr char rs=0x1e,fs=0x1f;
+ size_t first=payload.find(rs);
+ if(first==std::string::npos)return false;
+ auto header=payload.substr(0,first);
+ size_t split=header.find(fs);
+ if(split==std::string::npos)return false;
+ suggested=WideUtf8(header.substr(0,split));
+ playlist=header.substr(split+1);
+ if(suggested.empty()||suggested.size()>240||playlist.size()>4096)return false;
+ size_t start=first+1;
+ while(start<payload.size()&&entries.size()<10000) {
+  size_t end=payload.find(rs,start);if(end==std::string::npos)end=payload.size();
+  auto record=payload.substr(start,end-start);
+  std::array<std::string,4> fields;size_t at=0;bool valid=true;
+  for(size_t i=0;i<3;i++) {
+   size_t sep=record.find(fs,at);if(sep==std::string::npos){valid=false;break;}
+   fields[i]=record.substr(at,sep-at);at=sep+1;
+  }
+  if(valid) {
+   fields[3]=record.substr(at);
+   ClassicM3UEntry entry;
+   try{entry.duration_seconds=std::max(0L,std::min(86400L,std::stol(fields[0])));}catch(...){entry.duration_seconds=0;}
+   entry.artist=fields[1];entry.title=fields[2];entry.path=WideUtf8(fields[3]);
+   if(!entry.path.empty())entries.push_back(std::move(entry));
+  }
+  start=end+1;
+ }
+ return !entries.empty();
+}
 static bool ClassicUiMessage(const String* text) {
  constexpr wchar_t prefix[]=L"SOGGFY_UI_V1:";
  constexpr size_t n=sizeof(prefix)/sizeof(*prefix)-1;
- if(!text||!text->str||text->length<=n||text->length>n+8192||wmemcmp(text->str,prefix,n))return false;
+ if(!text||!text->str||text->length<=n||text->length>n+1048576||wmemcmp(text->str,prefix,n))return false;
  if(!GetSettings().classic_ui)return true;
  const wchar_t* body=text->str+n;size_t length=text->length-n;
  const wchar_t* equal=std::find(body,body+length,L'=');
@@ -230,9 +354,46 @@ static bool ClassicUiMessage(const String* text) {
  else if(key==L"log")ok=SetLogging(flag());
  else if(key==L"debug")ok=SetDebugLogging(flag());
  else if(key==L"normalize")ok=SetNormalizeArtistSeparators(flag());
+ else if(key==L"skipDownloaded")ok=SetSkipDownloadedTracks(flag());
+ else if(key==L"skipIgnored")ok=SetSkipIgnoredTracks(flag());
+ else if(key==L"embedCover")ok=SetEmbedCoverArt(flag());
+ else if(key==L"saveCover")ok=SetSaveCoverArt(flag());
+ else if(key==L"embedLyrics")ok=SetEmbedLyrics(flag());
+ else if(key==L"saveLyrics")ok=SetSaveLyrics(flag());
+ else if(key==L"saveCanvas")ok=SetSaveCanvas(flag());
+ else if(key==L"blockTelemetry")ok=SetBlockTelemetry(flag());
+ else if(key==L"liftQueue")ok=SetLiftAddToQueue(flag());
+ else if(key==L"keepNative")ok=SetKeepNativeOriginal(flag());
+ else if(key==L"playbackSpeed") {try{ok=SetPlaybackSpeed(std::stod(decoded));}catch(...){ok=false;}}
  else if(key==L"template")ok=SetPathTemplate(WideUtf8(decoded));
+ else if(key==L"podcastTemplate")ok=SetPodcastTemplate(WideUtf8(decoded));
+ else if(key==L"canvasTemplate")ok=SetCanvasTemplate(WideUtf8(decoded));
+ else if(key==L"invalidChars")ok=SetInvalidCharReplacement(WideUtf8(decoded));
+ else if(key==L"outputPreset")ok=SetOutputPreset(WideUtf8(decoded));
+ else if(key==L"outputExt")ok=SetOutputExtension(WideUtf8(decoded));
+ else if(key==L"outputArgs")ok=SetOutputArguments(WideUtf8(decoded));
+ else if(key==L"ffmpegPath")ok=SetFFmpegPath(WideUtf8(decoded));
  else if(key==L"root")ok=SetSaveLocation(WideUtf8(decoded));
  else if(key==L"browse"){PickSaveLocation(GetActiveWindow());}
+ else if(key==L"ignore_current"){SetClassicCurrentIgnored(flag());return true;}
+ else if(key==L"status_batch"){QueueClassicStatusRequest(decoded);return true;}
+ else if(key==L"open_folder"){RevealClassicTrack(WideUtf8(decoded));return true;}
+ else if(key==L"save_m3u"){
+  std::wstring suggested;std::string playlist;std::vector<ClassicM3UEntry> entries;
+  if(ParseClassicM3U(decoded,suggested,playlist,entries))SaveClassicM3U(suggested,playlist,entries);
+  else HistoryLog("failed to parse classic M3U request");
+  return true;
+ }
+ else if(key==L"canvas"){
+  constexpr char fs=0x1f;
+  std::array<std::string,5> fields;size_t at=0;bool valid=true;
+  for(size_t i=0;i<4;i++){size_t sep=decoded.find(fs,at);if(sep==std::string::npos){valid=false;break;}fields[i]=decoded.substr(at,sep-at);at=sep+1;}
+  if(valid){
+   fields[4]=decoded.substr(at);unsigned track=0;try{track=unsigned(std::stoul(fields[4]));}catch(...){}
+   QueueClassicCanvasDownload(WideUtf8(fields[0]),WideUtf8(fields[1]),WideUtf8(fields[2]),WideUtf8(fields[3]),track);
+  }
+  return true;
+ }
  else return true;
  if(!ok)HistoryLog("classic UI setting could not be saved");
  SyncClassicUi();
@@ -348,7 +509,14 @@ void EnrichCatalog(const Media& media,Catalog& catalog) {
  auto field=[&](const char* key)->std::string{
   auto it=copy.fields.find(key);return it==copy.fields.end()?std::string{}:it->second;
  };
- auto album_artist=Wide(field("ALBUMARTIST"));if(!album_artist.empty())catalog.album_artist=album_artist;
+ if(copy.kind=="episode"||field("MEDIA_KIND")=="episode"){
+  catalog.kind=MediaKind::Podcast;
+  auto show=Wide(field("SHOW"));if(show.empty())show=Wide(copy.album);
+  auto author=Wide(field("AUTHOR"));if(author.empty())author=Wide(copy.artist);
+  if(!show.empty()){catalog.show=show;catalog.album=show;}
+  if(!author.empty()){catalog.author=author;catalog.artist=author;catalog.album_artist=author;catalog.all_artists=author;}
+ }
+  auto album_artist=Wide(field("ALBUMARTIST"));if(!album_artist.empty())catalog.album_artist=album_artist;
  auto artists=Wide(field("ARTIST"));if(!artists.empty())catalog.all_artists=artists;
  if(catalog.artist.empty()&&!catalog.album_artist.empty())catalog.artist=catalog.album_artist;
  unsigned track=PositiveNumber(field("TRACKNUMBER"));if(track)catalog.track=track;

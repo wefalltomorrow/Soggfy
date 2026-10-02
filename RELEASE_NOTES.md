@@ -1,20 +1,39 @@
-# Soggfy v3.0.0-rc.5
+# Soggfy v3.0.0-rc.6
 
-This release changes the Spotify-facing integration to behave like old Soggfy instead of Floggfy.
+RC6 is the full Classic Soggfy UI/behaviour port.
 
-The modern x64 capture engine remains synced through Floggfy v1.1.0-rc.5. Native Ogg/FLAC capture, complete-listen validation, dynamic hook discovery, cache metadata, quality safeguards and the hardened rc.4 build/release pipeline remain underneath.
+The Spotify-facing experience now follows old Soggfy instead of Floggfy, while the backend remains the modern RC5-derived Windows x64 engine.
 
-What changes for users:
+## Restored old Soggfy behaviour
 
-- The default UI is now a modern reimplementation of old Soggfy's **top-bar integration**.
-- Spotify gets a **Downloads** button in the top bar. Its icon/state reflects whether capture is enabled.
-- A **Soggfy settings** button beside it opens an in-client Soggfy settings modal.
-- The modal controls Downloads, native FLAC/Ogg capture, save location, path template, artist-separator handling, cached metadata enrichment, activity logging and debug logging.
-- Settings are written back to `SpotifyHistory.ini` immediately through the native bridge.
-- The native Floggfy **To Disk** submenu is suppressed while Classic UI is enabled.
-- The To Disk menu remains available as a troubleshooting fallback with `Classic UI=0` and `Native Menu=1`.
-- Metadata can be disabled without disabling the Classic Soggfy UI itself.
+- Top-bar Downloads toggle and Soggfy settings button.
+- Old-style settings layout and controls.
+- Per-track downloading, converting, completed, failed, warning and ignored status icons.
+- Open Folder from completed-track status.
+- Skip Downloaded Tracks and Skip Ignored Tracks.
+- Resource-aware Ignore / Unignore.
+- Generate M3U from downloaded files.
+- Playback-speed control from 1x to 50x.
+- MP3 320/256/192, M4A/AAC, Opus and Custom FFmpeg output presets.
+- Embed / save cover art.
+- Embed / save lyrics, using .lrc for synchronized lyrics and .txt for plain lyrics.
+- Save Canvas.
+- Track, Podcast and Canvas path templates.
+- Invalid-character replacement modes.
+- Block telemetry.
+- Move Add to Queue to the top.
+- RC5 current Song / Quality / Format / Sample-rate information, restyled inside Classic Soggfy settings.
 
-This intentionally does not resurrect the obsolete Soggfy x86/WebSocket architecture. The UI talks directly to the current in-process x64 backend.
+## Modern backend improvements retained
 
-Legacy features that require separate backend work (such as the old accelerated-playback downloader, M3U/context-menu workflow and per-track row status/file lookup) are not silently faked in this release.
+Native compressed Ogg/FLAC capture, lossless FLAC preservation, complete-listen validation, seek/skip/truncation rejection, atomic publication, quality-aware existing-file replacement, dynamic x64 Spotify target discovery, identity-checked cached metadata, RC5 playback-quality safeguards, bounded queues/memory, safe FFmpeg post-processing, installer backup/restore, diagnostics, deterministic packaging and SHA-256 manifests all remain. Downloaded-file status now also uses a bounded 10-second shared index cache, while freshly completed tracks are surfaced immediately from live state.
+
+## Issue #150
+
+Upstream issue #150 is fixed.
+
+Saving and Skip Downloaded Tracks now share the same canonical filename/path escaping. Regression tests cover AC/DC and Gary Numan / Tubeway Army, plus converted MP3 lookup.
+
+## Compatibility note
+
+The Floggfy RC5 capture base was live-tested against Spotify 1.3.3.264. The new Classic UI and modern playback-speed hook are designed to fail closed if Spotify changes the expected CEF/player layout; future Spotify updates still require ordinary live validation.

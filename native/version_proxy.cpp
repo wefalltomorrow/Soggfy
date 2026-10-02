@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <cstring>
 #include "audio_history.h"
+#include "playback_speed.h"
+#include "cef_request_filter.h"
 #include "hook_init_state.h"
 #include "history_settings.h"
 #include "metadata_bridge.h"
@@ -375,10 +377,16 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
         const bool spotify_notification = pending_spotify.Consume() != 0;
         (void)spotify_notification;
         HMODULE cef;
-        if(GetModuleHandleExW(0,L"libcef.dll",&cef)) { history::StartMetadataCollector(cef); StartToDiskMenu(cef); FreeLibrary(cef); }
+        if(GetModuleHandleExW(0,L"libcef.dll",&cef)) {
+            history::StartCefRequestFilter(cef);
+            history::StartMetadataCollector(cef);
+            StartToDiskMenu(cef);
+            FreeLibrary(cef);
+        }
         HMODULE module;
         if (GetModuleHandleExW(0, L"Spotify.dll", &module)) {
             StartConnectivityHook(module);
+            history::StartPlaybackSpeed(module);
             if (i >= 80) StartAudioHistory(module, proxy_module);
             FreeLibrary(module);
         }
