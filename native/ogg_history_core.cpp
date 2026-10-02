@@ -1,6 +1,7 @@
 #include "ogg_history_core.h"
 #include <cstring>
 #include <cmath>
+#include <algorithm>
 namespace history {
 static uint64_t le(const uint8_t* p, unsigned n) {
     uint64_t value=0; for(unsigned i=0;i<n;i++) value |= uint64_t(p[i])<<(8*i);
