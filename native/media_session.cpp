@@ -6,6 +6,7 @@
 #include <utility>
 #include <cstdint>
 #include <cwctype>
+#include <cmath>
 namespace history {
 // These slots are the public WinRT COM ABI, copied from Windows SDK 26100.
 // No Spotify UI internals, generated projections or runtime helpers are used.
@@ -90,7 +91,7 @@ static bool Artwork(void* properties, Media& out) {
 MediaReader::~MediaReader() {
     Release(manager_); if(initialized_) RoUninitialize();
 }
-bool MediaReader::Read(Media& out,bool include_artwork) {
+bool MediaReader::Read(Media& out,bool include_artwork,double playback_rate) {
     if(!initialized_) {
         HRESULT hr=RoInitialize(RO_INIT_MULTITHREADED);
         if(FAILED(hr)) return false;
@@ -144,7 +145,10 @@ bool MediaReader::Read(Media& out,bool include_artwork) {
     FILETIME now; GetSystemTimeAsFileTime(&now);
     uint64_t ticks=(uint64_t(now.dwHighDateTime)<<32)|now.dwLowDateTime;
     double elapsed=(double(ticks)-double(updated))/10000000.0;
-    if(media.playing && elapsed>=0 && elapsed<86400) media.position+=elapsed;
+    if(!std::isfinite(playback_rate) || playback_rate<0.25 || playback_rate>100.0)
+        playback_rate=1.0;
+    if(media.playing && elapsed>=0 && elapsed<86400)
+        media.position+=elapsed*playback_rate;
     media.position=std::max(0.0,std::min(media.position,media.duration));
     if(media.title.empty() || media.duration<=0) return false;
     if(include_artwork) {
