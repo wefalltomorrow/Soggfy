@@ -28,6 +28,6 @@ struct Listen {
     double identity_time = 0;
     bool eligible = false, playing = false, transient = false, pending_start = false;
     std::string Observe(const std::string& key, double position, double length,
-                        bool is_playing, double time);
+                        bool is_playing, double time, double playback_rate=1.0);
 };
 }

@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.10
+
+- Fixed complete-listen validation incorrectly assuming 1x playback while Soggfy's native speed control was running Spotify faster.
+- Media-session position extrapolation now advances using the active Soggfy playback rate when the validated speed hook is available.
+- Listen start-time, expected-position, natural-end and delayed-title calculations are now playback-rate aware.
+- High-speed polling tolerances scale with playback rate so normal 10x-50x progress is not mistaken for a seek.
+- Real seeks/skips still invalidate the listen, and publication still requires a complete validated Ogg/FLAC stream.
+- Added regression coverage for 50x playback, natural transitions, delayed title updates and real forward seeks.
+
 ## 3.0.0-rc.9
 
 - Fixed valid Ogg captures being discarded when Spotify internally replays already-consumed Ogg pages during buffering/decoder reuse.

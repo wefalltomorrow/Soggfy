@@ -1,13 +1,14 @@
-# Soggfy v3.0.0-rc.9
+# Soggfy v3.0.0-rc.10
 
-RC9 fixes Ogg captures that could fail with `stream discarded: page gap or integrity failure` even during normal uninterrupted playback.
+RC10 fixes downloads failing as `incomplete listen` when Soggfy's accelerated playback is enabled.
 
 ## Fixed
 
-- Spotify may internally revisit an Ogg page or the Vorbis identification/BOS page while buffering or reusing its decoder.
-- Soggfy now recognizes already-consumed pages from the same Ogg logical stream as replays and ignores them.
-- Replayed pages are never appended to the output twice.
-- A replayed BOS page no longer resets and destroys an otherwise valid in-progress capture.
-- Real forward gaps, invalid CRCs, serial changes, bad granule progression, skipped/seeked playback and incomplete listens still fail closed.
+- The complete-listen validator previously measured media progress as if Spotify were always playing at 1x.
+- At 10x-50x, perfectly normal position jumps between 500 ms polls therefore looked like seeks and canceled the download.
+- Soggfy now uses the active validated playback rate for Windows media-session position extrapolation and complete-listen validation.
+- Natural end-of-track transitions can be recognized even when high-speed playback moves through the final many media seconds between two polls.
+- Delayed Spotify title/timeline updates remain handled safely at accelerated speeds.
+- Real seeks, skips and incomplete captures still fail closed, and the compressed audio stream must still reach a validated EOS before publication.
 
-RC9 also contains the RC8 legacy-library detection and RC7 settings-button fix.
+RC10 includes the RC9 Ogg replay fix, RC8 legacy-library detection and RC7 settings-button fix.
