@@ -27,7 +27,9 @@ function Convert-One([string]$Path) {
     if ($sourceExt -notin @('ogg','flac')) { return }
     if ($sourceExt -eq $Format) { return }
 
-    $dest = [IO.Path]::ChangeExtension($Path, $Format)
+    # AAC is stored in an M4A/MP4 container so metadata and attached artwork have a proper home.
+    $outputExtension = if ($Format -eq 'aac') { 'm4a' } else { $Format }
+    $dest = [IO.Path]::ChangeExtension($Path, $outputExtension)
     if (Test-Path -LiteralPath $dest) {
         Write-Verbose "Skipping existing output: $dest"
         return
@@ -35,7 +37,7 @@ function Convert-One([string]$Path) {
 
     $directory = [IO.Path]::GetDirectoryName($dest)
     $baseName = [IO.Path]::GetFileNameWithoutExtension($dest)
-    $temp = Join-Path $directory "$baseName.soggfy-converting.$Format"
+    $temp = Join-Path $directory "$baseName.soggfy-converting.$outputExtension"
     $codec = switch ($Format) {
         'mp3'  { @('-c:a','libmp3lame','-q:a','0') }
         'aac'  { @('-c:a','aac','-b:a','256k') }

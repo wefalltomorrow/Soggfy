@@ -50,6 +50,7 @@ Available tokens:
 - `{track_num_2}`
 - `{disc_num}`
 - `{release_year}`
+- `{release_date}`
 - `{multi_disc_path}`
 - `{multi_disc_paren}`
 - `{ext}`
@@ -62,7 +63,7 @@ Cached metadata is used for album artist, contributing artists, disc information
 
 The native capture is always kept in its original Ogg/FLAC form unless you explicitly remove it.
 
-`Scripts\PostProcess.ps1` can use an installed FFmpeg to create MP3, AAC, Opus or FLAC copies after capture. This is intentionally outside the injected DLL so FFmpeg failures can never affect Spotify or the native capture.
+`Scripts\PostProcess.ps1` can use an installed FFmpeg to create MP3, AAC/M4A, Opus or FLAC copies after capture. This is intentionally outside the injected DLL so FFmpeg failures can never affect Spotify or the native capture.
 
 ## Settings
 

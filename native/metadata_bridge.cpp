@@ -212,8 +212,10 @@ void EnrichCatalog(const Media& media,Catalog& catalog) {
  unsigned track=PositiveNumber(field("TRACKNUMBER"));if(track)catalog.track=track;
  catalog.disc=PositiveNumber(field("DISCNUMBER"));
  catalog.total_discs=PositiveNumber(field("DISCTOTAL"));
+ auto date=field("DATE");
+ if(!date.empty())catalog.release_date=Wide(date);
  unsigned year=PositiveNumber(field("YEAR"));
- if(!year){auto date=field("DATE");if(date.size()>=4)year=PositiveNumber(date.substr(0,4));}
+ if(!year&&date.size()>=4)year=PositiveNumber(date.substr(0,4));
  if(year>=1000&&year<=9999)catalog.release_year=year;
 }
 void StartMetadataCollector(HMODULE cef) {
