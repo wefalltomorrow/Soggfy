@@ -74,7 +74,11 @@ std::string Listen::Observe(const std::string& key, double pos, double length,
     const double elapsed=time-last_time;
     const double media_elapsed=(playing && elapsed>=0) ? elapsed*playback_rate : 0.0;
     const double expected=last_position+media_elapsed;
-    const double tolerance=std::max(1.5,playback_rate*0.15);
+    // Media is sampled every ~500 ms. At 50x the first snapshot can already
+    // be ~25 media seconds into a track, so start/end jitter windows must be
+    // expressed in media time rather than fixed 1x seconds.
+    const double start_window=std::max(1.5,playback_rate*0.75);
+    const double tolerance=std::max(1.5,playback_rate*0.25);
 
     if(key!=identity) {
         // At accelerated playback the last sampled position can be many media
@@ -85,18 +89,18 @@ std::string Listen::Observe(const std::string& key, double pos, double length,
         identity=key;
         start_time=time-(pos/playback_rate);
         duration=length;
-        eligible=!key.empty() && pos>=0 && pos<=std::max(1.5,playback_rate*0.15) && length>0;
+        eligible=!key.empty() && pos>=0 && pos<=start_window && length>0;
         identity_time=time; pending_start=!eligible && !key.empty();
     } else if(!key.empty()) {
         // SMTC title and timeline are separate snapshots. At a natural end,
         // the next timeline can arrive before its title. Account for accelerated
         // playback so a legitimate end/reset is not mistaken for a seek.
-        if(eligible && playing && pos<=std::max(1.5,playback_rate*0.15) &&
+        if(eligible && playing && pos<=start_window &&
            elapsed>=0 && elapsed<=3 && expected>=duration-0.1) {
             transient=true; return {};
         }
         if(pending_start && time-identity_time<=2 &&
-           pos>=0 && pos<=std::max(1.5,playback_rate*0.15) && length>0) {
+           pos>=0 && pos<=start_window && length>0) {
             start_time=time-(pos/playback_rate); duration=length;
             eligible=true; pending_start=false;
             last_time=time; last_position=pos; playing=is_playing; return {};
