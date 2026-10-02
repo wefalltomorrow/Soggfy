@@ -6,7 +6,7 @@ Changes in this release:
 
 - Builds the release DLL on Windows through a newer MSYS2 MinGW64 toolchain, with CI requiring GCC 14+ and binutils 2.44+.
 - Pins the MSYS2 setup action revision and records the exact compiler/linker/resource-tool versions in `BUILDINFO.txt`.
-- Keeps the MSVCRT target used by Floggfy RC5 instead of silently changing C runtime families.
+- Keeps the MSVCRT target used by Floggfy RC5 instead of silently changing C runtime families, while statically linking MinGW support libraries so no `libwinpthread-1.dll` is required.
 - Adds a proper Windows VERSIONINFO resource to `version.dll`, including ProductName, FileDescription, FileVersion and ProductVersion.
 - Publishes the raw `version.dll` as a release asset as well as the ZIP.
 - Publishes `SHA256SUMS.txt` covering both the raw DLL and the final ZIP, plus `BUILDINFO.txt`.

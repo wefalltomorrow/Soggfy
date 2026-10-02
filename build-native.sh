@@ -76,7 +76,7 @@ done
     -c native/vendor/libogg/src/framing.c -o build/ogg-framing.o
 
 "$CXX" -std=c++17 -O2 -Wall -Wextra -shared \
-    -static-libgcc -static-libstdc++ \
+    -static -static-libgcc -static-libstdc++ \
     -Wl,--no-insert-timestamp,--dynamicbase,--nxcompat \
     native/version_proxy.cpp native/pe_imports.cpp native/spotify_hook_discovery.cpp native/audio_history.cpp native/playback_quality.cpp native/playback_quality_windows.cpp native/ogg_history_core.cpp \
     native/media_session.cpp native/ogg_tags.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/history_settings.cpp native/library_layout.cpp \

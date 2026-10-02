@@ -14,7 +14,7 @@ The release job requires:
 - GNU binutils 2.44 or newer
 - the MinGW64/MSVCRT target
 
-The MSVCRT target is intentional. Floggfy RC5's official DLL and the existing Soggfy builds use that runtime; switching the release build to UCRT at the same time as other build changes would alter the DLL's runtime dependency for no capture-engine benefit.
+The MSVCRT target is intentional. Floggfy RC5's official DLL and the existing Soggfy builds use that runtime; switching the release build to UCRT at the same time as other build changes would alter the DLL's runtime dependency for no capture-engine benefit. MinGW support libraries are linked statically so the release DLL does not require `libwinpthread-1.dll` beside Spotify.
 
 MSYS2's package repository is rolling, so the action pin alone does not make future builds bit-identical forever. Every release therefore includes `BUILDINFO.txt` with the exact compiler, linker, resource compiler and strip versions that produced it. CI also rejects a toolchain below the tested floor.
 

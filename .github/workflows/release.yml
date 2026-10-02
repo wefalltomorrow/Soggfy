@@ -98,6 +98,10 @@ jobs:
           strings -el build/version.dll | grep -Fq 'Soggfy Spotify history capture proxy'
           strings -el build/version.dll | grep -Fq "$version"
           objdump -p build/version.dll | grep -iq 'DLL Name: msvcrt.dll'
+          if objdump -p build/version.dll | grep -iq 'DLL Name: libwinpthread-1.dll'; then
+            echo 'Unexpected dynamic MinGW pthread runtime dependency' >&2
+            exit 1
+          fi
           cd dist
           grep -Fq "  version.dll" SHA256SUMS.txt
           grep -Fq "  $archive" SHA256SUMS.txt
