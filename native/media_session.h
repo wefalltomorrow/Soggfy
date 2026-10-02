@@ -20,6 +20,6 @@ class MediaReader {
     Media cached_;
 public:
     ~MediaReader();
-    bool Read(Media& out,bool include_artwork=true);
+    bool Read(Media& out,bool include_artwork=true,double playback_rate=1.0);
 };
 }
