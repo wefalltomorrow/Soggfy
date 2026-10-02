@@ -74,7 +74,7 @@ static std::wstring RenderSegment(std::wstring part,const Catalog& c,const std::
                                   bool normalize_artist_separators,const std::wstring& invalid_char_replacement) {
     std::wstring ext=extension;
     if(!ext.empty() && ext.front()==L'.')ext.erase(ext.begin());
-    std::wstring artist=c.album_artist.empty()?c.artist:c.album_artist;
+    std::wstring artist=NormalizeArtists(c.album_artist.empty()?c.artist:c.album_artist,normalize_artist_separators);
     std::wstring all=NormalizeArtists(c.all_artists.empty()?c.artist:c.all_artists,normalize_artist_separators);
     ReplaceAll(part,L"{track_name}",EscapePathValue(c.title,invalid_char_replacement,L"Untitled"));
     ReplaceAll(part,L"{artist_name}",EscapePathValue(artist,invalid_char_replacement,L"Unknown Artist"));
