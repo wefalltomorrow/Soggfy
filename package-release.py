@@ -30,6 +30,7 @@ files = [
     ('Scripts/Install.ps1', root / 'Scripts' / 'Install.ps1'),
     ('Scripts/Uninstall.ps1', root / 'Scripts' / 'Uninstall.ps1'),
     ('Scripts/PostProcess.ps1', root / 'Scripts' / 'PostProcess.ps1'),
+    ('Scripts/Diagnose.ps1', root / 'Scripts' / 'Diagnose.ps1'),
 ]
 for vendor in ['minhook', 'libogg', 'cef', 'soggfy']:
     files.append((f'third-party/{vendor}/LICENSE.txt',

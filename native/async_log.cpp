@@ -23,7 +23,7 @@ static DWORD WINAPI Run(LPVOID){
   auto s=GetSettings();if(!s.log||s.root.empty()||(std::strcmp(r.event,"debug")==0&&!s.debug_log))continue;
   if(!EnsureDirectory(s.root))continue;
   SYSTEMTIME t;GetSystemTime(&t);char line[1000];int n=snprintf(line,sizeof(line),"%04u-%02u-%02uT%02u:%02u:%02uZ %s %s\r\n",t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond,r.event,r.detail);
-  if(n>0&&n<int(sizeof(line)))WriteCappedLog(s.root+L"\\Floggfy.log",std::string(line,size_t(n)));
+  if(n>0&&n<int(sizeof(line)))WriteCappedLog(s.root+L"\\Soggfy.log",std::string(line,size_t(n)));
  }
 }
 }

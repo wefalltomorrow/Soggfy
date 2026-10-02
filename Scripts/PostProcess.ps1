@@ -33,7 +33,9 @@ function Convert-One([string]$Path) {
         return
     }
 
-    $temp = "$dest.soggfy-converting"
+    $directory = [IO.Path]::GetDirectoryName($dest)
+    $baseName = [IO.Path]::GetFileNameWithoutExtension($dest)
+    $temp = Join-Path $directory "$baseName.soggfy-converting.$Format"
     $codec = switch ($Format) {
         'mp3'  { @('-c:a','libmp3lame','-q:a','0') }
         'aac'  { @('-c:a','aac','-b:a','256k') }
@@ -41,7 +43,7 @@ function Convert-One([string]$Path) {
         'flac' { @('-c:a','flac') }
     }
 
-    $args = @('-hide_banner','-loglevel','warning','-i',$Path,'-map','0:a:0','-map_metadata','0')
+    $args = @('-hide_banner','-loglevel','warning','-nostdin','-i',$Path,'-map','0:a:0','-map_metadata','0')
     if ($Format -ne 'opus') {
         $args += @('-map','0:v?','-c:v','copy')
     }
