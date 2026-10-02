@@ -75,5 +75,26 @@ int main() {
     Listen ended; ended.Observe("one",0,10,true,0);
     for(int i=1;i<10;i++) ended.Observe("one",i,10,true,i);
     check(ended.Observe("one",10,10,false,10)=="one","last track completes without next song");
+
+    Listen fast;
+    fast.Observe("fast",0,200,true,0,50);
+    for(int i=1;i<=7;i++)
+        check(fast.Observe("fast",i*25,200,true,i*0.5,50).empty(),
+              "50x playback advances without false seek rejection");
+    check(fast.Observe("next",0,180,true,4.0,50)=="fast",
+          "50x natural transition completes between media polls");
+
+    Listen fast_reset;
+    fast_reset.Observe("fast",0,200,true,0,50);
+    for(int i=1;i<=7;i++) fast_reset.Observe("fast",i*25,200,true,i*0.5,50);
+    check(fast_reset.Observe("fast",0.2,180,true,4.0,50).empty() && fast_reset.transient,
+          "50x timeline reset before title is retained as transient");
+    check(fast_reset.Observe("next",20,180,true,4.4,50)=="fast",
+          "50x delayed title transition completes previous listen");
+
+    Listen fast_seek;
+    fast_seek.Observe("fast",0,200,true,0,50);
+    fast_seek.Observe("fast",100,200,true,0.5,50);
+    check(!fast_seek.eligible,"50x forward seek beyond expected progress is rejected");
     std::puts("PASS: Ogg integrity and complete-listen cases");
 }
