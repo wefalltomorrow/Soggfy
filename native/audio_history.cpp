@@ -440,14 +440,31 @@ static DWORD WINAPI Worker(LPVOID) {
                 Page page; if(!ParsePage(s.bytes,s.length,page)) {
                     active.erase(s.context); Log("invalid Ogg page rejected"); continue;
                 }
+
+                auto found=active.find(s.context);
                 if(page.vorbis_start) {
+                    // A decoder may replay its identification/BOS page after
+                    // buffering. Preserve an in-progress capture when this is
+                    // the same logical stream and an already-consumed sequence.
+                    if(found!=active.end() && !found->second->lossless &&
+                       found->second->stream.active &&
+                       page.serial==found->second->stream.serial &&
+                       page.sequence<found->second->stream.next) {
+                        if(DebugLoggingEnabled())Log("Ogg replayed BOS page ignored");
+                        continue;
+                    }
                     auto c=std::make_unique<Capture>(); c->born=s.time;
                     active[s.context]=std::move(c);
+                    found=active.find(s.context);
                     char line[160]; snprintf(line,sizeof(line),"BOS ctx=%llx seq=%u serial=%u rate=%u channels=%u",
                         static_cast<unsigned long long>(s.context),page.sequence,page.serial,page.rate,page.channels); Log(line);
                 }
-                auto found=active.find(s.context); if(found==active.end()) continue;
+                if(found==active.end()) continue;
                 Capture& c=*found->second; Result result=c.stream.Push(s.bytes,s.length);
+                if(result==Result::Replay) {
+                    if(DebugLoggingEnabled())Log("Ogg replayed page ignored");
+                    continue;
+                }
                 if(result==Result::Invalid || result==Result::Ignore) {
                     active.erase(found); Log("stream discarded: page gap or integrity failure"); continue;
                 }

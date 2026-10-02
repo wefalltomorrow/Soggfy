@@ -37,6 +37,14 @@ int main() {
     check(push(s,first)==Result::Begin,"first Vorbis sequence may be one");
     check(push(s,middle)==Result::Append,"contiguous page appended");
     check(push(s,end)==Result::Complete && s.pages==3 && s.Duration()==2,"EOS publishes full stream");
+    Stream replay; check(push(replay,first)==Result::Begin,"replay fixture begins");
+    check(push(replay,middle)==Result::Append,"replay fixture advances");
+    check(push(replay,middle)==Result::Replay && replay.active && replay.pages==2,
+          "duplicate current Ogg page is ignored without invalidating capture");
+    check(push(replay,first)==Result::Replay && replay.active && replay.pages==2,
+          "replayed Vorbis BOS is ignored without restarting capture");
+    check(push(replay,end)==Result::Complete && replay.pages==3 && replay.Duration()==2,
+          "capture completes after harmless page replays");
     Stream gap; push(gap,first);
     check(push(gap,end)==Result::Invalid && !gap.complete,"page gap cannot publish");
     Stream partial; check(push(partial,middle)==Result::Ignore,"partial listen without BOS ignored");

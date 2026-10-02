@@ -39,13 +39,21 @@ bool ParsePage(const uint8_t* b, size_t n, Page& out) {
 Result Stream::Push(const uint8_t* b, size_t n) {
     Page p;
     if(!ParsePage(b,n,p)) { active=false; complete=false; return Result::Invalid; }
+
+    // Spotify can revisit already-consumed Ogg pages internally while buffering
+    // or reinitializing a decoder. A lower sequence number from the same logical
+    // stream is a replay, not a missing-page condition. Do not append it again.
+    // Genuine forward gaps still invalidate the capture.
+    if(active && p.serial==serial && p.sequence<next)
+        return Result::Replay;
+
     if(p.vorbis_start) {
         *this={}; active=true; serial=p.serial; next=p.sequence+1;
         rate=p.rate; channels=p.channels; bitrate=p.bitrate; pages=1; samples=p.granule;
         return Result::Begin;
     }
     if(!active) return Result::Ignore;
-    if(p.serial!=serial || p.sequence!=next || (p.flags&2) || p.granule < -1
+    if(p.serial!=serial || p.sequence>next || (p.flags&2) || p.granule < -1
        || (p.granule>=0 && samples>=0 && p.granule<samples)) {
         active=false; complete=false; return Result::Invalid;
     }

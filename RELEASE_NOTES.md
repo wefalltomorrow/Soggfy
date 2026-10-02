@@ -1,20 +1,13 @@
-# Soggfy v3.0.0-rc.8
+# Soggfy v3.0.0-rc.9
 
-RC8 makes Skip Downloaded Tracks safe to use with libraries created by older Soggfy installs.
+RC9 fixes Ogg captures that could fail with `stream discarded: page gap or integrity failure` even during normal uninterrupted playback.
 
-## Legacy library detection
+## Fixed
 
-Soggfy still checks the configured Track Template first, but downloaded-file lookup is now format-independent. An existing MP3, M4A/MP4, Ogg, Opus, FLAC, AAC or WAV can therefore be recognized even when the current output setting is different.
+- Spotify may internally revisit an Ogg page or the Vorbis identification/BOS page while buffering or reusing its decoder.
+- Soggfy now recognizes already-consumed pages from the same Ogg logical stream as replays and ignores them.
+- Replayed pages are never appended to the output twice.
+- A replayed BOS page no longer resets and destroys an otherwise valid in-progress capture.
+- Real forward gaps, invalid CRCs, serial changes, bad granule progression, skipped/seeked playback and incomplete listens still fail closed.
 
-For older flat libraries, Soggfy also recognizes exact legacy filenames such as:
-
-    Technotronic - Pump Up The Jam.mp3
-    A$AP Rocky, Rod Stewart, Miguel, Mark Ronson - Everyday.mp3
-
-The fallback requires both artist and track title. It deliberately does not use title-only matching.
-
-Old invalid-character modes and the historical `{all_artist_names}` slash-to-comma behavior are covered as well.
-
-If more than one file matches the same track, Soggfy reports an ambiguous warning instead of silently skipping it.
-
-All RC7 settings-button fixes and the RC6 Classic UI/capture functionality remain included.
+RC9 also contains the RC8 legacy-library detection and RC7 settings-button fix.
