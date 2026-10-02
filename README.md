@@ -13,7 +13,8 @@ This branch combines the parts that still make sense from the original Soggfy ec
 - Skips equal or better existing files and atomically replaces lower-quality copies.
 - Uses dynamic x64 hook discovery instead of fixed Spotify offsets.
 - Keeps the capture, menu and metadata integrations separated so one optional integration can fail without blindly hooking another.
-- Shows the current song, Spotify quality level, codec, sample rate and FLAC bit depth in **To Disk**, even when saving is disabled.
+- Uses the original Soggfy-style Spotify integration by default: a top-bar Downloads toggle and a Soggfy settings button/modal.
+- Keeps Floggfy's native **To Disk** menu only as an optional fallback when Classic UI is disabled.
 - Supports the original Soggfy idea of configurable output paths.
 
 ## Install
@@ -25,7 +26,7 @@ Live compatibility inherited from Floggfy v1.1.0-rc.5 was tested end-to-end with
 3. Extract it.
 4. Run `Scripts\Install.ps1`, or manually copy `version.dll` beside `Spotify.exe` (normally `%APPDATA%\Spotify`).
 5. Start Spotify.
-6. Open the top-left Spotify menu -> **To Disk** and enable **Downloads**.
+6. Use the **Soggfy download button** in Spotify's top bar to enable Downloads. The sliders button beside it opens **Soggfy settings**.
 7. Play a track from start to finish without seeking or skipping.
 
 The installer backs up a pre-existing `version.dll` instead of silently overwriting it. `Scripts\Uninstall.ps1` restores that backup.
@@ -67,9 +68,11 @@ The native capture is always kept in its original Ogg/FLAC form unless you expli
 
 ## Settings
 
-`SpotifyHistory.ini` contains the full settings list. The **To Disk** menu controls Downloads, Save Location, FLAC and Ogg. Its read-only footer shows the current song, quality, format and sample rate/bit depth. RC5 refreshes current-track state from Spotify's cached player state once per second and formats visible labels through CEF before display, reducing stale/previous-song footer results.
+`SpotifyHistory.ini` contains the full settings list. With `Classic UI=1` (the default), Spotify gets the old Soggfy-style top-bar controls and settings modal. The modal controls Downloads, native FLAC/Ogg capture, save location, path template, metadata enrichment and logging.
 
-If Spotify becomes unstable after an update, quit it and try `Metadata=0`, then `Menu=0`. If the menu is missing, capture can still be enabled with `Downloads=1` directly in the INI.
+The Floggfy-style native **To Disk** menu is suppressed while Classic UI is enabled. For troubleshooting only, set `Classic UI=0` and `Native Menu=1`, then restart Spotify to use that fallback menu instead.
+
+If the injected UI is missing after a Spotify update, capture can still be enabled with `Downloads=1` directly in the INI.
 
 ## Build and test
 
@@ -89,6 +92,8 @@ GitHub Actions runs the native regression suite, builds the release DLL on Windo
 ## Project history
 
 The previous 2024 x86 Soggfy source is preserved under `legacy/` for reference. It is not part of the default build.
+
+The current UI is a clean modern reimplementation of that legacy Sprinkles interaction model. It does **not** bring back the old WebSocket control server or x86 hook engine.
 
 The modern base is synced through Mainkill1/Floggfy v1.1.0-rc.5. See [UPSTREAMS.md](UPSTREAMS.md) for the exact source revision and community fixes reviewed for this fork.
 

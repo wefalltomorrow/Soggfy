@@ -1,16 +1,20 @@
-# Soggfy v3.0.0-rc.4
+# Soggfy v3.0.0-rc.5
 
-This is a build/release hardening update. The active Spotify capture/runtime code remains synced through Floggfy v1.1.0-rc.5.
+This release changes the Spotify-facing integration to behave like old Soggfy instead of Floggfy.
 
-Changes in this release:
+The modern x64 capture engine remains synced through Floggfy v1.1.0-rc.5. Native Ogg/FLAC capture, complete-listen validation, dynamic hook discovery, cache metadata, quality safeguards and the hardened rc.4 build/release pipeline remain underneath.
 
-- Builds the release DLL on Windows through a newer MSYS2 MinGW64 toolchain, with CI requiring GCC 14+ and binutils 2.44+.
-- Pins the MSYS2 setup action revision and records the exact compiler/linker/resource-tool versions in `BUILDINFO.txt`.
-- Keeps the MSVCRT target used by Floggfy RC5 instead of silently changing C runtime families, while statically linking MinGW support libraries so no `libwinpthread-1.dll` is required.
-- Adds a proper Windows VERSIONINFO resource to `version.dll`, including ProductName, FileDescription, FileVersion and ProductVersion.
-- Publishes the raw `version.dll` as a release asset as well as the ZIP.
-- Publishes `SHA256SUMS.txt` covering both the raw DLL and the final ZIP, plus `BUILDINFO.txt`.
-- Keeps an internal `DLL-SHA256.txt` in the ZIP so the extracted DLL can be verified without creating a circular ZIP checksum.
-- CI verifies the version resource, MSVCRT import and all release hashes before publication.
+What changes for users:
 
-Runtime features from v3.0.0-rc.3 are unchanged: Floggfy RC5 current-track/footer fixes, native Ogg/FLAC capture, cached metadata enrichment, Soggfy path templates, installer/uninstaller, diagnostics and optional external FFmpeg post-processing.
+- The default UI is now a modern reimplementation of old Soggfy's **top-bar integration**.
+- Spotify gets a **Downloads** button in the top bar. Its icon/state reflects whether capture is enabled.
+- A **Soggfy settings** button beside it opens an in-client Soggfy settings modal.
+- The modal controls Downloads, native FLAC/Ogg capture, save location, path template, artist-separator handling, cached metadata enrichment, activity logging and debug logging.
+- Settings are written back to `SpotifyHistory.ini` immediately through the native bridge.
+- The native Floggfy **To Disk** submenu is suppressed while Classic UI is enabled.
+- The To Disk menu remains available as a troubleshooting fallback with `Classic UI=0` and `Native Menu=1`.
+- Metadata can be disabled without disabling the Classic Soggfy UI itself.
+
+This intentionally does not resurrect the obsolete Soggfy x86/WebSocket architecture. The UI talks directly to the current in-process x64 backend.
+
+Legacy features that require separate backend work (such as the old accelerated-playback downloader, M3U/context-menu workflow and per-track row status/file lookup) are not silently faked in this release.

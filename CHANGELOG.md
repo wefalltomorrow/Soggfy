@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.0.0-rc.5
+
+- Replaced the Floggfy-style To Disk menu as the default interface with a modern reimplementation of old Soggfy's Spotify integration.
+- Added the old-style top-bar Downloads toggle and Soggfy settings button/modal.
+- Wired Classic UI controls directly to the modern x64 capture settings: Downloads, Ogg, FLAC, save location, path templates, artist normalization, metadata and logging.
+- Kept the native To Disk menu as an opt-in fallback only (`Classic UI=0`, `Native Menu=1`).
+- Kept the CEF bridge alive when metadata is disabled so the Soggfy UI itself still works.
+- Added JavaScript syntax validation for the injected Classic UI.
+- Did not restore the obsolete localhost WebSocket server, x86 hooks, playback-speed downloader or other legacy transport code.
+
+# Changelog
+
 ## 3.0.0-rc.4
 
 - Hardened the release build without changing the RC5-derived capture runtime.
