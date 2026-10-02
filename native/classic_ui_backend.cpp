@@ -194,15 +194,6 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
         }
 
         for(auto& p:pending) {
-                    if(p.matches<2 && std::regex_match(relative,p.regex)) {
-                        ++p.matches;
-                        if(p.matches==1)p.match=DisplayPath(it->path());
-                    }
-                }
-            }
-        }
-
-        for(auto& p:pending) {
             ClassicTrackResult result;result.uri=p.query.uri;
             if(p.matches==1) {
                 result.status="DONE";result.path=p.match;
