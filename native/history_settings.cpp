@@ -116,7 +116,8 @@ void InitSettings(HMODULE proxy) {
        !CreateDefaultIni(ini))
         QueueDiagnostic("failed to create default SpotifyHistory.ini; using built-in settings");
     settings.downloads=GetPrivateProfileIntW(L"To Disk",L"Downloads",GetPrivateProfileIntW(L"History",L"Enabled",0,ini.c_str()),ini.c_str())!=0;
-    settings.classic_ui=GetPrivateProfileIntW(L"Soggfy",L"Classic UI",1,ini.c_str())!=0;\n    settings.menu=GetPrivateProfileIntW(L"Soggfy",L"Native Menu",0,ini.c_str())!=0;
+    settings.classic_ui=GetPrivateProfileIntW(L"Soggfy",L"Classic UI",1,ini.c_str())!=0;
+    settings.menu=GetPrivateProfileIntW(L"Soggfy",L"Native Menu",0,ini.c_str())!=0;
     settings.ogg=GetPrivateProfileIntW(L"To Disk",L"Ogg",1,ini.c_str())!=0;
     settings.flac=GetPrivateProfileIntW(L"To Disk",L"FLAC",1,ini.c_str())!=0;
     settings.metadata=GetPrivateProfileIntW(L"To Disk",L"Metadata",1,ini.c_str())!=0;

@@ -94,7 +94,10 @@ static std::wstring UiConfigCode() {
  auto bit=[](bool value){return value?"1":"0";};
  std::string payload;
  auto add=[&](const char* key,const std::string& value){
-  if(!payload.empty())payload+='&';payload+=key;payload+='=';payload+=PercentEncode(value);
+  if(!payload.empty())payload+='&';
+  payload+=key;
+  payload+='=';
+  payload+=PercentEncode(value);
  };
  add("downloads",bit(s.downloads));
  add("ogg",bit(s.ogg));
