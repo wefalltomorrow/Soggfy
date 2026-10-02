@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cwchar>
 #include <cstring>
+#include <cmath>
 #include "async_log.h"
 namespace history {
 static SRWLOCK lock=SRWLOCK_INIT;
@@ -25,13 +26,31 @@ static constexpr char default_ini[]=
     "Classic UI=1\r\n"
     "; Optional fallback to Floggfy's native To Disk menu when Classic UI=0.\r\n"
     "Native Menu=0\r\n"
+    "Playback Speed=1\r\n"
+    "Skip Downloaded Tracks=0\r\n"
+    "Skip Ignored Tracks=0\r\n"
+    "Embed Cover Art=1\r\n"
+    "Save Cover Art=1\r\n"
+    "Embed Lyrics=1\r\n"
+    "Save Lyrics=1\r\n"
+    "Save Canvas=0\r\n"
+    "Block Telemetry=1\r\n"
+    "Lift Add To Queue=0\r\n"
+    "Keep Native Original=1\r\n"
+    "Output Preset=Native\r\n"
+    "Output Ext=\r\n"
+    "Output Args=\r\n"
+    "FFmpeg Path=\r\n"
+    "Podcast Template=Podcasts/{artist_name}/{album_name}/{release_date} - {track_name}.{ext}\r\n"
+    "Canvas Template={artist_name}/{album_name}{multi_disc_path}/Canvas/{track_num}. {track_name}.mp4\r\n"
+    "Invalid Char Replacement=unicode\r\n"
     "\r\n"
     "[To Disk]\r\n"
     "Downloads=0\r\n"
     "; Empty uses the Windows Music folder plus \\Spotify.\r\n"
     "Save Location=\r\n"
-    "; Optional Soggfy-style relative path template. Empty keeps the smart layout.\r\n"
-    "Path Template=\r\n"
+    "; Fresh installs use the original Soggfy-style track template. Clear this for the smart layout.\r\n"
+    "Path Template={artist_name}/{album_name}{multi_disc_path}/{track_num}. {track_name}.{ext}\r\n"
     "; Path-only cleanup; leaves names such as AC/DC alone.\r\n"
     "Normalize Artist Separators=1\r\n"
     "Ogg=1\r\n"
@@ -62,8 +81,32 @@ static DWORD WINAPI PersistSettings(LPVOID) {
         auto flag=[&](const wchar_t* section,const wchar_t* key,bool value) {
             if(!WritePrivateProfileStringW(section,key,value?L"1":L"0",ini.c_str()))ok=false;
         };
+        auto text=[&](const wchar_t* section,const wchar_t* key,const std::wstring& value) {
+            if(!WritePrivateProfileStringW(section,key,value.c_str(),ini.c_str()))ok=false;
+        };
         flag(L"Soggfy",L"Classic UI",snapshot.classic_ui);
         flag(L"Soggfy",L"Native Menu",snapshot.menu);
+        flag(L"Soggfy",L"Skip Downloaded Tracks",snapshot.skip_downloaded_tracks);
+        flag(L"Soggfy",L"Skip Ignored Tracks",snapshot.skip_ignored_tracks);
+        flag(L"Soggfy",L"Embed Cover Art",snapshot.embed_cover_art);
+        flag(L"Soggfy",L"Save Cover Art",snapshot.save_cover_art);
+        flag(L"Soggfy",L"Embed Lyrics",snapshot.embed_lyrics);
+        flag(L"Soggfy",L"Save Lyrics",snapshot.save_lyrics);
+        flag(L"Soggfy",L"Save Canvas",snapshot.save_canvas);
+        flag(L"Soggfy",L"Block Telemetry",snapshot.block_telemetry);
+        flag(L"Soggfy",L"Lift Add To Queue",snapshot.lift_add_to_queue);
+        flag(L"Soggfy",L"Keep Native Original",snapshot.keep_native_original);
+
+        wchar_t speed[32];swprintf(speed,32,L"%.3g",snapshot.playback_speed);
+        text(L"Soggfy",L"Playback Speed",speed);
+        text(L"Soggfy",L"Output Preset",snapshot.output_preset);
+        text(L"Soggfy",L"Output Ext",snapshot.output_ext);
+        text(L"Soggfy",L"Output Args",snapshot.output_args);
+        text(L"Soggfy",L"FFmpeg Path",snapshot.ffmpeg_path);
+        text(L"Soggfy",L"Podcast Template",snapshot.podcast_template);
+        text(L"Soggfy",L"Canvas Template",snapshot.canvas_template);
+        text(L"Soggfy",L"Invalid Char Replacement",snapshot.invalid_char_repl);
+
         flag(L"To Disk",L"Downloads",snapshot.downloads);
         flag(L"To Disk",L"Ogg",snapshot.ogg);
         flag(L"To Disk",L"FLAC",snapshot.flac);
@@ -71,10 +114,13 @@ static DWORD WINAPI PersistSettings(LPVOID) {
         flag(L"To Disk",L"Log",snapshot.log);
         flag(L"To Disk",L"DebugLog",snapshot.debug_log);
         flag(L"To Disk",L"Normalize Artist Separators",snapshot.normalize_artist_separators);
-        if(!WritePrivateProfileStringW(L"To Disk",L"Save Location",snapshot.save_location.c_str(),ini.c_str()))ok=false;
-        if(!WritePrivateProfileStringW(L"To Disk",L"Path Template",snapshot.path_template.c_str(),ini.c_str()))ok=false;
-        InterlockedExchange(&persist_failed,!ok);InterlockedExchange(&persisted_generation,LONG(snapshot.generation));
-        SetEvent(persist_done);if(!ok)LogActivity("failed","settings persistence");
+        text(L"To Disk",L"Save Location",snapshot.save_location);
+        text(L"To Disk",L"Path Template",snapshot.path_template);
+
+        InterlockedExchange(&persist_failed,!ok);
+        InterlockedExchange(&persisted_generation,LONG(snapshot.generation));
+        SetEvent(persist_done);
+        if(!ok)LogActivity("failed","settings persistence");
     }
 }
 bool FlushSettings(unsigned timeout_ms) {
@@ -124,11 +170,34 @@ void InitSettings(HMODULE proxy) {
     settings.normalize_artist_separators=GetPrivateProfileIntW(L"To Disk",L"Normalize Artist Separators",1,ini.c_str())!=0;
     settings.log=GetPrivateProfileIntW(L"To Disk",L"Log",1,ini.c_str())!=0;
     settings.debug_log=GetPrivateProfileIntW(L"To Disk",L"DebugLog",0,ini.c_str())!=0;
+
+    settings.skip_downloaded_tracks=GetPrivateProfileIntW(L"Soggfy",L"Skip Downloaded Tracks",0,ini.c_str())!=0;
+    settings.skip_ignored_tracks=GetPrivateProfileIntW(L"Soggfy",L"Skip Ignored Tracks",0,ini.c_str())!=0;
+    settings.embed_cover_art=GetPrivateProfileIntW(L"Soggfy",L"Embed Cover Art",1,ini.c_str())!=0;
+    settings.save_cover_art=GetPrivateProfileIntW(L"Soggfy",L"Save Cover Art",1,ini.c_str())!=0;
+    settings.embed_lyrics=GetPrivateProfileIntW(L"Soggfy",L"Embed Lyrics",1,ini.c_str())!=0;
+    settings.save_lyrics=GetPrivateProfileIntW(L"Soggfy",L"Save Lyrics",1,ini.c_str())!=0;
+    settings.save_canvas=GetPrivateProfileIntW(L"Soggfy",L"Save Canvas",0,ini.c_str())!=0;
+    settings.block_telemetry=GetPrivateProfileIntW(L"Soggfy",L"Block Telemetry",1,ini.c_str())!=0;
+    settings.lift_add_to_queue=GetPrivateProfileIntW(L"Soggfy",L"Lift Add To Queue",0,ini.c_str())!=0;
+    settings.keep_native_original=GetPrivateProfileIntW(L"Soggfy",L"Keep Native Original",1,ini.c_str())!=0;
+
     settings.max_buffered_mib=std::max(8u,std::min(512u,GetPrivateProfileIntW(L"History",L"MaxBufferedMiB",500,ini.c_str())));
-    wchar_t raw[2048],expanded[4096],raw_template[4096];
+
+    wchar_t raw[2048],expanded[4096],raw_template[4096],value[4096];
     GetPrivateProfileStringW(L"To Disk",L"Save Location",L"",raw,2048,ini.c_str());
-    GetPrivateProfileStringW(L"To Disk",L"Path Template",L"",raw_template,4096,ini.c_str());
+    GetPrivateProfileStringW(L"To Disk",L"Path Template",L"{artist_name}/{album_name}{multi_disc_path}/{track_num}. {track_name}.{ext}",raw_template,4096,ini.c_str());
     settings.path_template=raw_template;
+
+    GetPrivateProfileStringW(L"Soggfy",L"Playback Speed",L"1",value,4096,ini.c_str());
+    settings.playback_speed=std::max(1.0,std::min(50.0,wcstod(value,nullptr)));
+    GetPrivateProfileStringW(L"Soggfy",L"Output Preset",L"Native",value,4096,ini.c_str());settings.output_preset=value;
+    GetPrivateProfileStringW(L"Soggfy",L"Output Ext",L"",value,4096,ini.c_str());settings.output_ext=value;
+    GetPrivateProfileStringW(L"Soggfy",L"Output Args",L"",value,4096,ini.c_str());settings.output_args=value;
+    GetPrivateProfileStringW(L"Soggfy",L"FFmpeg Path",L"",value,4096,ini.c_str());settings.ffmpeg_path=value;
+    GetPrivateProfileStringW(L"Soggfy",L"Podcast Template",L"Podcasts/{artist_name}/{album_name}/{release_date} - {track_name}.{ext}",value,4096,ini.c_str());settings.podcast_template=value;
+    GetPrivateProfileStringW(L"Soggfy",L"Canvas Template",L"{artist_name}/{album_name}{multi_disc_path}/Canvas/{track_num}. {track_name}.mp4",value,4096,ini.c_str());settings.canvas_template=value;
+    GetPrivateProfileStringW(L"Soggfy",L"Invalid Char Replacement",L"unicode",value,4096,ini.c_str());settings.invalid_char_repl=value;
     PWSTR music=nullptr;
     if(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Music,0,nullptr,&music))) {
         music_path=music; CoTaskMemFree(music);
@@ -181,17 +250,45 @@ bool SetMetadata(bool v) { return SetBool(v,settings.metadata,nullptr,false); }
 bool SetLogging(bool v) { return SetBool(v,settings.log,&log_enabled,false); }
 bool SetDebugLogging(bool v) { return SetBool(v,settings.debug_log,&debug_enabled,false); }
 bool SetNormalizeArtistSeparators(bool v) { return SetBool(v,settings.normalize_artist_separators,nullptr,false); }
-bool SetPathTemplate(const std::wstring& value) {
-    if(value.size()>4095) return false;
+bool SetSkipDownloadedTracks(bool v) { return SetBool(v,settings.skip_downloaded_tracks,nullptr,false); }
+bool SetSkipIgnoredTracks(bool v) { return SetBool(v,settings.skip_ignored_tracks,nullptr,false); }
+bool SetEmbedCoverArt(bool v) { return SetBool(v,settings.embed_cover_art,nullptr,false); }
+bool SetSaveCoverArt(bool v) { return SetBool(v,settings.save_cover_art,nullptr,false); }
+bool SetEmbedLyrics(bool v) { return SetBool(v,settings.embed_lyrics,nullptr,false); }
+bool SetSaveLyrics(bool v) { return SetBool(v,settings.save_lyrics,nullptr,false); }
+bool SetSaveCanvas(bool v) { return SetBool(v,settings.save_canvas,nullptr,false); }
+bool SetBlockTelemetry(bool v) { return SetBool(v,settings.block_telemetry,nullptr,false); }
+bool SetLiftAddToQueue(bool v) { return SetBool(v,settings.lift_add_to_queue,nullptr,false); }
+bool SetKeepNativeOriginal(bool v) { return SetBool(v,settings.keep_native_original,nullptr,false); }
+
+static bool SetTextValue(const std::wstring& value,std::wstring& field,size_t limit=4095) {
+    if(value.size()>limit)return false;
     AcquireSRWLockExclusive(&lock);
     bool ok=settings_signal!=nullptr;
-    if(ok) {
-        settings.path_template=value;
-        ++settings.generation;
-    }
+    if(ok){field=value;++settings.generation;}
     ReleaseSRWLockExclusive(&lock);
     if(ok)SetEvent(settings_signal);
     return ok;
+}
+bool SetPlaybackSpeed(double value) {
+    if(!std::isfinite(value) || value<1.0 || value>50.0)return false;
+    AcquireSRWLockExclusive(&lock);
+    bool ok=settings_signal!=nullptr;
+    if(ok){settings.playback_speed=value;++settings.generation;}
+    ReleaseSRWLockExclusive(&lock);
+    if(ok)SetEvent(settings_signal);
+    return ok;
+}
+bool SetPathTemplate(const std::wstring& value) { return SetTextValue(value,settings.path_template); }
+bool SetPodcastTemplate(const std::wstring& value) { return SetTextValue(value,settings.podcast_template); }
+bool SetCanvasTemplate(const std::wstring& value) { return SetTextValue(value,settings.canvas_template); }
+bool SetOutputPreset(const std::wstring& value) { return SetTextValue(value,settings.output_preset,128); }
+bool SetOutputExtension(const std::wstring& value) { return SetTextValue(value,settings.output_ext,32); }
+bool SetOutputArguments(const std::wstring& value) { return SetTextValue(value,settings.output_args); }
+bool SetFFmpegPath(const std::wstring& value) { return SetTextValue(value,settings.ffmpeg_path,2047); }
+bool SetInvalidCharReplacement(const std::wstring& value) {
+    if(value!=L"unicode" && value!=L"-" && value!=L"_" && !value.empty())return false;
+    return SetTextValue(value,settings.invalid_char_repl,16);
 }
 bool SetSaveLocation(const std::wstring& root) {
     if(root.empty() || root.size()>2047 || !(root.size()>2 && (root[1]==L':' || root.rfind(L"\\\\",0)==0))) return false;
