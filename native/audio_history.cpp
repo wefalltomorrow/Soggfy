@@ -450,7 +450,7 @@ static DWORD WINAPI Worker(LPVOID) {
                        found->second->stream.active &&
                        page.serial==found->second->stream.serial &&
                        page.sequence<found->second->stream.next) {
-                        Log("Ogg replayed BOS page ignored");
+                        if(DebugLoggingEnabled())Log("Ogg replayed BOS page ignored");
                         continue;
                     }
                     auto c=std::make_unique<Capture>(); c->born=s.time;
@@ -462,7 +462,7 @@ static DWORD WINAPI Worker(LPVOID) {
                 if(found==active.end()) continue;
                 Capture& c=*found->second; Result result=c.stream.Push(s.bytes,s.length);
                 if(result==Result::Replay) {
-                    Log("Ogg replayed page ignored");
+                    if(DebugLoggingEnabled())Log("Ogg replayed page ignored");
                     continue;
                 }
                 if(result==Result::Invalid || result==Result::Ignore) {
