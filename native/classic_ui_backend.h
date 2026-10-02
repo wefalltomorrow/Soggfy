@@ -25,6 +25,9 @@ struct ClassicM3UEntry {
 };
 bool SaveClassicM3U(const std::wstring& suggested_filename,const std::string& playlist_name,
                     const std::vector<ClassicM3UEntry>& entries);
+bool QueueClassicCanvasDownload(const std::wstring& url,const std::wstring& title,
+                                const std::wstring& artist,const std::wstring& album,
+                                unsigned track);
 
 void SetClassicCurrentIgnored(bool ignored);
 bool ClassicCurrentIgnored();

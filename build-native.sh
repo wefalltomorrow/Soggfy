@@ -34,6 +34,7 @@ ui_files = [
     "native/ui/classic_core.js",
     "native/ui/classic_settings.js",
     "native/ui/classic_status.js",
+    "native/ui/classic_canvas.js",
     "native/ui/classic_m3u.js",
     "native/ui/classic_context.js",
     "native/ui/classic_boot.js",
@@ -95,7 +96,7 @@ done
     native/media_session.cpp native/classic_path_match.cpp native/classic_ui_backend.cpp native/post_process.cpp native/ogg_tags.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/history_settings.cpp native/library_layout.cpp \
     native/existing_quality.cpp native/file_publication.cpp native/to_disk_menu.cpp native/rich_metadata.cpp native/cached_metadata.cpp native/cached_metadata_windows.cpp native/metadata_bridge.cpp native/async_log.cpp native/version_exports.S native/version.def \
     build/version-resource.o build/minhook-*.o build/ogg-framing.o -I native/vendor/libogg/include \
-    -o build/version.dll -lole32 -luuid -liphlpapi -lws2_32 -lruntimeobject -lshell32
+    -o build/version.dll -lole32 -luuid -liphlpapi -lws2_32 -lruntimeobject -lshell32 -lwinhttp
 
 SOURCE_DATE_EPOCH=1 "$STRIP" --strip-unneeded build/version.dll
 

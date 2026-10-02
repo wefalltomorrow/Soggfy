@@ -373,6 +373,16 @@ static bool ClassicUiMessage(const String* text) {
   else HistoryLog("failed to parse classic M3U request");
   return true;
  }
+ else if(key==L"canvas"){
+  constexpr char fs=0x1f;
+  std::array<std::string,5> fields;size_t at=0;bool valid=true;
+  for(size_t i=0;i<4;i++){size_t sep=decoded.find(fs,at);if(sep==std::string::npos){valid=false;break;}fields[i]=decoded.substr(at,sep-at);at=sep+1;}
+  if(valid){
+   fields[4]=decoded.substr(at);unsigned track=0;try{track=unsigned(std::stoul(fields[4]));}catch(...){}
+   QueueClassicCanvasDownload(WideUtf8(fields[0]),WideUtf8(fields[1]),WideUtf8(fields[2]),WideUtf8(fields[3]),track);
+  }
+  return true;
+ }
  else return true;
  if(!ok)HistoryLog("classic UI setting could not be saved");
  SyncClassicUi();
