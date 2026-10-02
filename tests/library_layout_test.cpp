@@ -27,6 +27,19 @@ int main() {
     auto path=RelativePath(c,L".ogg");
     check(path.find(L"..\\")==std::wstring::npos && path.find(L":")==std::wstring::npos && path.find(L"\\CON\\")==std::wstring::npos,
           "path traversal and reserved Windows names prevented");
+
+    Catalog t; t.artist=L"Album Artist"; t.album_artist=L"Album Artist"; t.all_artists=L"One / Two";
+    t.album=L"Album: Deluxe"; t.title=L"Track/Name"; t.track=3; t.disc=2; t.total_discs=2; t.release_year=2026;
+    auto templated=RelativePathTemplate(t,L".flac",L"{artist_name}\\{release_year} - {album_name}{multi_disc_path}\\{track_num_2} - {track_name}.{ext}");
+    check(templated==L"Album Artist\\2026 - Album： Deluxe\\CD 2\\03 - Track／Name.flac",
+          "Soggfy style template renders safe Unicode-preserving paths");
+    t.all_artists=L"AC/DC / Guest";
+    auto artists=RelativePathTemplate(t,L".ogg",L"{all_artist_names} - {track_name}.{ext}",true);
+    check(artists==L"AC／DC, Guest - Track／Name.ogg","artist separator normalization preserves AC/DC");
+    check(RelativePathTemplate(t,L".ogg",L"..\\{track_name}",true).empty(),"template traversal rejected");
+    check(OutputPath(L"D:\\Music",t,L".ogg",false,L"{artist_name}\\{track_name}",true)==
+          L"D:\\Music\\Album Artist\\Track／Name.ogg","template appends real capture extension");
+
     Quality high{Codec::Vorbis,44100,2,0,320000},low{Codec::Vorbis,44100,2,0,160000};
     check(HigherQuality(high,low),"higher Vorbis bitrate upgrades");
     check(!HigherQuality(low,high) && !HigherQuality(high,high),"equal or better existing Vorbis skipped");
@@ -34,5 +47,5 @@ int main() {
     check(HigherQuality(flac,high) && !HigherQuality(high,flac),"lossless existing file prevents Vorbis downgrade");
     check(HigherQuality(hires,flac) && !HigherQuality(flac,hires),"FLAC resolution upgrades");
     check(!HigherQuality(Quality{Codec::Vorbis,44100,2,0,0},high),"unknown encoding quality cannot replace file");
-    std::puts("PASS: requested media hierarchy, stable names and conservative quality comparison");
+    std::puts("PASS: smart layout, templates, Windows-safe names and conservative quality comparison");
 }
