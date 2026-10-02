@@ -5,76 +5,37 @@ if(!sgf||sgf.__contextLoaded)return;
 sgf.__contextLoaded=true;
 
 let contextInfo=null,contextUris=[];
-
-const isSpotifyUri=value =>
-  typeof value==='string' &&
-  /^spotify:(track|episode|album|playlist|artist):[A-Za-z0-9]+$/.test(value);
-
-function selectionFromObject(root){
-  const stack=[root],seen=new Set();let budget=500;
-  while(stack.length&&budget-->0){
-    const value=stack.pop();
-    if(!value||typeof value!=='object'||seen.has(value))continue;
-    seen.add(value);
-
-    const probes=[value,value.props,value.memoizedProps,value.pendingProps].filter(Boolean);
-    for(const p of probes){
-      if(!p||typeof p!=='object')continue;
-      const contextUri=[
-        p.contextUri,p.reference?.uri,p.context?.uri
-      ].find(isSpotifyUri)||'';
-      const directUri=[p.uri,p.item?.uri].find(isSpotifyUri)||'';
-      const uris=Array.isArray(p.uris)?p.uris.filter(isSpotifyUri):[];
-
-      // Match old Sprinkles semantics:
-      // contextUri + uri means a track inside a collection -> ignore the track.
-      if(contextUri&&directUri)return {contextUri,trackUris:[directUri]};
-      if(uris.length)return {contextUri,trackUris:[...new Set(uris)]};
-      if(p.item?.uri&&isSpotifyUri(p.item.uri))return {contextUri,trackUris:[p.item.uri]};
-      if(contextUri)return {contextUri,trackUris:[]};
-      if(directUri)return {contextUri:directUri,trackUris:[]};
-    }
-
-    for(const child of Object.values(value)){
-      if(child&&typeof child==='object'&&!seen.has(child))stack.push(child);
-    }
-  }
-  return null;
-}
-
 function collectContextUris(target){
-  const row=target?.closest?.(
-    'div[data-testid="tracklist-row"],.main-trackList-trackListRow,div[role="row"]'
-  );
+  const row=target?.closest?.('div[data-testid="tracklist-row"],.main-trackList-trackListRow,div[role="row"]');
   contextInfo=row?sgf.trackInfoFromRows?.([row])?.[0]:null;
-
-  // A track-row context menu should ignore only that track, exactly like
-  // legacy Sprinkles, not its album/artist/page context as well.
-  if(contextInfo?.uri){
-    contextUris=[contextInfo.uri];
-    return;
-  }
-
-  let selection=null;
-  for(let node=target,depth=0;node&&depth<8&&!selection;node=node.parentElement,depth++){
+  const uris=new Set(contextInfo?.ignoreUris||[]);
+  let node=target;
+  for(let depth=0;node&&depth<8;depth++,node=node.parentElement){
     for(const key of Object.keys(node)){
       if(!key.startsWith('__reactProps$')&&!key.startsWith('__reactFiber$'))continue;
-      selection=selectionFromObject(node[key]);
-      if(selection)break;
+      const root=node[key],stack=[root],seen=new Set();let budget=350;
+      while(stack.length&&budget-->0){
+        const v=stack.pop();
+        if(!v||typeof v!=='object'||seen.has(v))continue;
+        seen.add(v);
+        for(const [k,x] of Object.entries(v)){
+          if(typeof x==='string'&&/^spotify:(track|episode|album|playlist|artist):/.test(x)&&/uri|context/i.test(k)){
+            uris.add(x);
+          }else if(Array.isArray(x)&&/uris/i.test(k)){
+            for(const u of x)if(typeof u==='string'&&u.startsWith('spotify:'))uris.add(u);
+          }else if(x&&typeof x==='object'&&!seen.has(x)){
+            stack.push(x);
+          }
+        }
+      }
     }
   }
-
-  if(selection){
-    contextUris=selection.trackUris?.length
-      ? [...new Set(selection.trackUris)]
-      : (selection.contextUri?[selection.contextUri]:[]);
-    return;
+  if(!uris.size){
+    const m=location.pathname.match(/\/(playlist|album|artist)\/([A-Za-z0-9]+)/);
+    if(m)uris.add('spotify:'+m[1]+':'+m[2]);
   }
-
-  const match=location.pathname.match(/\/(playlist|album|artist)\/([A-Za-z0-9]+)/);
-  contextUris=match?['spotify:'+match[1]+':'+match[2]]:[];
+  contextUris=[...uris];
 }
-
 document.addEventListener('contextmenu',event=>collectContextUris(event.target),true);
 
 function addItem(menu,label,icon,handler,reference){
