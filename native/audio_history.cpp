@@ -344,7 +344,7 @@ static DWORD WINAPI Worker(LPVOID) {
     std::vector<Heard> heard;
     Listen listen; MediaReader reader; Media current; PlaybackQualityTracker quality; std::string client_quality;
     double next_media=0,next_log=0;
-    unsigned generation=~0u,epoch=~0u; bool enabled=false;
+    unsigned generation=~0u,epoch=~0u; bool enabled=false,current_ignored=false;
     try {
         while(workers_running.load(std::memory_order_acquire)) {
             double now=Now();
@@ -480,10 +480,21 @@ static DWORD WINAPI Worker(LPVOID) {
                         char line[300]; snprintf(line,sizeof(line),"listen invalidated old=%.6f/%.6f new=%.6f/%.6f delta=%.3f playing=%d",
                             prior_position,prior_duration,media.position,media.duration,Now()-prior_time,media.playing); Log(line);
                     }
-                    if(!done.empty()) { heard.push_back({current,previous_start,Now()}); Log(("FULL LISTEN "+Utf8(current.title)).c_str()); }
+                    if(!done.empty()) {
+                        if(current_ignored) {
+                            SetClassicTrackStatus(current,"IGNORED","Ignored");
+                            LogActivity("finished",Utf8(current.artist)+" - "+Utf8(current.title)+" (ignored)");
+                        } else {
+                            heard.push_back({current,previous_start,Now()});
+                            Log(("FULL LISTEN "+Utf8(current.title)).c_str());
+                        }
+                    }
                     if(previous!=listen.identity && listen.eligible) {
-                        SetClassicTrackStatus(media,"IN_PROGRESS","Downloading...");
+                        current_ignored=ClassicCurrentIgnored();
+                        SetClassicTrackStatus(media,current_ignored?"IGNORED":"IN_PROGRESS",current_ignored?"Ignored":"Downloading...");
                         LogActivity("started",Utf8(media.artist)+" - "+Utf8(media.title));
+                    } else if(previous==listen.identity && listen.eligible) {
+                        current_ignored=ClassicCurrentIgnored();
                     }
                     if(was_eligible && !listen.eligible && done.empty()) {
                         if(!current.title.empty())SetClassicTrackStatus(current,"ERROR","Canceled: track was skipped or listen was incomplete");

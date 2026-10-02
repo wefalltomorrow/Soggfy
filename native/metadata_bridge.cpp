@@ -332,6 +332,7 @@ static bool ClassicUiMessage(const String* text) {
  else if(key==L"ffmpegPath")ok=SetFFmpegPath(WideUtf8(decoded));
  else if(key==L"root")ok=SetSaveLocation(WideUtf8(decoded));
  else if(key==L"browse"){PickSaveLocation(GetActiveWindow());}
+ else if(key==L"ignore_current"){SetClassicCurrentIgnored(flag());return true;}
  else if(key==L"status_batch"){QueueClassicStatusRequest(decoded);return true;}
  else if(key==L"open_folder"){RevealClassicTrack(WideUtf8(decoded));return true;}
  else return true;

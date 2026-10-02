@@ -17,4 +17,6 @@ void SetClassicTrackStatus(const Media& media,const char* status,const std::stri
                            const std::wstring& path={});
 std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<ClassicTrackQuery>& queries);
 bool RevealClassicTrack(const std::wstring& path);
+void SetClassicCurrentIgnored(bool ignored);
+bool ClassicCurrentIgnored();
 }

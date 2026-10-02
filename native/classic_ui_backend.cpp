@@ -5,6 +5,7 @@
 #include "history_settings.h"
 #include "library_layout.h"
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <filesystem>
 #include <regex>
@@ -12,16 +13,33 @@
 namespace history {
 namespace {
 struct Recent {
-    std::string identity,status,message;
+    std::wstring title,artist,album;
+    std::string status,message;
     std::wstring path;
     ULONGLONG time=0;
 };
 SRWLOCK recent_lock=SRWLOCK_INIT;
 std::array<Recent,64> recent{};
 size_t recent_next=0;
+std::atomic<bool> current_ignored{false};
+void ReplaceAll(std::wstring& text,const std::wstring& from,const std::wstring& to);
 
-std::string QueryIdentity(const ClassicTrackQuery& q) {
-    return Utf8(q.title)+"\x1f"+Utf8(q.all_artists.empty()?q.artist:q.all_artists)+"\x1f"+Utf8(q.album);
+std::wstring ComparableArtist(std::wstring value) {
+    ReplaceAll(value,L" / ",L", ");
+    for(auto& c:value)c=wchar_t(towlower(c));
+    return value;
+}
+bool SameText(const std::wstring& a,const std::wstring& b) {
+    return _wcsicmp(a.c_str(),b.c_str())==0;
+}
+bool ArtistMatches(const ClassicTrackQuery& q,const Recent& entry) {
+    const auto live=ComparableArtist(entry.artist);
+    if(live.empty())return true;
+    const auto first=ComparableArtist(q.artist);
+    const auto all=ComparableArtist(q.all_artists);
+    if(first==live||all==live)return true;
+    return (!first.empty() && live.find(first)!=std::wstring::npos) ||
+           (!all.empty() && all.find(live)!=std::wstring::npos);
 }
 
 std::wstring RegexEscape(const std::wstring& value) {
@@ -124,7 +142,9 @@ void SetClassicTrackStatus(const Media& media,const char* status,const std::stri
                            const std::wstring& path) {
     if(!status||!*status)return;
     Recent item;
-    item.identity=media.Key();
+    item.title=media.title;
+    item.artist=media.artist;
+    item.album=media.album;
     item.status=status;
     item.message=message;
     item.path=path;
@@ -133,7 +153,9 @@ void SetClassicTrackStatus(const Media& media,const char* status,const std::stri
     // Update an existing identity first so a DONE replaces CONVERTING.
     bool replaced=false;
     for(auto& existing:recent) {
-        if(!existing.identity.empty()&&existing.identity==item.identity) {
+        if(!existing.title.empty()&&SameText(existing.title,item.title)&&
+           SameText(existing.album,item.album)&&
+           ComparableArtist(existing.artist)==ComparableArtist(item.artist)) {
             existing=std::move(item);replaced=true;break;
         }
     }
@@ -164,10 +186,10 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
 
     for(const auto& q:queries) {
         ClassicTrackResult result;result.uri=q.uri;
-        const auto identity=QueryIdentity(q);
         const Recent* newest=nullptr;
         for(const auto& entry:live) {
-            if(entry.identity==identity && now>=entry.time && now-entry.time<=120000 &&
+            if(!entry.title.empty() && SameText(q.title,entry.title) && SameText(q.album,entry.album) &&
+               ArtistMatches(q,entry) && now>=entry.time && now-entry.time<=120000 &&
                (!newest||entry.time>newest->time))newest=&entry;
         }
         if(newest && newest->status!="DONE") {
@@ -221,6 +243,13 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
         }
     }
     return results;
+}
+
+void SetClassicCurrentIgnored(bool ignored) {
+    current_ignored.store(ignored,std::memory_order_release);
+}
+bool ClassicCurrentIgnored() {
+    return current_ignored.load(std::memory_order_acquire);
 }
 
 bool RevealClassicTrack(const std::wstring& path) {
