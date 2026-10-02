@@ -150,7 +150,10 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
 
     struct Pending {
         ClassicTrackQuery query;
+        ClassicPathQuery path_query;
         std::wregex regex;
+        std::wregex legacy_flat_regex;
+        bool legacy_flat=false;
         std::wstring match;
         unsigned matches=0;
     };
@@ -169,13 +172,20 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
             results.push_back(std::move(result));continue;
         }
         try {
-            ClassicPathQuery path_query{q.title,q.artist,q.album,q.all_artists};
+            Pending item;
+            item.query=q;
+            item.path_query={q.title,q.artist,q.album,q.all_artists};
             const auto& path_template=(q.uri.rfind("spotify:episode:",0)==0 && !settings.podcast_template.empty())
                 ?settings.podcast_template:settings.path_template;
-            pending.push_back({q,std::wregex(BuildClassicPathRegex(path_query,path_template,
-                               settings.output_ext,settings.normalize_artist_separators,
-                               settings.invalid_char_repl),
-                               std::regex_constants::ECMAScript|std::regex_constants::icase),{},0});
+            item.regex=std::wregex(BuildClassicPathRegex(item.path_query,path_template,
+                                  settings.output_ext,settings.normalize_artist_separators,
+                                  settings.invalid_char_repl,true),
+                                  std::regex_constants::ECMAScript|std::regex_constants::icase);
+            item.legacy_flat=q.uri.rfind("spotify:track:",0)==0;
+            if(item.legacy_flat)
+                item.legacy_flat_regex=std::wregex(BuildLegacySoggfyFlatRegex(item.path_query),
+                    std::regex_constants::ECMAScript|std::regex_constants::icase);
+            pending.push_back(std::move(item));
         } catch(...) {
             result.status="WARN";result.message="Invalid path template";
             results.push_back(std::move(result));
@@ -186,7 +196,11 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
         const auto files=FileIndex(settings.root,now);
         for(const auto& file:*files) {
             for(auto& p:pending) {
-                if(p.matches<2 && std::regex_match(file.relative,p.regex)) {
+                if(p.matches>=2)continue;
+                const bool current_match=std::regex_match(file.relative,p.regex);
+                const bool legacy_match=!current_match&&p.legacy_flat&&
+                    std::regex_match(file.relative,p.legacy_flat_regex);
+                if(current_match||legacy_match) {
                     ++p.matches;
                     if(p.matches==1)p.match=file.display;
                 }

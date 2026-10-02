@@ -21,6 +21,7 @@ The goal is to keep the interaction model people used in old Soggfy while replac
 - Keeps capture, UI, metadata, playback-speed and telemetry integrations independent.
 - Preserves Floggfy RC5's current Song / Quality / Format / Sample-rate information inside the Classic settings UI.
 - Uses a bounded, short-lived file index for downloaded-track ticks/Skip Downloaded instead of recursively rescanning the library on every UI mutation.
+- Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
 
 ## Install
@@ -96,6 +97,10 @@ Downloaded-track lookup and file creation now use the same canonical path escapi
 That specifically fixes the old Skip Downloaded Tracks bug with artists such as AC/DC and Gary Numan / Tubeway Army.
 
 The regression suite tests both cases directly, including converted MP3 lookup, so saving and downloaded-file detection cannot silently drift apart again.
+
+### Existing / legacy Soggfy libraries
+
+Skip Downloaded Tracks checks the configured path template first, but accepts any supported existing audio extension rather than only the currently selected output format. It also has a conservative fallback for old flat libraries named `Artist - Track.ext` or `All Artists - Track.ext`. The fallback requires an exact artist/title filename match; title-only files are not guessed. If multiple files match the same track, the UI reports a warning instead of treating the result as safely downloaded.
 
 ## Fallback UI
 
