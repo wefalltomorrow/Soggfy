@@ -23,3 +23,10 @@ Community work reviewed while building this fork:
 Not every patch was copied literally. Fixes tied to the obsolete x86 installer/hook architecture were reimplemented only where they still apply to the modern x64 design.
 
 RC5's current-track footer fixes, cached-state refresh, CEF label formatting and stricter stale-state rejection are included together with its regression coverage.
+
+
+## Compatibility references
+
+Playback-speed compatibility was independently reimplemented against the current x64 Spotify track-player calling convention and validated with structural PE checks. Public reverse-engineering references were used only to confirm the modern calling convention and pattern family; no third-party implementation source was vendored.
+
+The active hook requires a unique validated Spotify.dll target and fails closed when discovery is missing or ambiguous.

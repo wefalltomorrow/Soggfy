@@ -1,110 +1,148 @@
 # Soggfy
 
-A maintained Windows x64 continuation of Soggfy, using the modern Floggfy capture engine as its base.
+A maintained Windows x64 continuation of Soggfy with the old Soggfy Spotify UI on top of the modern Floggfy capture engine.
 
-This branch combines the parts that still make sense from the original Soggfy ecosystem with the safer current-client work in Floggfy. It does not use the old x86 offsets or the pinned 2024 Spotify installer.
+The goal is to keep the interaction model people used in old Soggfy while replacing the obsolete x86 hooks, localhost control server and pinned 2024 Spotify build with the current x64 backend.
 
 ## What it does
 
-- Saves fully played tracks from Spotify's own compressed Ogg or FLAC input.
-- Keeps native FLAC lossless. The capture core does not transcode.
-- Embeds artwork and metadata, including extra locally cached metadata when available.
-- Refuses incomplete/skipped/broken captures instead of publishing partial files.
+- Uses the old Soggfy-style top-bar Downloads button and Soggfy settings modal.
+- Shows per-track status icons for downloading, converting, completed, failed, warning and ignored states.
+- Restores Skip Downloaded Tracks, Skip Ignored Tracks, Ignore/Unignore and Generate M3U.
+- Restores the old 1–50x playback-speed control with a validated modern x64 Spotify player hook. Unsupported layouts fail closed.
+- Restores old-style output presets including MP3, M4A/AAC, Opus and custom FFmpeg output.
+- Always captures Spotify's native Ogg or FLAC first, and keeps native FLAC lossless.
+- Embeds artwork, lyrics and rich locally cached metadata when enabled.
+- Can save cover art, synchronized lyrics as .lrc, plain lyrics as .txt, and Spotify Canvas video.
+- Uses separate track and podcast path templates.
+- Refuses incomplete, skipped, seeked or broken captures instead of publishing partial files.
 - Skips equal or better existing files and atomically replaces lower-quality copies.
 - Uses dynamic x64 hook discovery instead of fixed Spotify offsets.
-- Keeps the capture, menu and metadata integrations separated so one optional integration can fail without blindly hooking another.
-- Uses the original Soggfy-style Spotify integration by default: a top-bar Downloads toggle and a Soggfy settings button/modal.
-- Keeps Floggfy's native **To Disk** menu only as an optional fallback when Classic UI is disabled.
-- Supports the original Soggfy idea of configurable output paths.
+- Keeps capture, UI, metadata, playback-speed and telemetry integrations independent.
+- Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
 
 ## Install
 
-Live compatibility inherited from Floggfy v1.1.0-rc.5 was tested end-to-end with Windows x64 Spotify 1.3.3.264. Its dynamic audio/connectivity resolver was also checked against signed Spotify DLLs from 1.3.0.277, 1.2.94.583 and 1.2.92.148. Older builds were not all run end-to-end. Microsoft Store installs remain unvalidated.
+The Floggfy RC5 capture base was live-tested against Windows x64 Spotify 1.3.3.264. Its dynamic audio/connectivity resolver was also validated against signed Spotify DLLs from 1.3.0.277, 1.2.94.583 and 1.2.92.148. The Classic Soggfy UI and playback-speed additions still need normal real-client validation as Spotify UI internals change over time. Microsoft Store installs remain unvalidated.
 
 1. Quit Spotify.
-2. Download the Windows x64 ZIP from Releases or the CI artifact.
+2. Download the Windows x64 ZIP from Releases.
 3. Extract it.
-4. Run `Scripts\Install.ps1`, or manually copy `version.dll` beside `Spotify.exe` (normally `%APPDATA%\Spotify`).
+4. Run Scripts\Install.ps1, or manually copy version.dll beside Spotify.exe (normally %APPDATA%\Spotify).
 5. Start Spotify.
-6. Use the **Soggfy download button** in Spotify's top bar to enable Downloads. The sliders button beside it opens **Soggfy settings**.
-7. Play a track from start to finish without seeking or skipping.
+6. Use the Soggfy Downloads button in Spotify's top bar to enable capture.
+7. Use the sliders button beside it to open Soggfy settings.
+8. Play a track from start to finish without seeking or skipping.
 
-The installer backs up a pre-existing `version.dll` instead of silently overwriting it. `Scripts\Uninstall.ps1` restores that backup.
+The installer backs up a pre-existing version.dll instead of silently overwriting it. Scripts\Uninstall.ps1 restores that backup.
+
+## Classic Soggfy UI
+
+The default interface follows the old Sprinkles workflow rather than Floggfy's To Disk menu.
+
+The settings modal includes playback speed, output format, Skip Downloaded, Skip Ignored, cover-art and lyrics options, Canvas saving, Base/Track/Podcast/Canvas paths, invalid-character replacement, Block telemetry, Move Add to Queue to top, native FLAC/Ogg controls, cached metadata, logging, diagnostics and whether to retain the native original after conversion.
+
+Track rows use the old status model:
+
+- downloading / in progress
+- converting
+- completed
+- failed
+- warning
+- ignored
+
+Completed tracks can be opened in Explorer from the status indicator.
+
+The context menu restores Ignore / Unignore and Generate M3U. Ignore rules can apply to track, episode, album, playlist or artist resource URIs, and Skip Ignored respects them.
+
+## Output formats
+
+Capture always starts from Spotify's native compressed Ogg or FLAC data. Optional FFmpeg conversion happens only after the complete native file has been validated and published.
+
+Built-in presets include:
+
+- Original OGG / FLAC
+- MP3 320K
+- MP3 256K
+- MP3 192K
+- M4A 256K (FDK AAC)
+- M4A 224K VBR (FDK AAC)
+- M4A 160K (FDK AAC)
+- Opus 160K
+- Custom FFmpeg arguments
+
+If an FFmpeg build does not include libfdk_aac, the old FDK-labelled M4A presets automatically fall back to FFmpeg's native AAC encoder instead of simply failing.
+
+By default the validated native Ogg/FLAC is retained after conversion. Scripts\PostProcess.ps1 is also included for manual/batch conversion workflows.
 
 ## Output paths
 
-Leave `Path Template=` empty in `SpotifyHistory.ini` for the smart Floggfy-style media layout.
+Fresh installs use the original Soggfy-style track template:
 
-For a Soggfy-style custom layout, for example:
+    Path Template={artist_name}\{album_name}{multi_disc_path}\{track_num}. {track_name}.{ext}
 
-```ini
-Path Template={artist_name}\{release_year} - {album_name}{multi_disc_path}\{track_num_2} - {track_name}.{ext}
-```
+Podcast episodes use the separate Podcast template.
 
-Available tokens:
+Available tokens include artist_name, all_artist_names, album_name, track_name, track_num, track_num_2, disc_num, release_year, release_date, multi_disc_path, multi_disc_paren and ext.
 
-- `{artist_name}`
-- `{all_artist_names}`
-- `{album_name}`
-- `{track_name}`
-- `{track_num}`
-- `{track_num_2}`
-- `{disc_num}`
-- `{release_year}`
-- `{release_date}`
-- `{multi_disc_path}`
-- `{multi_disc_paren}`
-- `{ext}`
+Cached metadata is used for album artist, contributing artists, disc information and release date/year when it passes the same identity checks used for tagging.
 
-Cached metadata is used for album artist, contributing artists, disc information and release year when it passes the same identity checks used for tagging.
+### Slash-name fix / upstream issue #150
 
-`Normalize Artist Separators=1` only changes rendered paths. It turns a separator such as `Artist A / Artist B` into `Artist A, Artist B`, but deliberately leaves `AC/DC` alone. Embedded tags are not rewritten by this option.
+Downloaded-track lookup and file creation now use the same canonical path escaping rules.
 
-## Optional conversion
+That specifically fixes the old Skip Downloaded Tracks bug with artists such as AC/DC and Gary Numan / Tubeway Army.
 
-The native capture is always kept in its original Ogg/FLAC form unless you explicitly remove it.
+The regression suite tests both cases directly, including converted MP3 lookup, so saving and downloaded-file detection cannot silently drift apart again.
 
-`Scripts\PostProcess.ps1` can use an installed FFmpeg to create MP3, AAC/M4A, Opus or FLAC copies after capture. This is intentionally outside the injected DLL so FFmpeg failures can never affect Spotify or the native capture.
+## Fallback UI
 
-## Settings
+The Floggfy-style native To Disk menu is suppressed while Classic UI is enabled.
 
-`SpotifyHistory.ini` contains the full settings list. With `Classic UI=1` (the default), Spotify gets the old Soggfy-style top-bar controls and settings modal. The modal controls Downloads, native FLAC/Ogg capture, save location, path template, metadata enrichment and logging.
+For troubleshooting only, set Classic UI=0 and Native Menu=1 in the Soggfy section of SpotifyHistory.ini and restart Spotify.
 
-The Floggfy-style native **To Disk** menu is suppressed while Classic UI is enabled. For troubleshooting only, set `Classic UI=0` and `Native Menu=1`, then restart Spotify to use that fallback menu instead.
+If the injected UI is unavailable after a Spotify update, capture can still be enabled with Downloads=1 in SpotifyHistory.ini.
 
-If the injected UI is missing after a Spotify update, capture can still be enabled with `Downloads=1` directly in the INI.
+## Safety / implementation notes
+
+The current UI does not restore the old localhost WebSocket server or old x86 decoder hook.
+
+Instead:
+
+- UI controls communicate through the in-process CEF bridge.
+- Native capture remains bounded and memory-only until a complete listen is validated.
+- FFmpeg starts only after native publication.
+- Canvas downloads are bounded and published from a temporary file only after completion.
+- Telemetry blocking is limited to the old Soggfy ad/telemetry receiver prefixes; metadata, audio CDN and client-update traffic are deliberately left alone.
+- Playback speed uses a separately validated Spotify.dll player-construction hook and fails closed when the target cannot be uniquely identified.
 
 ## Build and test
 
-Release builds use a newer Windows/MSYS2 MinGW64 toolchain and include exact compiler/linker details in `BUILDINFO.txt`. See [BUILDING.md](BUILDING.md).
+Release builds use Windows/MSYS2 MinGW64 and include exact compiler/linker details in BUILDINFO.txt. See BUILDING.md.
 
-A Debian/Ubuntu/WSL reference build is still supported:
+A Debian/Ubuntu/WSL reference build is also supported:
 
-```bash
-sudo apt install build-essential python3 nodejs mingw-w64
-bash test-native.sh
-bash build-native.sh
-python3 package-release.py
-```
+    sudo apt install build-essential python3 nodejs mingw-w64
+    bash test-native.sh
+    bash build-native.sh
+    python3 package-release.py
 
-GitHub Actions runs the native regression suite, builds the release DLL on Windows with a GCC 14+/binutils 2.44+ floor, verifies the Windows version resource and checksums, then publishes the ZIP, raw DLL, checksum manifest and build-toolchain record.
+CI covers native capture, FLAC/Ogg tagging, cache metadata, path templates, issue #150 path matching, playback-speed target discovery, telemetry URL filtering, JavaScript syntax, Windows x64 compilation, PE metadata and release hashes.
 
 ## Project history
 
-The previous 2024 x86 Soggfy source is preserved under `legacy/` for reference. It is not part of the default build.
+The previous 2024 x86 Soggfy source is preserved under legacy/ for reference.
 
-The current UI is a clean modern reimplementation of that legacy Sprinkles interaction model. It does **not** bring back the old WebSocket control server or x86 hook engine.
-
-The modern base is synced through Mainkill1/Floggfy v1.1.0-rc.5. See [UPSTREAMS.md](UPSTREAMS.md) for the exact source revision and community fixes reviewed for this fork.
+The active x64 capture base is synced through Mainkill1/Floggfy v1.1.0-rc.5. See UPSTREAMS.md for the exact source revision and community work reviewed while building this fork.
 
 ## Credits
 
-- Rafiuth/Soggfy — original project and CC0 source
+- Rafiuth/Soggfy — original project, UI model and CC0 source
 - Mainkill1/Floggfy — modern x64 capture, FLAC, dynamic discovery, cache metadata and validation base
 - SuperSecretEyeball/Soggfy-Fixed and MacKinnon7/Soggfy-Fixed — community fixes and build ideas
-- AndyBogle1, coleaderme and MrSykenro — upstream installer/TLS/SpotX fixes reviewed while modernizing the installer
+- AndyBogle1, coleaderme and MrSykenro — installer/TLS/SpotX fixes reviewed while modernizing the fork
 - MinHook, libogg and CEF — see bundled third-party notices
 
-The modern Floggfy-derived code remains under the MIT license in [LICENSE](LICENSE). Original Soggfy CC0 terms are retained at [native/vendor/soggfy/LICENSE.txt](native/vendor/soggfy/LICENSE.txt) and under `legacy/`.
+The modern Floggfy-derived code remains under the MIT license in LICENSE. Original Soggfy CC0 terms are retained at native/vendor/soggfy/LICENSE.txt and under legacy/.
 
 Not affiliated with Spotify.
