@@ -1,19 +1,16 @@
-# Soggfy v3.0.0-rc.3
+# Soggfy v3.0.0-rc.4
 
-This release syncs the active x64 engine through Floggfy v1.1.0-rc.5 while retaining the extra Soggfy-side features in this fork.
+This is a build/release hardening update. The active Spotify capture/runtime code remains synced through Floggfy v1.1.0-rc.5.
 
-RC5 fixes the To Disk footer sometimes showing no song or the previous song. Current-track state is refreshed from Spotify's already-cached player state once per second, visible labels are formatted through CEF's public FormatLabel callback, and decoder details are kept only when current identity and quality agree. The footer now shows Song, Quality, Format and Sample rate/bit depth; the Bitrate row was intentionally removed upstream.
+Changes in this release:
 
-On top of RC5, this fork still adds:
+- Builds the release DLL on Windows through a newer MSYS2 MinGW64 toolchain, with CI requiring GCC 14+ and binutils 2.44+.
+- Pins the MSYS2 setup action revision and records the exact compiler/linker/resource-tool versions in `BUILDINFO.txt`.
+- Keeps the MSVCRT target used by Floggfy RC5 instead of silently changing C runtime families.
+- Adds a proper Windows VERSIONINFO resource to `version.dll`, including ProductName, FileDescription, FileVersion and ProductVersion.
+- Publishes the raw `version.dll` as a release asset as well as the ZIP.
+- Publishes `SHA256SUMS.txt` covering both the raw DLL and the final ZIP, plus `BUILDINFO.txt`.
+- Keeps an internal `DLL-SHA256.txt` in the ZIP so the extracted DLL can be verified without creating a circular ZIP checksum.
+- CI verifies the version resource, MSVCRT import and all release hashes before publication.
 
-- Soggfy-style configurable output path templates, including `{release_date}`.
-- Cached album artist, contributing artists, disc information and release year/date available to path templates.
-- Conservative path-only artist separator cleanup that preserves names such as AC/DC.
-- Install/uninstall scripts that back up and restore a pre-existing version.dll.
-- Optional SpotX invocation using the current script URL and additive TLS 1.2 compatibility.
-- Optional external FFmpeg post-processing for MP3, AAC/M4A, Opus and FLAC copies while native captures are retained by default.
-- A diagnostics script that writes Spotify version, DLL hash, configuration and recent Soggfy log lines to Downloads.
-- Current GitHub Actions, strict native regression tests, Windows x64 cross-builds, deterministic packaging and SHA-256 checksums.
-- The original 2024 x86 Soggfy source preserved under legacy/.
-
-Compatibility is inherited from the Floggfy RC5 base: RC5 was live-validated on Windows Spotify 1.3.3.264 for first menu opening and consecutive track skips. Older-client live behavior remains unvalidated.
+Runtime features from v3.0.0-rc.3 are unchanged: Floggfy RC5 current-track/footer fixes, native Ogg/FLAC capture, cached metadata enrichment, Soggfy path templates, installer/uninstaller, diagnostics and optional external FFmpeg post-processing.
