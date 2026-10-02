@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: microsoft/setup-msbuild@v2
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 18
+        cache: 'npm'
+        cache-dependency-path: Sprinkles/package-lock.json
+
+    - name: Fetch external dependencies
+      run: ./fetch_external_deps.bat
+    
+    - name: Build Natives
+      run: |
+        vcpkg install --triplet x86-windows-static-md
+        vcpkg integrate install
+        msbuild /p:Configuration=Release
+    
+    - name: Build TypeScript
+      run: |
+        cd Sprinkles/
+        $Env:NODE_ENV = "production"
+        $Env:VERSION_INFO = $Env:GITHUB_REF_NAME + "-" + $Env:GITHUB_SHA.Substring(0, 8);
+
+        npm install
+        npm run build
+        cd ../
+        
+    - name: Create Zip
+      run: |
+        echo $Env:GITHUB_REF_NAME;
+        if ($Env:GITHUB_REF_TYPE -eq "tag") {
+          $ver = $Env:GITHUB_REF_NAME -replace "^v", "";
+        } else {
+          $ver = $Env:GITHUB_SHA.Substring(0, 8) + "-pre";
+        }
+        
+        Copy-Item ./Sprinkles/dist/*.* ./build/Release/
+        7z a "-xr!*.lib" "-xr!*.exp" "-xr!*.pdb" build/Soggfy-$ver.zip ./build/Release/ ./Scripts/*
+
+    - name: Upload Binaries
+      uses: softprops/action-gh-release@v1
+      if: ${{ github.ref_type == 'tag' }}
+      with:
+        draft: false
+        prerelease: ${{ contains(github.ref_name, '-pre') }}
+        files: 'build/*.zip'
+        
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      if: ${{ github.ref_type != 'tag' }}
+      with:
+        path: build/*.zip
