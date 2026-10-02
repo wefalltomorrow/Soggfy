@@ -61,6 +61,53 @@ std::wstring DisplayPath(const std::filesystem::path& path) {
 }
 }
 
+struct IndexedFile {
+    std::wstring relative,display;
+};
+SRWLOCK index_lock=SRWLOCK_INIT;
+std::wstring index_root;
+ULONGLONG index_time=0;
+std::vector<IndexedFile> index_files;
+
+std::vector<IndexedFile> FileIndex(const std::wstring& configured_root,ULONGLONG now) {
+    AcquireSRWLockShared(&index_lock);
+    const bool fresh=index_root==configured_root&&now>=index_time&&now-index_time<10000;
+    if(fresh) {
+        auto copy=index_files;
+        ReleaseSRWLockShared(&index_lock);
+        return copy;
+    }
+    ReleaseSRWLockShared(&index_lock);
+
+    std::vector<IndexedFile> built;
+    built.reserve(4096);
+    std::error_code ec;
+    const auto root=std::filesystem::path(WindowsPath(configured_root));
+    if(std::filesystem::exists(root,ec)&&!ec) {
+        std::filesystem::recursive_directory_iterator it(
+            root,std::filesystem::directory_options::skip_permission_denied,ec),end;
+        for(;it!=end&&!ec&&built.size()<100000;it.increment(ec)) {
+            if(ec)break;
+            if(it.depth()>12){it.disable_recursion_pending();continue;}
+            if(!it->is_regular_file(ec)||ec){ec.clear();continue;}
+            const auto full=it->path().wstring();
+            const auto base=root.wstring();
+            if(full.size()<=base.size())continue;
+            size_t offset=base.size();
+            if(full[offset]==L'\\'||full[offset]==L'/')++offset;
+            built.push_back({full.substr(offset),DisplayPath(it->path())});
+        }
+    }
+
+    AcquireSRWLockExclusive(&index_lock);
+    index_root=configured_root;
+    index_time=now;
+    index_files=built;
+    ReleaseSRWLockExclusive(&index_lock);
+    return built;
+}
+
+
 void SetClassicTrackStatus(const Media& media,const char* status,const std::string& message,
                            const std::wstring& path) {
     if(!status||!*status)return;
@@ -115,7 +162,7 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
                ArtistMatches(q,entry) && now>=entry.time && now-entry.time<=120000 &&
                (!newest||entry.time>newest->time))newest=&entry;
         }
-        if(newest && newest->status!="DONE") {
+        if(newest && (newest->status!="DONE" || !newest->path.empty())) {
             result.status=newest->status;result.message=newest->message;result.path=newest->path;
             results.push_back(std::move(result));continue;
         }
@@ -134,24 +181,17 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
     }
 
     if(!pending.empty()) {
-        std::error_code ec;
-        const auto root=std::filesystem::path(WindowsPath(settings.root));
-        size_t visited=0;
-        if(std::filesystem::exists(root,ec) && !ec) {
-            std::filesystem::recursive_directory_iterator it(
-                root,std::filesystem::directory_options::skip_permission_denied,ec),end;
-            for(;it!=end && !ec && visited<100000;it.increment(ec)) {
-                if(ec)break;
-                if(it.depth()>12){it.disable_recursion_pending();continue;}
-                if(!it->is_regular_file(ec)||ec){ec.clear();continue;}
-                ++visited;
-                auto full=it->path().wstring();
-                auto base=root.wstring();
-                if(full.size()<=base.size())continue;
-                size_t offset=base.size();
-                if(full[offset]==L'\\'||full[offset]==L'/')++offset;
-                auto relative=full.substr(offset);
-                for(auto& p:pending) {
+        const auto files=FileIndex(settings.root,now);
+        for(const auto& file:files) {
+            for(auto& p:pending) {
+                if(p.matches<2 && std::regex_match(file.relative,p.regex)) {
+                    ++p.matches;
+                    if(p.matches==1)p.match=file.display;
+                }
+            }
+        }
+
+        for(auto& p:pending) {
                     if(p.matches<2 && std::regex_match(relative,p.regex)) {
                         ++p.matches;
                         if(p.matches==1)p.match=DisplayPath(it->path());
