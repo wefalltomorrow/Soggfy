@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.7
+
+- Fixed the Classic Soggfy settings/sliders button not opening reliably in Spotify's live top bar.
+- Stopped borrowing Spotify's navigation-button CSS class for injected Soggfy controls.
+- Made the Downloads and Settings controls explicit standalone `type="button"` elements with isolated click handling.
+- Kept the retractable top-bar layout stable while expanding to expose the settings button.
+- Mounted the settings overlay directly instead of through an unstyled wrapper and raised it above Spotify UI layers.
+- Added modal focus and Escape-to-close handling.
+
 ## 3.0.0-rc.6
 
 - Ported the full old Soggfy-style UI workflow onto the modern x64 backend.
