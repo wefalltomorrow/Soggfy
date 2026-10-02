@@ -1,8 +1,9 @@
-.vs/
-*.user
-*.suo
-*.aps
-build/
-obj/
-vcpkg_installed/
-external/
+/build/
+/dist/
+*.log
+
+# Personal recordings and validation output
+/validation/
+/investigation/
+*.ogg
+*.flac

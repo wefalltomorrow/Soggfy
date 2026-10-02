@@ -1,51 +1,61 @@
-<div align="center">
+# Floggfy
 
-# Soggfy - SpotifyOggDumper
+A music downloader mod for the Windows Spotify client, inspired by [Soggfy](https://github.com/Rafiuth/Soggfy).
 
-A music downloader mod for the Windows Spotify client
+## Features
 
-<img align="right" src="https://user-images.githubusercontent.com/53208252/147526053-a62850c2-9ee9-471f-83c1-481f2f0dca32.png" width="250" />
-</div>
+- Saves fully played tracks in their original Ogg or FLAC format.
+- Embeds cover art and metadata, including lyrics when already cached by the client.
+- Organizes music by artist and album; skips existing files unless a quality upgrade is available.
+- Saves in the background, with an optional activity log capped at 5 MiB.
 
-# Features
-- Download tracks directly from Spotify
-- Download and embed metadata, lyrics and canvas
-- Generate M3U for albums and playlists
-- Automatic conversion to MP3 and many other formats
+## Installation and usage
 
-# Installation and Usage
-1. Download and extract the `.zip` package of the [latest release](https://github.com/Rafiuth/Soggfy/releases/latest).
-2. Double click the `Install.cmd` file. It will run the Install.ps1 script with Execution Policy Bypass. Wait for it to finish.
-3. Open Spotify and play the songs you want to download.
+Live tested with **Windows x64 Spotify 1.3.3.264**. Dynamic audio and connectivity
+discovery was also checked against signed Spotify DLLs from 1.3.0.277,
+1.2.94.583 and 1.2.92.148; those older clients were not run end to end.
+Microsoft Store installs are unvalidated.
 
-Tracks are saved in the Music folder by default. The settings panel can be accessed by hovering next to the download button in the navigation bar.  
-Hovering the check mark drawn on each individual track will display a popup offering to open the folder containing them.
+1. Quit Spotify and download the ZIP from [Releases](https://github.com/Mainkill1/Floggfy/releases).
+2. Open your Spotify installation folder, usually `%APPDATA%\Spotify`.
+3. Copy `version.dll` into that folder beside `Spotify.exe`.
+4. Start Spotify. Floggfy creates `SpotifyHistory.ini` beside the DLL when it is missing.
+5. Open Spotify's top-left menu → **To Disk**, enable **Downloads**, and play a track from start to finish without seeking or skipping.
 
-You may need to disable or whitelist Soggfy in your anti-virus for it to work.
+Tracks save to your Windows Music folder under `Spotify/Artists/Artist/Album`.
+To uninstall, quit Spotify and remove Floggfy's `version.dll`.
 
-If the Spotify client crashes because of missing DLLs, you may need to install the [MSVC Redistributable package](https://aka.ms/vs/17/release/vc_redist.x86.exe).
+## Settings
 
-# Notes
-- Songs are only downloaded if played from start to finish, without seeking (pausing is fine).
-- Quality depends on the account being used: _160Kb/s_ or _320Kb/s_ for _free_ and _premium_ plans respectively. You may also need to change the streaming quality to "Very high" on Spotify settings to get _320Kb/s_ files.
-- Podcast support is very hit or miss and will only work with audio-only OGG podcasts (usually the exclusive ones).
-- **This mod breaks [Spotify's Guidelines](https://www.spotify.com/us/legal/user-guidelines/) and using it could get your account banned. Consider using alt accounts or keeping backups (see [Exportify](https://github.com/watsonbox/exportify) and [SpotMyBackup](http://www.spotmybackup.com)).**
+**To Disk** provides Downloads, Save Location, FLAC and Ogg controls.
+See the inline comments in [SpotifyHistory.ini](SpotifyHistory.ini)
+for other settings.
 
-# How it works
-Soggfy works by intercepting Spotify's OGG parser and capturing the unencrypted data during playback. This process is similar to recording, but it results in an exact copy of the original files served by Spotify, without ever extracting keys or actually re-downloading them.  
-Conversion and metadata is then applied according to user settings.
+If Spotify becomes unstable, quit it and try `Metadata=0`, then `Menu=0` in the INI.
+Restart after editing.
 
-# Manual Installation
-If you are having issues with the install script, try following the steps below for a manual installation:
+If **To Disk** is absent after a Spotify update, quit Spotify and set
+`Downloads=1` directly in `SpotifyHistory.ini`. Audio capture does not depend on
+the optional menu or metadata integrations.
 
-1. Download and install the _correct_ Spotify client version using the link inside the Install.ps1 script.
-2. Copy and rename `SpotifyOggDumper.dll` to `%appdata%/Spotify/dpapi.dll`
-3. Copy `SoggfyUIC.js` to `%appdata%/Spotify/SoggfyUIC.js`
-4. Download and extract [FFmpeg binaries](https://github.com/AnimMouse/ffmpeg-autobuild/releases) to `%localappdata%/Soggfy/ffmpeg/ffmpeg.exe` (or add them to `%PATH%`).
+## Notes
 
-Alternatively, `Injector.exe` can be used to launch _or_ inject Soggfy into an already running Spotify instance. A portable and self-contained install can be made by copying Spotify binaries from `%appdata%/Spotify/` to `Soggfy/Spotify/`.
+- Audio quality comes from Spotify's playback settings. FLAC requires a lossless source; no conversion or FFmpeg is used.
+- Extra metadata reads existing renderer and local Spotify caches in the background. It includes contributing artists, release dates, labels and copyright when cached; no endpoint requests are made. Explicit publisher credits stay separate from labels, and missing fields are omitted.
+- Audio hook locations are discovered from invariant decoder instructions and
+  Windows x64 function metadata. Missing, ambiguous or inconsistent matches disable
+  capture before any hook is installed.
+- Connectivity repair finds `CoCreateInstance` by its PE import name across normal
+  and delay import tables, independent of Spotify hashes, offsets and the provider
+  DLL name. It keeps verifying the live delay slot because Windows may replace it
+  during delayed resolution.
+- The **To Disk** menu finds CEF through its exported factory, validates the live
+  public menu structures and required executable methods, and recognizes the
+  top-level menu structurally. It has no Spotify offsets, CEF version allowlist or
+  English `File`/`Edit`/`View` dependency.
 
-# Credits
-- [XSpotify](https://web.archive.org/web/20200303145624/https://github.com/meik97/XSpotify) and spotifykeydumper - Inspiration for this project
-- [Spicetify](https://github.com/khanhas/spicetify-cli), [Ghidra](https://ghidra-sre.org/) and [x64dbg](https://x64dbg.com/) - Tools for reversing and debugging the client
-- [abba23's spotify-adblock](https://github.com/abba23/spotify-adblock) - The built-in telemetry/update blocker is based on this
+## Credits
+
+[Rafiuth/Soggfy](https://github.com/Rafiuth/Soggfy), [Soggfy-Fixed](https://github.com/SuperSecretEyeball/Soggfy-Fixed) and [Spicetify](https://github.com/spicetify/cli).
+
+[MIT license](LICENSE). Third-party licenses are included. Not affiliated with Spotify.
