@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.8
+
+- Made Skip Downloaded Tracks recognize existing Soggfy audio regardless of the currently selected output format.
+- Added conservative legacy flat-library detection for exact `Artist - Track.ext` and `All Artists - Track.ext` filenames.
+- Legacy matching supports MP3, M4A/MP4, Ogg, Opus, FLAC, AAC and WAV files.
+- Preserved old Soggfy filename escaping modes and the historical all-artists slash-to-comma behavior.
+- Legacy matches are combined with normal template matches and only count as downloaded when exactly one file matches, avoiding ambiguous skips.
+- Added regression coverage based on flat MP3 libraries, multi-artist files, AC/DC escaping and format changes.
+
 ## 3.0.0-rc.7
 
 - Fixed the Classic Soggfy settings/sliders button not opening reliably in Spotify's live top bar.
