@@ -8,6 +8,7 @@
 #include "playback_quality.h"
 #include "cached_metadata.h"
 #include "history_settings.h"
+#include "playback_speed.h"
 #include "classic_ui_backend.h"
 #include "vendor/minhook/include/MinHook.h"
 #include "../build/metadata_script.h"
@@ -118,6 +119,7 @@ static std::wstring UiConfigCode() {
  add("liftQueue",bit(s.lift_add_to_queue));
  add("keepNative",bit(s.keep_native_original));
  add("playbackSpeed",std::to_string(s.playback_speed));
+ add("speedSupported",bit(PlaybackSpeedSupported()));
  add("root",Utf8(s.root));
  add("template",Utf8(s.path_template));
  add("podcastTemplate",Utf8(s.podcast_template));

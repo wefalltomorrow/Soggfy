@@ -19,6 +19,8 @@ build/module-pending-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/pe_imports_test.cpp native/pe_imports.cpp -o build/pe-imports-test
 build/pe-imports-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/spotify_hook_discovery_test.cpp native/spotify_hook_discovery.cpp -o build/spotify-hook-discovery-test
+g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/playback_speed_discovery_test.cpp native/playback_speed_discovery.cpp -o build/playback-speed-discovery-test
+build/playback-speed-discovery-test
 build/spotify-hook-discovery-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/history_core_test.cpp native/ogg_history_core.cpp -o build/history-core-test
 build/history-core-test

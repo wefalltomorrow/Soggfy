@@ -156,11 +156,17 @@ sgf.resetCurrentTrack = async preserve => {
 };
 
 sgf.setPlaybackSpeed = async speed => {
-  try{
-    if(sgf.player?.setSpeed){await sgf.player.setSpeed(speed);return true;}
-    if(window.Spicetify?.Platform?.PlayerAPI?.setSpeed){await window.Spicetify.Platform.PlayerAPI.setSpeed(speed);return true;}
-  }catch{}
-  if(Number(speed)!==1)sgf.notify('Spotify did not accept accelerated playback for this media type',sgf.Icons.Warning);
+  speed=Math.max(1,Math.min(50,Number(speed)||1));
+  sgf.state.playbackSpeed=speed;
+  sgf.send('playbackSpeed',String(speed));
+  if(speed===1||sgf.state.speedSupported){
+    // The native x64 hook reads Playback Speed when Spotify constructs the
+    // track player. Re-create the current track so a change applies now.
+    const reset=await sgf.resetCurrentTrack(!sgf.state.downloads);
+    if(!reset&&speed!==1)sgf.notify('Playback speed will apply on the next local track',sgf.Icons.Warning);
+    return true;
+  }
+  sgf.notify('Accelerated playback is unavailable on this Spotify build',sgf.Icons.Warning);
   return false;
 };
 

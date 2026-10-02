@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include "audio_history.h"
+#include "playback_speed.h"
 #include "cef_request_filter.h"
 #include "hook_init_state.h"
 #include "history_settings.h"
@@ -385,6 +386,7 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
         HMODULE module;
         if (GetModuleHandleExW(0, L"Spotify.dll", &module)) {
             StartConnectivityHook(module);
+            history::StartPlaybackSpeed(module);
             if (i >= 80) StartAudioHistory(module, proxy_module);
             FreeLibrary(module);
         }

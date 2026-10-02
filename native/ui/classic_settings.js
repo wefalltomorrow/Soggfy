@@ -78,7 +78,7 @@ function slider(key,nativeKey=key,min=1,max=50,step=1){
   label.onblur=()=>label.value=(sgf.state[key]||1)+'x';
   label.onchange=async()=>{
     const v=Math.max(min,Math.min(max,Number.parseFloat(label.value)||1));set(v);
-    sgf.state[key]=v;sgf.send(nativeKey,String(v));await sgf.setPlaybackSpeed?.(v);
+    sgf.state[key]=v;await sgf.setPlaybackSpeed?.(v);
   };
   register(key,range);wrap.append(label,range);return wrap;
 }
@@ -162,7 +162,7 @@ sgf.openSettings=()=>{
   };
 
   const general=section('General',
-    row('Playback speed',slider('playbackSpeed')),
+    row('Playback speed',(()=>{const n=slider('playbackSpeed');n.title=sgf.state.speedSupported?'Native accelerated playback':'This Spotify build has not exposed a validated native speed hook yet';return n;})()),
     row('Output format',format),
     custom,
     row('Skip downloaded tracks',toggle('skipDownloaded')),
