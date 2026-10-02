@@ -20,11 +20,14 @@ static volatile LONG downloads_enabled=0,ogg_enabled=1,flac_enabled=1,capture_ep
 static HANDLE settings_signal=nullptr,persist_done=nullptr;
 static volatile LONG persisted_generation=-1,persist_failed=0;
 static constexpr char default_ini[]=
+    "[Soggfy]\r\n"
+    "; Classic UI recreates the original Soggfy top-bar integration.\r\n"
+    "Classic UI=1\r\n"
+    "; Optional fallback to Floggfy's native To Disk menu when Classic UI=0.\r\n"
+    "Native Menu=0\r\n"
+    "\r\n"
     "[To Disk]\r\n"
-    "; Settings also appear in the To Disk menu.\r\n"
     "Downloads=0\r\n"
-    "; Set Menu=0 before starting Spotify to disable native menu integration.\r\n"
-    "Menu=1\r\n"
     "; Empty uses the Windows Music folder plus \\Spotify.\r\n"
     "Save Location=\r\n"
     "; Optional Soggfy-style relative path template. Empty keeps the smart layout.\r\n"
@@ -56,9 +59,20 @@ static DWORD WINAPI PersistSettings(LPVOID) {
         WaitForSingleObject(settings_signal,INFINITE);
         auto snapshot=GetSettings();
         bool ok=true;
-        auto flag=[&](const wchar_t* key,bool value) { if(!WritePrivateProfileStringW(L"To Disk",key,value?L"1":L"0",ini.c_str()))ok=false; };
-        flag(L"Downloads",snapshot.downloads);flag(L"Ogg",snapshot.ogg);flag(L"FLAC",snapshot.flac);
+        auto flag=[&](const wchar_t* section,const wchar_t* key,bool value) {
+            if(!WritePrivateProfileStringW(section,key,value?L"1":L"0",ini.c_str()))ok=false;
+        };
+        flag(L"Soggfy",L"Classic UI",snapshot.classic_ui);
+        flag(L"Soggfy",L"Native Menu",snapshot.menu);
+        flag(L"To Disk",L"Downloads",snapshot.downloads);
+        flag(L"To Disk",L"Ogg",snapshot.ogg);
+        flag(L"To Disk",L"FLAC",snapshot.flac);
+        flag(L"To Disk",L"Metadata",snapshot.metadata);
+        flag(L"To Disk",L"Log",snapshot.log);
+        flag(L"To Disk",L"DebugLog",snapshot.debug_log);
+        flag(L"To Disk",L"Normalize Artist Separators",snapshot.normalize_artist_separators);
         if(!WritePrivateProfileStringW(L"To Disk",L"Save Location",snapshot.save_location.c_str(),ini.c_str()))ok=false;
+        if(!WritePrivateProfileStringW(L"To Disk",L"Path Template",snapshot.path_template.c_str(),ini.c_str()))ok=false;
         InterlockedExchange(&persist_failed,!ok);InterlockedExchange(&persisted_generation,LONG(snapshot.generation));
         SetEvent(persist_done);if(!ok)LogActivity("failed","settings persistence");
     }
@@ -102,7 +116,7 @@ void InitSettings(HMODULE proxy) {
        !CreateDefaultIni(ini))
         QueueDiagnostic("failed to create default SpotifyHistory.ini; using built-in settings");
     settings.downloads=GetPrivateProfileIntW(L"To Disk",L"Downloads",GetPrivateProfileIntW(L"History",L"Enabled",0,ini.c_str()),ini.c_str())!=0;
-    settings.menu=GetPrivateProfileIntW(L"To Disk",L"Menu",1,ini.c_str())!=0;
+    settings.classic_ui=GetPrivateProfileIntW(L"Soggfy",L"Classic UI",1,ini.c_str())!=0;\n    settings.menu=GetPrivateProfileIntW(L"Soggfy",L"Native Menu",0,ini.c_str())!=0;
     settings.ogg=GetPrivateProfileIntW(L"To Disk",L"Ogg",1,ini.c_str())!=0;
     settings.flac=GetPrivateProfileIntW(L"To Disk",L"FLAC",1,ini.c_str())!=0;
     settings.metadata=GetPrivateProfileIntW(L"To Disk",L"Metadata",1,ini.c_str())!=0;
@@ -143,19 +157,41 @@ bool DebugLoggingEnabled() { return debug_enabled!=0; }
 bool OggEnabled() { return downloads_enabled && ogg_enabled; }
 bool FlacEnabled() { return downloads_enabled && flac_enabled; }
 unsigned CaptureEpoch() { return unsigned(InterlockedCompareExchange(&capture_epoch,0,0)); }
-static bool Set(const wchar_t* key,bool value,bool& field,volatile LONG* fast) {
+static bool SetBool(bool value,bool& field,volatile LONG* fast,bool affects_capture) {
     AcquireSRWLockExclusive(&lock);
     bool ok=settings_signal!=nullptr;
-    (void)key;
     if(ok) {
-        if(field!=value) { ++settings.capture_epoch; InterlockedExchange(&capture_epoch,LONG(settings.capture_epoch)); }
-        field=value; if(fast) InterlockedExchange(fast,value); ++settings.generation;
+        if(field!=value && affects_capture) {
+            ++settings.capture_epoch;
+            InterlockedExchange(&capture_epoch,LONG(settings.capture_epoch));
+        }
+        field=value;
+        if(fast) InterlockedExchange(fast,value);
+        ++settings.generation;
     }
-    ReleaseSRWLockExclusive(&lock); if(ok)SetEvent(settings_signal); return ok;
+    ReleaseSRWLockExclusive(&lock);
+    if(ok)SetEvent(settings_signal);
+    return ok;
 }
-bool SetDownloads(bool v) { return Set(L"Downloads",v,settings.downloads,&downloads_enabled); }
-bool SetOgg(bool v) { return Set(L"Ogg",v,settings.ogg,&ogg_enabled); }
-bool SetFlac(bool v) { return Set(L"FLAC",v,settings.flac,&flac_enabled); }
+bool SetDownloads(bool v) { return SetBool(v,settings.downloads,&downloads_enabled,true); }
+bool SetOgg(bool v) { return SetBool(v,settings.ogg,&ogg_enabled,true); }
+bool SetFlac(bool v) { return SetBool(v,settings.flac,&flac_enabled,true); }
+bool SetMetadata(bool v) { return SetBool(v,settings.metadata,nullptr,false); }
+bool SetLogging(bool v) { return SetBool(v,settings.log,&log_enabled,false); }
+bool SetDebugLogging(bool v) { return SetBool(v,settings.debug_log,&debug_enabled,false); }
+bool SetNormalizeArtistSeparators(bool v) { return SetBool(v,settings.normalize_artist_separators,nullptr,false); }
+bool SetPathTemplate(const std::wstring& value) {
+    if(value.size()>4095) return false;
+    AcquireSRWLockExclusive(&lock);
+    bool ok=settings_signal!=nullptr;
+    if(ok) {
+        settings.path_template=value;
+        ++settings.generation;
+    }
+    ReleaseSRWLockExclusive(&lock);
+    if(ok)SetEvent(settings_signal);
+    return ok;
+}
 bool SetSaveLocation(const std::wstring& root) {
     if(root.empty() || root.size()>2047 || !(root.size()>2 && (root[1]==L':' || root.rfind(L"\\\\",0)==0))) return false;
     DWORD attributes=GetFileAttributesW(WindowsPath(root).c_str());
@@ -174,7 +210,7 @@ static DWORD WINAPI Picker(LPVOID argument) {
     hr=CoCreateInstance(CLSID_FileOpenDialog,nullptr,CLSCTX_INPROC_SERVER,IID_IFileOpenDialog,reinterpret_cast<void**>(&dialog));
     if(SUCCEEDED(hr)) {
         DWORD flags=0; dialog->GetOptions(&flags); dialog->SetOptions(flags|FOS_PICKFOLDERS|FOS_FORCEFILESYSTEM|FOS_PATHMUSTEXIST);
-        dialog->SetTitle(L"To Disk — Save Location");
+        dialog->SetTitle(L"Soggfy — Save Location");
         auto current=GetSettings(); IShellItem* initial=nullptr;
         if(SUCCEEDED(SHCreateItemFromParsingName(current.root.c_str(),nullptr,IID_IShellItem,reinterpret_cast<void**>(&initial)))) {
             dialog->SetFolder(initial); initial->Release();
@@ -183,7 +219,7 @@ static DWORD WINAPI Picker(LPVOID argument) {
             IShellItem* item=nullptr; PWSTR path=nullptr;
             if(SUCCEEDED(dialog->GetResult(&item))) {
                 if(SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH,&path))) {
-                    if(!SetSaveLocation(path)) MessageBoxW(owner,L"The save location could not be saved.",L"To Disk",MB_OK|MB_ICONERROR);
+                    if(!SetSaveLocation(path)) MessageBoxW(owner,L"The save location could not be saved.",L"Soggfy",MB_OK|MB_ICONERROR);
                     CoTaskMemFree(path);
                 } item->Release();
             }
