@@ -13,11 +13,12 @@ This branch combines the parts that still make sense from the original Soggfy ec
 - Skips equal or better existing files and atomically replaces lower-quality copies.
 - Uses dynamic x64 hook discovery instead of fixed Spotify offsets.
 - Keeps the capture, menu and metadata integrations separated so one optional integration can fail without blindly hooking another.
+- Shows the current song, Spotify quality level, codec, average bitrate, sample rate and FLAC bit depth in **To Disk**, even when saving is disabled.
 - Supports the original Soggfy idea of configurable output paths.
 
 ## Install
 
-Live compatibility inherited from Floggfy v1.1.0-rc.3 was tested end-to-end with Windows x64 Spotify 1.3.3.264. Its dynamic audio/connectivity resolver was also checked against signed Spotify DLLs from 1.3.0.277, 1.2.94.583 and 1.2.92.148. Older builds were not all run end-to-end. Microsoft Store installs remain unvalidated.
+Live compatibility inherited from Floggfy v1.1.0-rc.4 was tested end-to-end with Windows x64 Spotify 1.3.3.264. Its dynamic audio/connectivity resolver was also checked against signed Spotify DLLs from 1.3.0.277, 1.2.94.583 and 1.2.92.148. Older builds were not all run end-to-end. Microsoft Store installs remain unvalidated.
 
 1. Quit Spotify.
 2. Download the Windows x64 ZIP from Releases or the CI artifact.
@@ -49,6 +50,7 @@ Available tokens:
 - `{track_num_2}`
 - `{disc_num}`
 - `{release_year}`
+- `{release_date}`
 - `{multi_disc_path}`
 - `{multi_disc_paren}`
 - `{ext}`
@@ -61,11 +63,11 @@ Cached metadata is used for album artist, contributing artists, disc information
 
 The native capture is always kept in its original Ogg/FLAC form unless you explicitly remove it.
 
-`Scripts\PostProcess.ps1` can use an installed FFmpeg to create MP3, AAC, Opus or FLAC copies after capture. This is intentionally outside the injected DLL so FFmpeg failures can never affect Spotify or the native capture.
+`Scripts\PostProcess.ps1` can use an installed FFmpeg to create MP3, AAC/M4A, Opus or FLAC copies after capture. This is intentionally outside the injected DLL so FFmpeg failures can never affect Spotify or the native capture.
 
 ## Settings
 
-`SpotifyHistory.ini` contains the full settings list. The **To Disk** menu controls Downloads, Save Location, FLAC and Ogg.
+`SpotifyHistory.ini` contains the full settings list. The **To Disk** menu controls Downloads, Save Location, FLAC and Ogg. Its read-only status rows show the current song and playback quality. They refresh when the submenu opens and use only fresh cached player state or validated decoder observations.
 
 If Spotify becomes unstable after an update, quit it and try `Metadata=0`, then `Menu=0`. If the menu is missing, capture can still be enabled with `Downloads=1` directly in the INI.
 
@@ -86,7 +88,7 @@ GitHub Actions runs the native regression suite, cross-builds the x64 DLL and up
 
 The previous 2024 x86 Soggfy source is preserved under `legacy/` for reference. It is not part of the default build.
 
-The modern base comes from Mainkill1/Floggfy v1.1.0-rc.3. See [UPSTREAMS.md](UPSTREAMS.md) for the exact source revision and community fixes reviewed for this fork.
+The modern base is synced through Mainkill1/Floggfy v1.1.0-rc.4. See [UPSTREAMS.md](UPSTREAMS.md) for the exact source revision and community fixes reviewed for this fork.
 
 ## Credits
 

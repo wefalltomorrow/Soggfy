@@ -2,8 +2,8 @@
 
 The active x64 implementation started from:
 
-- Mainkill1/Floggfy tag `v1.1.0-rc.3`
-- commit `a8277d2791ea07a1144e03ccbc7b598da0066f8f`
+- Mainkill1/Floggfy tag `v1.1.0-rc.4`
+- commit `9eb91dcc42eb68a8b01973ed69ab4eb3e21bfd56`
 
 The original Soggfy repository was at commit:
 
@@ -21,3 +21,5 @@ Community work reviewed while building this fork:
 - upstream PR #102 — quoted/idempotent uninstall-path handling
 
 Not every patch was copied literally. Fixes tied to the obsolete x86 installer/hook architecture were reimplemented only where they still apply to the modern x64 design.
+
+RC4's playback-quality tracker and read-only To Disk status rows are included, together with its Linux/Windows regression coverage.

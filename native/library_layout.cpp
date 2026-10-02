@@ -74,6 +74,7 @@ static std::wstring RenderSegment(std::wstring part,const Catalog& c,const std::
     ReplaceAll(part,L"{track_num_2}",Number(c.track,2));
     ReplaceAll(part,L"{disc_num}",Number(c.disc));
     ReplaceAll(part,L"{release_year}",Number(c.release_year));
+    ReplaceAll(part,L"{release_date}",UnicodeSafe(c.release_date,L""));
     ReplaceAll(part,L"{multi_disc_paren}",c.total_discs>1&&c.disc?L" (CD "+Number(c.disc)+L")":L"");
     ReplaceAll(part,L"{ext}",UnicodeSafe(ext,L"bin"));
     return UnicodeSafe(part,L"_");

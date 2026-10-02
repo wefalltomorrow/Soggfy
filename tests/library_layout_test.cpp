@@ -29,10 +29,11 @@ int main() {
           "path traversal and reserved Windows names prevented");
 
     Catalog t; t.artist=L"Album Artist"; t.album_artist=L"Album Artist"; t.all_artists=L"One / Two";
-    t.album=L"Album: Deluxe"; t.title=L"Track/Name"; t.track=3; t.disc=2; t.total_discs=2; t.release_year=2026;
+    t.album=L"Album: Deluxe"; t.title=L"Track/Name"; t.track=3; t.disc=2; t.total_discs=2; t.release_year=2026; t.release_date=L"2026-10-02";
     auto templated=RelativePathTemplate(t,L".flac",L"{artist_name}\\{release_year} - {album_name}{multi_disc_path}\\{track_num_2} - {track_name}.{ext}");
     check(templated==L"Album Artist\\2026 - Album： Deluxe\\CD 2\\03 - Track／Name.flac",
           "Soggfy style template renders safe Unicode-preserving paths");
+    check(RelativePathTemplate(t,L".ogg",L"{release_date} - {track_name}.{ext}")==L"2026-10-02 - Track／Name.ogg","release date template token");
     t.all_artists=L"AC/DC / Guest";
     auto artists=RelativePathTemplate(t,L".ogg",L"{all_artist_names} - {track_name}.{ext}",true);
     check(artists==L"AC／DC, Guest - Track／Name.ogg","artist separator normalization preserves AC/DC");

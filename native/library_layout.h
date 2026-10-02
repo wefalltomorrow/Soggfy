@@ -5,7 +5,7 @@ namespace history {
 enum class MediaKind { Music, Compilation, Soundtrack, VariousArtists, Audiobook, Podcast, MusicVideo, Concert };
 struct Catalog {
     MediaKind kind=MediaKind::Music;
-    std::wstring artist,album_artist,all_artists,album,title,author,series,book,show;
+    std::wstring artist,album_artist,all_artists,album,title,release_date,author,series,book,show;
     unsigned track=0,disc=0,total_discs=0,release_year=0,episode_year=0;
 };
 std::wstring RelativePath(const Catalog& item,const std::wstring& extension);
