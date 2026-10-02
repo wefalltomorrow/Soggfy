@@ -30,6 +30,11 @@ script = "window.__floggfyNative=true;\n" + (root / "native/metadata_collector.j
     'static constexpr wchar_t metadata_script[]=LR"FLOGGFY(' + script + ')FLOGGFY";\n',
     encoding="utf-8",
 )
+ui_script = (root / "native/soggfy_ui.js").read_text(encoding="utf-8")
+(root / "build/soggfy_ui_script.h").write_text(
+    'static constexpr wchar_t soggfy_ui_script[]=LR"SOGGFYUI(' + ui_script + ')SOGGFYUI";\n',
+    encoding="utf-8",
+)
 
 resource = f'''#include <winver.h>
 

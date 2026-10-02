@@ -93,6 +93,7 @@
  }
  function tick(){
   try{
+   if(window.__soggfyMetadataEnabled===false)return;
    scan();if(!player){playback({v:1});return;}
    if(!reported){console.info('FLOGGFY_STATUS:cached player found');reported=true;}
    const state=method(player,'getState').call(player),item=own(state,'item'),m=own(item,'metadata')||{},uri=text(own(item,'uri'));

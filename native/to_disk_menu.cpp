@@ -235,7 +235,17 @@ static Menu* Hook(Delegate* delegate) {
 void StartToDiskMenu(HMODULE cef) {
     const auto now=static_cast<std::uint64_t>(GetTickCount64());
     if(!menu_init.TryBegin(now)) return;
-    if(!history::GetSettings().menu) { history::HistoryLog("To Disk menu disabled by INI Menu=0"); menu_init.MarkUnsupported(); return; }
+    auto settings=history::GetSettings();
+    if(settings.classic_ui) {
+        history::HistoryLog("native To Disk menu suppressed while Classic UI is enabled");
+        menu_init.MarkUnsupported();
+        return;
+    }
+    if(!settings.menu) {
+        history::HistoryLog("native To Disk menu disabled by Soggfy Native Menu=0");
+        menu_init.MarkUnsupported();
+        return;
+    }
     auto string_set=GetProcAddress(cef,"cef_string_utf16_set");
     memcpy(&set_string,&string_set,sizeof(set_string));
     if(!set_string)history::HistoryLog("To Disk live labels unavailable: cef_string_utf16_set missing");

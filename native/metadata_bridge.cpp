@@ -10,6 +10,7 @@
 #include "history_settings.h"
 #include "vendor/minhook/include/MinHook.h"
 #include "../build/metadata_script.h"
+#include "../build/soggfy_ui_script.h"
 #include <atomic>
 #include <algorithm>
 #include <array>
@@ -22,6 +23,42 @@ struct String {wchar_t* str;size_t length;void(*dtor)(wchar_t*);};
 template<size_t N> struct Object {Base base;void* methods[N];};
 using Client=Object<19>;using Display=Object<13>;using Load=Object<4>;using Browser=Object<21>;using Frame=Object<26>;
 static void Release(void* p) {if(p)static_cast<Base*>(p)->release(static_cast<Base*>(p));}
+static int HexDigit(wchar_t c) {
+ if(c>=L'0'&&c<=L'9')return int(c-L'0');
+ if(c>=L'a'&&c<=L'f')return int(c-L'a')+10;
+ if(c>=L'A'&&c<=L'F')return int(c-L'A')+10;
+ return -1;
+}
+static std::string PercentDecode(const wchar_t* text,size_t length) {
+ std::string out;out.reserve(length);
+ for(size_t i=0;i<length;++i) {
+  wchar_t c=text[i];
+  if(c==L'%'&&i+2<length) {
+   int hi=HexDigit(text[i+1]),lo=HexDigit(text[i+2]);
+   if(hi>=0&&lo>=0){out.push_back(char((hi<<4)|lo));i+=2;continue;}
+  }
+  if(c>127)return {};
+  out.push_back(char(c));
+ }
+ return out;
+}
+static std::string PercentEncode(const std::string& value) {
+ static const char hex[]="0123456789ABCDEF";
+ std::string out;out.reserve(value.size()+16);
+ for(unsigned char c:value) {
+  if((c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'||c=='_'||c=='.'||c=='~')out.push_back(char(c));
+  else {out.push_back('%');out.push_back(hex[c>>4]);out.push_back(hex[c&15]);}
+ }
+ return out;
+}
+static std::wstring WideUtf8(const std::string& value) {
+ if(value.empty())return {};
+ int count=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,value.data(),int(value.size()),nullptr,0);
+ if(count<=0)return {};
+ std::wstring out(size_t(count),L'\0');
+ if(MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,value.data(),int(value.size()),out.data(),count)!=count)return {};
+ return out;
+}
 // CEF's C++ wrapper has private identity fields before the public C structure.
 // Replacing that structure breaks GetClient() round trips (CEF UnwrapDerived).
 // Intercept callback code instead, preserving every object and its references.
@@ -52,6 +89,45 @@ static CallbackHook display_getter,load_getter,console_callback,loading_callback
 struct Task {Base base;void(*execute)(Task*);};
 struct PollTask {Task task;std::atomic<unsigned> refs{1};};
 static Frame* polling_frame=nullptr;static SRWLOCK frame_lock=SRWLOCK_INIT;
+static std::wstring UiConfigCode() {
+ auto s=GetSettings();
+ auto bit=[](bool value){return value?"1":"0";};
+ std::string payload;
+ auto add=[&](const char* key,const std::string& value){
+  if(!payload.empty())payload+='&';
+  payload+=key;
+  payload+='=';
+  payload+=PercentEncode(value);
+ };
+ add("downloads",bit(s.downloads));
+ add("ogg",bit(s.ogg));
+ add("flac",bit(s.flac));
+ add("metadata",bit(s.metadata));
+ add("log",bit(s.log));
+ add("debug",bit(s.debug_log));
+ add("normalize",bit(s.normalize_artist_separators));
+ add("root",Utf8(s.root));
+ add("template",Utf8(s.path_template));
+ std::wstring wide(payload.begin(),payload.end());
+ std::wstring code=L"window.__soggfyNativeConfig=\""+wide+
+   L"\";window.__soggfyMetadataEnabled="+(s.metadata?L"true":L"false")+
+   L";if(window.__soggfyApplyConfig)window.__soggfyApplyConfig(window.__soggfyNativeConfig);";
+ return code;
+}
+static void ExecuteFrameCode(Frame* frame,const std::wstring& code,const wchar_t* source_name) {
+ if(!frame||code.empty()||!reinterpret_cast<int(*)(Frame*)>(frame->methods[0])(frame))return;
+ String script={const_cast<wchar_t*>(code.c_str()),code.size(),nullptr};
+ String source={const_cast<wchar_t*>(source_name),wcslen(source_name),nullptr};
+ reinterpret_cast<void(*)(Frame*,const String*,const String*,int)>(frame->methods[14])(frame,&script,&source,1);
+}
+static void SyncClassicUi(Frame* preferred=nullptr) {
+ Frame* f=preferred;
+ if(f)f->base.add(&f->base);
+ else {
+  AcquireSRWLockShared(&frame_lock);f=polling_frame;if(f)f->base.add(&f->base);ReleaseSRWLockShared(&frame_lock);
+ }
+ if(f){ExecuteFrameCode(f,UiConfigCode(),L"soggfy-config.js");Release(f);}
+}
 static std::atomic<bool> poll_pending{false};static int(*post_task)(int,Task*)=nullptr;
 static void PollAdd(Base* b){++reinterpret_cast<PollTask*>(b)->refs;}
 static int PollDrop(Base* b){auto t=reinterpret_cast<PollTask*>(b);if(--t->refs)return 0;delete t;return 1;}
@@ -81,6 +157,7 @@ static std::array<Message,4> messages;static size_t head=0,tail=0,count=0;static
 static bool Enqueue(const String* value) {
  constexpr wchar_t prefix[]=L"FLOGGFY_METADATA_V1:";constexpr size_t n=sizeof(prefix)/sizeof(*prefix)-1;
  if(!value||value->length<=n||value->length>n+131072||wmemcmp(value->str,prefix,n))return false;
+ if(!GetSettings().metadata)return true;
  if(TryAcquireSRWLockExclusive(&message_lock)) {
   if(count<messages.size()) {
    auto& m=messages[tail];m.time=GetTickCount64();m.length=value->length-n;bool valid=true;
@@ -133,8 +210,37 @@ static bool CurrentPlayback(const String* text) {
  }catch(...){PublishClientPlaybackQuality({});}
  return true;
 }
+static bool ClassicUiMessage(const String* text) {
+ constexpr wchar_t prefix[]=L"SOGGFY_UI_V1:";
+ constexpr size_t n=sizeof(prefix)/sizeof(*prefix)-1;
+ if(!text||!text->str||text->length<=n||text->length>n+8192||wmemcmp(text->str,prefix,n))return false;
+ if(!GetSettings().classic_ui)return true;
+ const wchar_t* body=text->str+n;size_t length=text->length-n;
+ const wchar_t* equal=std::find(body,body+length,L'=');
+ if(equal==body+length)return true;
+ std::wstring key(body,size_t(equal-body));
+ const auto decoded=PercentDecode(equal+1,size_t(body+length-equal-1));
+ bool ok=true;
+ auto flag=[&]()->bool{return decoded=="1"||decoded=="true";};
+ if(key==L"sync") {}
+ else if(key==L"downloads")ok=SetDownloads(flag());
+ else if(key==L"ogg")ok=SetOgg(flag());
+ else if(key==L"flac")ok=SetFlac(flag());
+ else if(key==L"metadata")ok=SetMetadata(flag());
+ else if(key==L"log")ok=SetLogging(flag());
+ else if(key==L"debug")ok=SetDebugLogging(flag());
+ else if(key==L"normalize")ok=SetNormalizeArtistSeparators(flag());
+ else if(key==L"template")ok=SetPathTemplate(WideUtf8(decoded));
+ else if(key==L"root")ok=SetSaveLocation(WideUtf8(decoded));
+ else if(key==L"browse"){PickSaveLocation(GetActiveWindow());}
+ else return true;
+ if(!ok)HistoryLog("classic UI setting could not be saved");
+ SyncClassicUi();
+ return true;
+}
 static int Console(Display* self,Browser* b,int level,const String* text,const String* source,int line) {
  auto callback=metadata_callbacks.Enter();
+ if(ClassicUiMessage(text)){Release(b);return 1;}
  if(CurrentPlayback(text)){Release(b);return 1;}
  if(text&&text->length<100&&text->length>=15&&wmemcmp(text->str,L"FLOGGFY_STATUS:",15)==0){
   std::wstring status(text->str,text->length);HistoryLog(Utf8(status).c_str());Release(b);return 1;
@@ -147,10 +253,13 @@ static void Inject(Frame* frame) {
  auto main=reinterpret_cast<int(*)(Frame*)>(frame->methods[15]);
  if(!main||!main(frame))return;
  frame->base.add(&frame->base);AcquireSRWLockExclusive(&frame_lock);auto old=polling_frame;polling_frame=frame;ReleaseSRWLockExclusive(&frame_lock);Release(old);
- String code={const_cast<wchar_t*>(metadata_script),wcslen(metadata_script),nullptr};
- const wchar_t name[]=L"floggfy-metadata.js";String source={const_cast<wchar_t*>(name),wcslen(name),nullptr};
- reinterpret_cast<void(*)(Frame*,const String*,const String*,int)>(frame->methods[14])(frame,&code,&source,1);
- HistoryLog("metadata script injected into main frame");
+ auto settings=GetSettings();
+ SyncClassicUi(frame);
+ // Keep the collector loaded when Classic UI is active so Metadata can be toggled
+ // without restarting Spotify. Its tick exits immediately while disabled.
+ if(settings.metadata||settings.classic_ui)ExecuteFrameCode(frame,metadata_script,L"floggfy-metadata.js");
+ if(settings.classic_ui)ExecuteFrameCode(frame,soggfy_ui_script,L"soggfy-ui.js");
+ HistoryLog(settings.classic_ui?"classic Soggfy UI injected into main frame":"metadata script injected into main frame");
 }
 static void Loading(Load* self,Browser* b,int loading,int back,int forward){
  auto callback=metadata_callbacks.Enter();
@@ -254,7 +363,8 @@ void EnrichCatalog(const Media& media,Catalog& catalog) {
 void StartMetadataCollector(HMODULE cef) {
  const auto now=static_cast<std::uint64_t>(GetTickCount64());
  if(!metadata_init.TryBegin(now))return;
- if(!GetSettings().metadata){HistoryLog("metadata collector disabled by INI Metadata=0");metadata_init.MarkUnsupported();return;}
+ auto settings=GetSettings();
+ if(!settings.metadata&&!settings.classic_ui){HistoryLog("CEF bridge disabled: Metadata=0 and Classic UI=0");metadata_init.MarkUnsupported();return;}
  auto address=GetProcAddress(cef,"cef_version_info");int(*version)(int)=nullptr;static_assert(sizeof(version)==sizeof(address));memcpy(&version,&address,sizeof(version));
  if(!version||!cef_compat::IsSupported({version(0),version(1),version(2),version(3)})){
   HistoryLog("metadata CEF identity unsupported; revision is not in the audited compatibility table");metadata_init.MarkUnsupported();return;
