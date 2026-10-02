@@ -76,6 +76,11 @@ int main() {
     for(int i=1;i<10;i++) ended.Observe("one",i,10,true,i);
     check(ended.Observe("one",10,10,false,10)=="one","last track completes without next song");
 
+    Listen fast_late_poll;
+    fast_late_poll.Observe("fast",25,200,true,0.5,50);
+    check(fast_late_poll.eligible && std::fabs(fast_late_poll.start_time)<0.001,
+          "50x first poll may arrive 25 media seconds after natural start");
+
     Listen fast;
     fast.Observe("fast",0,200,true,0,50);
     for(int i=1;i<=7;i++)
