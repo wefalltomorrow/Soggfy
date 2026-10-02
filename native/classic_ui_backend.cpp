@@ -67,15 +67,16 @@ struct IndexedFile {
 SRWLOCK index_lock=SRWLOCK_INIT;
 std::wstring index_root;
 ULONGLONG index_time=0;
-std::vector<IndexedFile> index_files;
+std::shared_ptr<const std::vector<IndexedFile>> index_files=
+    std::make_shared<const std::vector<IndexedFile>>();
 
-std::vector<IndexedFile> FileIndex(const std::wstring& configured_root,ULONGLONG now) {
+std::shared_ptr<const std::vector<IndexedFile>> FileIndex(const std::wstring& configured_root,ULONGLONG now) {
     AcquireSRWLockShared(&index_lock);
     const bool fresh=index_root==configured_root&&now>=index_time&&now-index_time<10000;
     if(fresh) {
-        auto copy=index_files;
+        auto snapshot=index_files;
         ReleaseSRWLockShared(&index_lock);
-        return copy;
+        return snapshot;
     }
     ReleaseSRWLockShared(&index_lock);
 
@@ -102,9 +103,10 @@ std::vector<IndexedFile> FileIndex(const std::wstring& configured_root,ULONGLONG
     AcquireSRWLockExclusive(&index_lock);
     index_root=configured_root;
     index_time=now;
-    index_files=built;
+    index_files=std::make_shared<const std::vector<IndexedFile>>(std::move(built));
+    auto snapshot=index_files;
     ReleaseSRWLockExclusive(&index_lock);
-    return built;
+    return snapshot;
 }
 
 
@@ -182,7 +184,7 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
 
     if(!pending.empty()) {
         const auto files=FileIndex(settings.root,now);
-        for(const auto& file:files) {
+        for(const auto& file:*files) {
             for(auto& p:pending) {
                 if(p.matches<2 && std::regex_match(file.relative,p.regex)) {
                     ++p.matches;
