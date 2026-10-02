@@ -10,6 +10,7 @@
 #include "classic_ui_backend.h"
 #include "post_process.h"
 #include "playback_quality.h"
+#include "playback_speed.h"
 #include "async_log.h"
 #include "bounded_queue.h"
 #include <atomic>
@@ -359,6 +360,8 @@ static DWORD WINAPI Worker(LPVOID) {
         while(workers_running.load(std::memory_order_acquire)) {
             double now=Now();
             auto preferences=GetSettings();
+            const double playback_rate=PlaybackSpeedSupported()
+                ? std::max(1.0,preferences.playback_speed) : 1.0;
             if(preferences.generation!=generation) {
                 bool initial=generation==~0u;
                 generation=preferences.generation;
@@ -487,7 +490,7 @@ static DWORD WINAPI Worker(LPVOID) {
             if(!enabled) {
                 if(now>=next_media) {
                     Media media;
-                    if(reader.Read(media,false)) {quality.Media(media.Key(),media.title,media.position,media.duration,Now(),media.playing);client_quality=ReadClientPlaybackQuality(media);}
+                    if(reader.Read(media,false,playback_rate)) {quality.Media(media.Key(),media.title,media.position,media.duration,Now(),media.playing);client_quality=ReadClientPlaybackQuality(media);}
                     else {quality.Media({},L"",0,0,Now());client_quality.clear();}
                     next_media=Now()+0.5;
                 }
@@ -496,16 +499,16 @@ static DWORD WINAPI Worker(LPVOID) {
             }
             if(now>=next_media) {
                 Media media;
-                if(reader.Read(media)) {
+                if(reader.Read(media,true,playback_rate)) {
                     quality.Media(media.Key(),media.title,media.position,media.duration,Now(),media.playing);
                     client_quality=ReadClientPlaybackQuality(media);
                     std::string previous=listen.identity; double previous_start=listen.start_time;
                     bool was_eligible=listen.eligible;
                     double prior_position=listen.last_position,prior_duration=listen.duration,prior_time=listen.last_time;
-                    std::string done=listen.Observe(media.Key(),media.position,media.duration,media.playing,Now());
+                    std::string done=listen.Observe(media.Key(),media.position,media.duration,media.playing,Now(),playback_rate);
                     if(was_eligible && !listen.eligible && done.empty()) {
-                        char line[300]; snprintf(line,sizeof(line),"listen invalidated old=%.6f/%.6f new=%.6f/%.6f delta=%.3f playing=%d",
-                            prior_position,prior_duration,media.position,media.duration,Now()-prior_time,media.playing); Log(line);
+                        char line[340]; snprintf(line,sizeof(line),"listen invalidated old=%.6f/%.6f new=%.6f/%.6f delta=%.3f rate=%.3f playing=%d",
+                            prior_position,prior_duration,media.position,media.duration,Now()-prior_time,playback_rate,media.playing); Log(line);
                     }
                     if(!done.empty()) {
                         if(current_ignored) {
