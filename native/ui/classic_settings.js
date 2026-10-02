@@ -71,7 +71,7 @@ function slider(key,nativeKey=key,min=1,max=50,step=1){
   set(sgf.state[key]);
   range.oninput=()=>label.value=range.value+'x';
   range.onchange=async()=>{
-    const v=Number(range.value);sgf.state[key]=v;sgf.send(nativeKey,String(v));
+    const v=Number(range.value);sgf.state[key]=v;
     await sgf.setPlaybackSpeed?.(v);
   };
   label.onfocus=()=>label.value=String(sgf.state[key]);
