@@ -1,6 +1,7 @@
 #include "classic_path_match.h"
 #include "library_layout.h"
 #include <algorithm>
+#include <array>
 #include <cwctype>
 #include <regex>
 #include <vector>
