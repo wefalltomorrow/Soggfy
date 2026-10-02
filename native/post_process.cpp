@@ -135,7 +135,6 @@ PostProcessResult PostProcessPublishedFile(const std::wstring& native_path,const
 
     DWORD exit_code=~0u;
     bool launched=Run(ffmpeg,command,exit_code);
-    if(!cover_path.empty())DeleteFileW(WindowsPath(cover_path).c_str());
     if((!launched||exit_code!=0) && final_ext==L"m4a" &&
        Lower(settings.output_preset).find(L"fdk aac")!=std::wstring::npos) {
         // Most redistributable FFmpeg builds omit non-free libfdk_aac. Preserve
@@ -152,6 +151,7 @@ PostProcessResult PostProcessPublishedFile(const std::wstring& native_path,const
         fallback+=L" "+Quote(temp.wstring());
         launched=Run(ffmpeg,fallback,exit_code);
     }
+    if(!cover_path.empty())DeleteFileW(WindowsPath(cover_path).c_str());
     if(!launched||exit_code!=0) {
         DeleteFileW(WindowsPath(temp.wstring()).c_str());
         result.state=PostProcessResult::State::Failed;
