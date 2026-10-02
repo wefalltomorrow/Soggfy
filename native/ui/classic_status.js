@@ -38,7 +38,7 @@ sgf.setIgnoredMany=(uris,value)=>{
 
 function uriFromHref(href){
   if(!href)return '';
-  const m=href.match(/\/(track|episode)\/([A-Za-z0-9]+)/);
+  const m=href.match(/\/(track|episode|artist|album|playlist)\/([A-Za-z0-9]+)/);
   return m?'spotify:'+m[1]+':'+m[2]:'';
 }
 function deepFindUri(root){
@@ -68,7 +68,7 @@ function rowInfo(row){
   if(!title)return null;
   const artistLinks=[...row.querySelectorAll('a[href*="/artist/"]')];
   const artists=artistLinks.map(a=>(a.textContent||'').trim()).filter(Boolean);
-  const artistUris=artistLinks.map(a=>uriFromHref(a.getAttribute('href')||'').replace('spotify:track:','spotify:artist:')).filter(x=>x.startsWith('spotify:artist:'));
+  const artistUris=artistLinks.map(a=>uriFromHref(a.getAttribute('href')||'')).filter(x=>x.startsWith('spotify:artist:'));
   const albumLink=row.querySelector('a[href*="/album/"]');
   let album=(albumLink?.textContent||'').trim();
   const albumHref=albumLink?.getAttribute?.('href')||'';
