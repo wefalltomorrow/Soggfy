@@ -49,9 +49,15 @@ std::wstring ExtensionRegex(const std::wstring& output_extension,bool any_audio_
     if(!ext.empty())return RegexEscape(ext);
     return L"(?:ogg|flac)";
 }
+bool SameInsensitive(const std::wstring& a,const std::wstring& b) {
+    if(a.size()!=b.size())return false;
+    for(size_t i=0;i<a.size();++i)
+        if(towlower(a[i])!=towlower(b[i]))return false;
+    return true;
+}
 void AddUnique(std::vector<std::wstring>& values,std::wstring value) {
     if(value.empty())return;
-    for(const auto& existing:values)if(_wcsicmp(existing.c_str(),value.c_str())==0)return;
+    for(const auto& existing:values)if(SameInsensitive(existing,value))return;
     values.push_back(std::move(value));
 }
 std::vector<std::wstring> LegacyArtistNames(const ClassicPathQuery& q) {
