@@ -5,8 +5,8 @@ from pathlib import Path
 import shutil
 import zipfile
 
-VERSION = '3.0.0-rc.1'
 root = Path(__file__).resolve().parent
+VERSION = (root / 'VERSION').read_text(encoding='utf-8').strip()
 out = root / 'dist'
 out.mkdir(exist_ok=True)
 release_name = f'Soggfy-v{VERSION}-Windows-x64.zip'
