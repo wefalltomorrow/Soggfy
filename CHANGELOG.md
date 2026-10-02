@@ -15,6 +15,8 @@
 - Restored the Block telemetry toggle with a scoped CEF request filter.
 - Restored separate podcast/episode metadata and Podcast template handling.
 - Restored the 1–50x playback-speed setting using a validated modern x64 Spotify.dll track-player hook that fails closed on unsupported layouts.
+- Preserved Floggfy RC5's current Song / Quality / Format / Sample-rate readout inside Classic settings.
+- Added a bounded shared downloaded-file index cache so status ticks and Skip Downloaded do not rescan the output tree for every UI mutation.
 - Retained the Floggfy RC5-derived native Ogg/FLAC engine, cached metadata, dynamic hook discovery, diagnostics and hardened release pipeline.
 
 ## 3.0.0-rc.5

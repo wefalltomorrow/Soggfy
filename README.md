@@ -19,6 +19,8 @@ The goal is to keep the interaction model people used in old Soggfy while replac
 - Skips equal or better existing files and atomically replaces lower-quality copies.
 - Uses dynamic x64 hook discovery instead of fixed Spotify offsets.
 - Keeps capture, UI, metadata, playback-speed and telemetry integrations independent.
+- Preserves Floggfy RC5's current Song / Quality / Format / Sample-rate information inside the Classic settings UI.
+- Uses a bounded, short-lived file index for downloaded-track ticks/Skip Downloaded instead of recursively rescanning the library on every UI mutation.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
 
 ## Install

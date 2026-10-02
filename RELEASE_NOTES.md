@@ -22,10 +22,11 @@ The Spotify-facing experience now follows old Soggfy instead of Floggfy, while t
 - Invalid-character replacement modes.
 - Block telemetry.
 - Move Add to Queue to the top.
+- RC5 current Song / Quality / Format / Sample-rate information, restyled inside Classic Soggfy settings.
 
 ## Modern backend improvements retained
 
-Native compressed Ogg/FLAC capture, lossless FLAC preservation, complete-listen validation, seek/skip/truncation rejection, atomic publication, quality-aware existing-file replacement, dynamic x64 Spotify target discovery, identity-checked cached metadata, RC5 playback-quality safeguards, bounded queues/memory, safe FFmpeg post-processing, installer backup/restore, diagnostics, deterministic packaging and SHA-256 manifests all remain.
+Native compressed Ogg/FLAC capture, lossless FLAC preservation, complete-listen validation, seek/skip/truncation rejection, atomic publication, quality-aware existing-file replacement, dynamic x64 Spotify target discovery, identity-checked cached metadata, RC5 playback-quality safeguards, bounded queues/memory, safe FFmpeg post-processing, installer backup/restore, diagnostics, deterministic packaging and SHA-256 manifests all remain. Downloaded-file status now also uses a bounded 10-second shared index cache, while freshly completed tracks are surfaced immediately from live state.
 
 ## Issue #150
 
