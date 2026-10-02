@@ -289,7 +289,15 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
             Log("cover sidecar could not be written");
     }
     if(settings.save_lyrics && !lyrics.empty()) {
-        auto lyric_path=destination.substr(0,destination.find_last_of(L'.'))+L".txt";
+        bool synced=false;
+        for(size_t i=0;i+6<lyrics.size();++i) {
+            if(lyrics[i]=='[' && lyrics[i+1]>='0'&&lyrics[i+1]<='9' &&
+               lyrics[i+2]>='0'&&lyrics[i+2]<='9' && lyrics[i+3]==':' &&
+               lyrics[i+4]>='0'&&lyrics[i+4]<='9' && lyrics[i+5]>='0'&&lyrics[i+5]<='9') {
+                synced=true;break;
+            }
+        }
+        auto lyric_path=destination.substr(0,destination.find_last_of(L'.'))+(synced?L".lrc":L".txt");
         if(!WriteSidecar(lyric_path,lyrics.data(),lyrics.size()))
             Log("lyrics sidecar could not be written");
     }

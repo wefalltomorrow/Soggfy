@@ -49,9 +49,9 @@ std::wstring PresetArgs(const Settings& settings) {
     if(p==L"mp3 320k")return L"-c:a libmp3lame -b:a 320k -id3v2_version 3";
     if(p==L"mp3 256k")return L"-c:a libmp3lame -b:a 256k -id3v2_version 3";
     if(p==L"mp3 192k")return L"-c:a libmp3lame -b:a 192k -id3v2_version 3";
-    if(p==L"m4a 256k")return L"-c:a aac -b:a 256k";
-    if(p==L"m4a 224k vbr")return L"-c:a aac -q:a 2";
-    if(p==L"m4a 160k")return L"-c:a aac -b:a 160k";
+    if(p==L"m4a 256k"||p==L"m4a 256k (fdk aac)")return L"-c:a libfdk_aac -b:a 256k -cutoff 20k";
+    if(p==L"m4a 224k vbr"||p==L"m4a 224k vbr (fdk aac)")return L"-c:a libfdk_aac -vbr 5";
+    if(p==L"m4a 160k"||p==L"m4a 160k (fdk aac)")return L"-c:a libfdk_aac -b:a 160k -cutoff 18k";
     if(p==L"opus 160k")return L"-c:a libopus -b:a 160k";
     if(p==L"custom")return settings.output_args;
     return settings.output_args;
@@ -134,8 +134,24 @@ PostProcessResult PostProcessPublishedFile(const std::wstring& native_path,const
     command+=L" "+Quote(temp.wstring());
 
     DWORD exit_code=~0u;
-    const bool launched=Run(ffmpeg,command,exit_code);
+    bool launched=Run(ffmpeg,command,exit_code);
     if(!cover_path.empty())DeleteFileW(WindowsPath(cover_path).c_str());
+    if((!launched||exit_code!=0) && final_ext==L"m4a" &&
+       Lower(settings.output_preset).find(L"fdk aac")!=std::wstring::npos) {
+        // Most redistributable FFmpeg builds omit non-free libfdk_aac. Preserve
+        // old Soggfy's UI preset but fall back to FFmpeg's native AAC encoder.
+        DeleteFileW(WindowsPath(temp.wstring()).c_str());
+        std::wstring fallback=L"-y -hide_banner -loglevel warning -nostdin -i "+Quote(native_path);
+        if(!cover_path.empty()) {
+            fallback+=L" -i "+Quote(cover_path)+L" -map 0:a:0 -map 1:v:0 -map_metadata 0 -c:v copy -disposition:v attached_pic";
+        } else fallback+=L" -map 0:a:0 -map_metadata 0";
+        const auto preset=Lower(settings.output_preset);
+        if(preset.find(L"224k vbr")!=std::wstring::npos)fallback+=L" -c:a aac -q:a 2";
+        else if(preset.find(L"160k")!=std::wstring::npos)fallback+=L" -c:a aac -b:a 160k";
+        else fallback+=L" -c:a aac -b:a 256k";
+        fallback+=L" "+Quote(temp.wstring());
+        launched=Run(ffmpeg,fallback,exit_code);
+    }
     if(!launched||exit_code!=0) {
         DeleteFileW(WindowsPath(temp.wstring()).c_str());
         result.state=PostProcessResult::State::Failed;

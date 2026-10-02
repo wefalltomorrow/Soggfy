@@ -5,13 +5,13 @@ if(!sgf||sgf.__settingsLoaded)return;
 sgf.__settingsLoaded=true;
 
 const presets={
-  'Native Spotify format':{ext:'',args:''},
-  'MP3 320K':{ext:'mp3',args:'-c:a libmp3lame -b:a 320k -id3v2_version 3'},
-  'MP3 256K':{ext:'mp3',args:'-c:a libmp3lame -b:a 256k -id3v2_version 3'},
-  'MP3 192K':{ext:'mp3',args:'-c:a libmp3lame -b:a 192k -id3v2_version 3'},
-  'M4A 256K':{ext:'m4a',args:'-c:a aac -b:a 256k'},
-  'M4A 224K VBR':{ext:'m4a',args:'-c:a aac -q:a 2'},
-  'M4A 160K':{ext:'m4a',args:'-c:a aac -b:a 160k'},
+  'Original OGG / FLAC':{ext:'',args:'-c copy'},
+  'MP3 320K':{ext:'mp3',args:'-c:a libmp3lame -b:a 320k -id3v2_version 3 -c:v copy'},
+  'MP3 256K':{ext:'mp3',args:'-c:a libmp3lame -b:a 256k -id3v2_version 3 -c:v copy'},
+  'MP3 192K':{ext:'mp3',args:'-c:a libmp3lame -b:a 192k -id3v2_version 3 -c:v copy'},
+  'M4A 256K (FDK AAC)':{ext:'m4a',args:'-c:a libfdk_aac -b:a 256k -cutoff 20k -disposition:v attached_pic -c:v copy'},
+  'M4A 224K VBR (FDK AAC)':{ext:'m4a',args:'-c:a libfdk_aac -vbr 5 -disposition:v attached_pic -c:v copy'},
+  'M4A 160K (FDK AAC)':{ext:'m4a',args:'-c:a libfdk_aac -b:a 160k -cutoff 18k -disposition:v attached_pic -c:v copy'},
   'Opus 160K':{ext:'opus',args:'-c:a libopus -b:a 160k'},
   'Custom':null
 };
@@ -134,7 +134,7 @@ sgf.openSettings=()=>{
   const {outer,body}=makeOverlay();
 
   const formatOptions=Object.fromEntries(Object.keys(presets).map(x=>[x,x]));
-  if(sgf.state.outputPreset==='Native')sgf.state.outputPreset='Native Spotify format';
+  if(sgf.state.outputPreset==='Native'||sgf.state.outputPreset==='Native Spotify format')sgf.state.outputPreset='Original OGG / FLAC';
   if(!formatOptions[sgf.state.outputPreset])sgf.state.outputPreset='Custom';
   const format=select('outputPreset',formatOptions,value=>{
     sgf.state.outputPreset=value;sgf.send('outputPreset',value);
