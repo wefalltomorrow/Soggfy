@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <vector>
 #include <cstring>
+#include <cmath>
 using namespace history;
 static void check(bool value, const char* name) {
     if (!value) { std::fprintf(stderr, "FAIL: %s\n", name); std::exit(1); }
