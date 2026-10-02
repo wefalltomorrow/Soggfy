@@ -1,17 +1,19 @@
-# Soggfy v3.0.0-rc.1
+# Soggfy v3.0.0-rc.2
 
-First release of the modern x64 continuation.
+This is the current best-of-all x64 release.
 
-Highlights:
+It keeps the Floggfy v1.1.0-rc.4 capture engine and quality reporting, then adds the useful Soggfy-side features that are missing from stock Floggfy:
 
-- Modern Floggfy v1.1.0-rc.3 capture base for current Windows x64 Spotify.
-- Native Ogg and FLAC capture with complete-listen validation and quality-aware atomic replacement.
 - Soggfy-style configurable output path templates.
-- Cached album artist, contributing artists, disc information and release year can be used in paths.
-- Safer path-only artist separator cleanup that does not turn names such as AC/DC into AC, DC.
-- Install/uninstall scripts with backup and restore of a pre-existing version.dll.
-- Optional FFmpeg post-processing for MP3, AAC, Opus and FLAC copies while retaining native captures by default.
-- Diagnostics script that writes Spotify version, DLL hash, configuration and recent log lines to Downloads.
-- Full regression tests and reproducible Windows x64 CI packaging.
+- Cached album artist, contributing artists, disc information and release year available to path templates.
+- Conservative path-only artist separator cleanup that preserves names such as AC/DC.
+- Install/uninstall scripts that back up and restore a pre-existing version.dll.
+- Optional SpotX invocation using the current script URL and additive TLS 1.2 compatibility.
+- Optional external FFmpeg post-processing for MP3, AAC, Opus and FLAC copies while native captures are retained by default.
+- A diagnostics script that writes Spotify version, DLL hash, configuration and recent Soggfy log lines to Downloads.
+- Current GitHub Actions, strict native regression tests, Windows x64 cross-builds, deterministic packaging and SHA-256 checksums.
+- The original 2024 x86 Soggfy source preserved under legacy/ rather than mixed into the active build.
 
-Compatibility is inherited from the Floggfy RC3 base: live tested there with Spotify 1.3.3.264, with resolver validation against several earlier signed x64 Spotify DLLs. This fork has not yet been independently live-tested against every Spotify build.
+From Floggfy RC4, this also includes the read-only **To Disk** playback panel for current song, Spotify quality level, codec, average bitrate, sample rate and FLAC bit depth, including bounded observation when Downloads is off.
+
+Compatibility is inherited from the Floggfy RC4 base: live tested there with Spotify 1.3.3.264 and resolver-validated against several earlier signed x64 Spotify DLLs. This fork has not yet been independently live-tested against every Spotify build.
