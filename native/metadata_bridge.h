@@ -7,4 +7,5 @@ namespace history {
 void StartMetadataCollector(HMODULE cef);
 void EnrichTags(const Media&,Tags&);
 void EnrichCatalog(const Media&,Catalog&);
+std::string ReadClientPlaybackQuality(const Media&);
 }
