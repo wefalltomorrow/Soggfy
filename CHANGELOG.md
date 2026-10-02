@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.9
+
+- Fixed valid Ogg captures being discarded when Spotify internally replays already-consumed Ogg pages during buffering/decoder reuse.
+- Replayed pages from the same logical stream are ignored instead of being appended twice or treated as a missing-page failure.
+- Replayed Vorbis BOS/identification pages no longer replace an in-progress capture.
+- Genuine forward page gaps, CRC failures, serial mismatches, corrupt granules, seeks and incomplete listens are still rejected.
+- Added regression coverage proving a capture can survive duplicate data and BOS pages and still complete normally.
+
 ## 3.0.0-rc.8
 
 - Made Skip Downloaded Tracks recognize existing Soggfy audio regardless of the currently selected output format.
