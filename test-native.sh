@@ -11,6 +11,8 @@ build/hook-rollback-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/cef_identity_test.cpp -o build/cef-identity-test
 build/cef-identity-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/cef_menu_capability_test.cpp -o build/cef-menu-capability-test
+g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/cef_request_filter_core_test.cpp native/cef_request_filter_core.cpp -o build/cef-request-filter-core-test
+build/cef-request-filter-core-test
 build/cef-menu-capability-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/module_pending_test.cpp -o build/module-pending-test
 build/module-pending-test
