@@ -65,31 +65,46 @@ Result Stream::Push(const uint8_t* b, size_t n) {
     return Result::Append;
 }
 std::string Listen::Observe(const std::string& key, double pos, double length,
-                            bool is_playing, double time) {
+                            bool is_playing, double time, double playback_rate) {
     std::string done;
     transient=false;
-    double elapsed=time-last_time;
+    if(!std::isfinite(playback_rate) || playback_rate<0.25 || playback_rate>100.0)
+        playback_rate=1.0;
+    const double elapsed=time-last_time;
+    const double media_elapsed=(playing && elapsed>=0) ? elapsed*playback_rate : 0.0;
+    const double expected=last_position+media_elapsed;
+    const double tolerance=std::max(1.5,playback_rate*0.15);
+
     if(key!=identity) {
-        if(eligible && playing && duration>0 && elapsed>=0 && elapsed<=3
-           && last_position>=duration-1.0 && last_position+elapsed>=duration-0.1) done=identity;
-        identity=key; start_time=time-pos; duration=length;
-        eligible=!key.empty() && pos>=0 && pos<=1.5 && length>0;
+        // At accelerated playback the last sampled position can be many media
+        // seconds from the end. Accept a natural transition when wall-clock
+        // elapsed time at the active playback rate reaches the track end.
+        if(eligible && playing && duration>0 && elapsed>=0 && elapsed<=3 &&
+           expected>=duration-0.1) done=identity;
+        identity=key;
+        start_time=time-(pos/playback_rate);
+        duration=length;
+        eligible=!key.empty() && pos>=0 && pos<=std::max(1.5,playback_rate*0.15) && length>0;
         identity_time=time; pending_start=!eligible && !key.empty();
     } else if(!key.empty()) {
         // SMTC title and timeline are separate snapshots. At a natural end,
-        // the next timeline can arrive before its title. Keep the old end
-        // position briefly, so that an inconsistent snapshot cannot erase
-        // already observed coverage or replace the previous track's metadata.
-        if(eligible && playing && last_position>=duration-1.0 && pos<=1.5 &&
-           elapsed>=0 && elapsed<=3) { transient=true; return {}; }
-        if(pending_start && time-identity_time<=2 && pos>=0 && pos<=1.5 && length>0) {
-            start_time=time-pos; duration=length; eligible=true; pending_start=false;
+        // the next timeline can arrive before its title. Account for accelerated
+        // playback so a legitimate end/reset is not mistaken for a seek.
+        if(eligible && playing && pos<=std::max(1.5,playback_rate*0.15) &&
+           elapsed>=0 && elapsed<=3 && expected>=duration-0.1) {
+            transient=true; return {};
+        }
+        if(pending_start && time-identity_time<=2 &&
+           pos>=0 && pos<=std::max(1.5,playback_rate*0.15) && length>0) {
+            start_time=time-(pos/playback_rate); duration=length;
+            eligible=true; pending_start=false;
             last_time=time; last_position=pos; playing=is_playing; return {};
         }
-        double expected=last_position+(playing ? elapsed : 0);
-        if(elapsed<0 || elapsed>3 || pos<last_position-1.5 || pos>expected+1.5
-           || std::fabs(length-duration)>1.0) eligible=false;
-        if(eligible && playing && !is_playing && pos>=duration && expected>=duration-0.1) {
+        if(elapsed<0 || elapsed>3 || pos<last_position-tolerance ||
+           pos>expected+tolerance || std::fabs(length-duration)>1.0)
+            eligible=false;
+        if(eligible && playing && !is_playing &&
+           pos>=duration-tolerance && expected>=duration-0.1) {
             done=identity; eligible=false; pending_start=false;
         }
     }
