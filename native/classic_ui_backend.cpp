@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include "classic_ui_backend.h"
+#include "classic_path_match.h"
 #include "history_settings.h"
 #include "library_layout.h"
 #include <algorithm>
@@ -40,94 +41,6 @@ bool ArtistMatches(const ClassicTrackQuery& q,const Recent& entry) {
     if(first==live||all==live)return true;
     return (!first.empty() && live.find(first)!=std::wstring::npos) ||
            (!all.empty() && all.find(live)!=std::wstring::npos);
-}
-
-std::wstring RegexEscape(const std::wstring& value) {
-    static const std::wstring special=LR"(\.^$|()[]{}*+?)";
-    std::wstring out;out.reserve(value.size()*2);
-    for(wchar_t c:value) {
-        if(special.find(c)!=std::wstring::npos)out.push_back(L'\\');
-        out.push_back(c);
-    }
-    return out;
-}
-
-void ReplaceAll(std::wstring& text,const std::wstring& from,const std::wstring& to) {
-    if(from.empty())return;
-    for(size_t at=0;(at=text.find(from,at))!=std::wstring::npos;at+=to.size())
-        text.replace(at,from.size(),to);
-}
-
-std::wstring FinalExtensionRegex(const Settings& settings) {
-    if(!settings.output_ext.empty()) {
-        std::wstring ext=settings.output_ext;
-        if(ext.front()==L'.')ext.erase(ext.begin());
-        return RegexEscape(ext);
-    }
-    return L"(?:ogg|flac)";
-}
-
-std::wstring BuildTemplateRegex(const ClassicTrackQuery& q,const Settings& settings) {
-    std::wstring pattern=settings.path_template;
-    if(pattern.empty()) {
-        // Smart-layout fallback. Album and title are strong anchors; the artist
-        // folder is intentionally permissive because Windows media-session
-        // album-artist text can differ from a playlist row's first artist.
-        return L"^(?:Music\\\\)?Artists\\\\[^\\\\]+\\\\"+
-            RegexEscape(EscapePathValue(q.album,L"-",L"Unknown Album"))+
-            L"\\\\(?:\\d+ - )?"+
-            RegexEscape(EscapePathValue(q.title,L"-",L"Untitled"))+
-            L"\\.(?:"+FinalExtensionRegex(settings)+L")$";
-    }
-
-    std::wstring artist=q.artist;
-    std::wstring all=q.all_artists.empty()?q.artist:q.all_artists;
-    if(settings.normalize_artist_separators) {
-        ReplaceAll(all,L" / ",L", ");
-        ReplaceAll(artist,L" / ",L", ");
-    }
-
-    // Preserve multi_disc_path as a structural placeholder before escaping.
-    constexpr wchar_t multi_marker[]=L"\u0001MULTIDISC\u0001";
-    ReplaceAll(pattern,L"{multi_disc_path}",multi_marker);
-
-    std::wstring escaped;escaped.reserve(pattern.size()*2);
-    for(size_t i=0;i<pattern.size();) {
-        if(pattern[i]==L'{' ) {
-            auto close=pattern.find(L'}',i+1);
-            if(close!=std::wstring::npos) {
-                auto token=pattern.substr(i,close-i+1);
-                if(token==L"{track_name}")escaped+=RegexEscape(EscapePathValue(q.title,settings.invalid_char_repl,L"Untitled"));
-                else if(token==L"{artist_name}")escaped+=RegexEscape(EscapePathValue(artist,settings.invalid_char_repl,L"Unknown Artist"));
-                else if(token==L"{all_artist_names}")escaped+=RegexEscape(EscapePathValue(all,settings.invalid_char_repl,L"Unknown Artist"));
-                else if(token==L"{album_name}")escaped+=RegexEscape(EscapePathValue(q.album,settings.invalid_char_repl,L"Unknown Album"));
-                else if(token==L"{track_num}")escaped+=L"\\d+";
-                else if(token==L"{track_num_2}")escaped+=L"\\d{2}";
-                else if(token==L"{disc_num}")escaped+=L"\\d+";
-                else if(token==L"{release_year}")escaped+=L"\\d{4}";
-                else if(token==L"{release_date}")escaped+=L"\\d{4}(?:-\\d{2}(?:-\\d{2})?)?";
-                else if(token==L"{multi_disc_paren}")escaped+=L"(?: \\(CD \\d+\\))?";
-                else if(token==L"{playlist_name}"||token==L"{context_name}")escaped+=L"[^\\\\]+";
-                else if(token==L"{context_index}")escaped+=L"\\d+";
-                else if(token==L"{ext}")escaped+=FinalExtensionRegex(settings);
-                else escaped+=L"[^\\\\]+";
-                i=close+1;continue;
-            }
-        }
-        if(pattern.compare(i,wcslen(multi_marker),multi_marker)==0) {
-            escaped+=L"(?:\\\\CD \\d+)?";
-            i+=wcslen(multi_marker);continue;
-        }
-        wchar_t c=pattern[i++];
-        if(c==L'/'||c==L'\\')escaped+=L"\\\\";
-        else escaped+=RegexEscape(std::wstring(1,c));
-    }
-
-    if(pattern.find(L"{ext}")==std::wstring::npos) {
-        std::wstring ext=FinalExtensionRegex(settings);
-        escaped+=L"\\.(?:"+ext+L")";
-    }
-    return L"^"+escaped+L"$";
 }
 
 std::wstring DisplayPath(const std::filesystem::path& path) {
@@ -197,7 +110,10 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
             results.push_back(std::move(result));continue;
         }
         try {
-            pending.push_back({q,std::wregex(BuildTemplateRegex(q,settings),
+            ClassicPathQuery path_query{q.title,q.artist,q.album,q.all_artists};
+            pending.push_back({q,std::wregex(BuildClassicPathRegex(path_query,settings.path_template,
+                               settings.output_ext,settings.normalize_artist_separators,
+                               settings.invalid_char_repl),
                                std::regex_constants::ECMAScript|std::regex_constants::icase),{},0});
         } catch(...) {
             result.status="WARN";result.message="Invalid path template";
