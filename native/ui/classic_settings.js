@@ -88,6 +88,11 @@ function row(label,action){
   const a=document.createElement('div');a.className='col action';a.appendChild(action);
   n.append(d,a);return n;
 }
+function readOnly(key){
+  const n=document.createElement('span');n.className='sgf-readonly-value';
+  n.textContent=sgf.state[key]||'Unavailable';
+  register(key,n);return n;
+}
 function rows(label,action){
   const n=document.createElement('div');n.className='sgf-setting-rows';
   if(label){const l=document.createElement('label');l.textContent=label;n.appendChild(l);}
@@ -192,6 +197,10 @@ sgf.openSettings=()=>{
   );
 
   const modern=section('Modern capture',
+    row('Current song',readOnly('qualitySong')),
+    row('Spotify quality',readOnly('qualityLevel')),
+    row('Current format',readOnly('qualityFormat')),
+    row('Sample rate / depth',readOnly('qualitySample')),
     row('Capture native FLAC',toggle('flac')),
     row('Capture Ogg/Vorbis',toggle('ogg')),
     row('Cached metadata enrichment',toggle('metadata')),
@@ -211,6 +220,10 @@ sgf.openSettings=()=>{
   document.body.appendChild(outer);
   sgf.refreshControls?.();
   sgf.send('sync','1');
+  const qualityTimer=setInterval(()=>{
+    if(!outer.isConnected){clearInterval(qualityTimer);return;}
+    sgf.send('sync','1');
+  },1000);
 };
 
 })();

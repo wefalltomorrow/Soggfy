@@ -120,6 +120,15 @@ static std::wstring UiConfigCode() {
  add("keepNative",bit(s.keep_native_original));
  add("playbackSpeed",std::to_string(s.playback_speed));
  add("speedSupported",bit(PlaybackSpeedSupported()));
+ const auto quality=PlaybackQualityLabels(ReadPlaybackQuality());
+ auto quality_value=[](const std::wstring& row) {
+  const auto at=row.find(L": ");
+  return at==std::wstring::npos?row:row.substr(at+2);
+ };
+ add("qualitySong",Utf8(quality_value(quality[0])));
+ add("qualityLevel",Utf8(quality_value(quality[1])));
+ add("qualityFormat",Utf8(quality_value(quality[2])));
+ add("qualitySample",Utf8(quality_value(quality[3])));
  add("root",Utf8(s.root));
  add("template",Utf8(s.path_template));
  add("podcastTemplate",Utf8(s.podcast_template));

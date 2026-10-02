@@ -14,7 +14,9 @@ sgf.state = Object.assign({
   downloads:false, ogg:true, flac:true, metadata:true, log:true, debug:false, normalize:true,
   skipDownloaded:false, skipIgnored:false, embedCover:true, saveCover:true, embedLyrics:true,
   saveLyrics:true, saveCanvas:false, blockTelemetry:true, liftQueue:false, keepNative:true,
-  playbackSpeed:1, root:'', template:'', podcastTemplate:'', canvasTemplate:'',
+  playbackSpeed:1, speedSupported:false,
+  qualitySong:'Unavailable', qualityLevel:'Unavailable', qualityFormat:'Unavailable', qualitySample:'Unavailable',
+  root:'', template:'', podcastTemplate:'', canvasTemplate:'',
   invalidChars:'unicode', outputPreset:'Native', outputExt:'', outputArgs:'', ffmpegPath:''
 }, sgf.state || {});
 
@@ -51,7 +53,7 @@ const css = [
 '.sgf-setting-row{display:flex;align-items:center;flex-direction:row;margin:4px 0;min-height:37px}.sgf-setting-row .col.description{float:left;padding-right:15px;cursor:default;flex:1}.sgf-setting-row .col.action{float:right;text-align:right;min-width:180px}.sgf-setting-rows{display:flex;flex-direction:column;margin:4px 0}.sgf-setting-cols{display:flex;flex-direction:row;align-items:center;gap:4px}.sgf-setting-section{margin:12px 0 22px}.sgf-setting-section h2{margin:0 0 8px}.sgf-subsection{margin-left:20px}',
 '.sgf-status-indicator{background:transparent;border:0;display:flex;position:relative}.sgf-status-indicator-card{display:flex;flex-direction:column;position:absolute;background:#222;border-radius:4px;top:-18px;padding:4px;transform:translateX(calc(-50% + 8px));box-shadow:2px 2px 6px 4px rgb(0 0 0 / 25%);opacity:0;transition:opacity .1s ease-out .5s;z-index:999;max-width:260px;width:max-content}.sgf-status-indicator:hover .sgf-status-indicator-card{opacity:1}.sgf-status-browse-button{background:transparent;border:0;height:24px;display:flex;cursor:pointer;align-items:center}',
 '.sgf-notification-bubble{display:flex;position:fixed;z-index:100000;background:#222;padding:6px 10px;border-radius:4px;pointer-events:none;box-shadow:1px 1px 4px rgb(0 0 0 / 30%);left:50%;bottom:105px;transform:translateX(-50%);animation:sgf-fade-out .2s ease var(--delay,2.5s) forwards}.sgf-notification-wrapper{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500}@keyframes sgf-fade-out{from{opacity:1}to{opacity:0}}',
-'.sgf-modern-note{font-size:11px;color:#bbb;line-height:16px;margin:4px 0 10px}'
+'.sgf-modern-note{font-size:11px;color:#bbb;line-height:16px;margin:4px 0 10px}',`.sgf-readonly-value{font-size:12px;color:var(--sgf-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;display:inline-block;vertical-align:middle}`
 ].join('');
 
 if (!document.getElementById('soggfy-classic-style')) {
@@ -99,9 +101,11 @@ sgf.applyConfig = payload => {
     const p=new URLSearchParams(payload||'');
     const bools=['downloads','ogg','flac','metadata','log','debug','normalize','skipDownloaded','skipIgnored','embedCover','saveCover','embedLyrics','saveLyrics','saveCanvas','blockTelemetry','liftQueue','keepNative'];
     for(const key of bools)sgf.state[key]=sgf.flag(p,key,sgf.state[key]);
-    const strings=['root','template','podcastTemplate','canvasTemplate','invalidChars','outputPreset','outputExt','outputArgs','ffmpegPath'];
+    const strings=['root','template','podcastTemplate','canvasTemplate','invalidChars','outputPreset','outputExt','outputArgs','ffmpegPath',
+      'qualitySong','qualityLevel','qualityFormat','qualitySample'];
     for(const key of strings)if(p.has(key))sgf.state[key]=p.get(key)||'';
     if(p.has('playbackSpeed'))sgf.state.playbackSpeed=Math.max(1,Math.min(50,Number(p.get('playbackSpeed'))||1));
+    if(p.has('speedSupported'))sgf.state.speedSupported=sgf.flag(p,'speedSupported',sgf.state.speedSupported);
     if(sgf.refreshControls)sgf.refreshControls();
   } catch {}
 };
@@ -213,6 +217,7 @@ sgf.refreshControls = () => {
     else if(node.tagName==='SELECT')node.value=sgf.state[key]??node.value;
     else if(node.type==='range'&&key in sgf.state)node.value=String(sgf.state[key]??node.value);
     else if(node.type==='text'&&key in sgf.state)node.value=sgf.state[key]??'';
+    else if(node.classList?.contains('sgf-readonly-value')&&key in sgf.state)node.textContent=sgf.state[key]||'Unavailable';
   }
   if(sgf.topbar?.isConnected&&sgf.topbar.children[0])
     sgf.topbar.children[0].innerHTML=sgf.state.downloads?sgf.Icons.FileDownload:sgf.Icons.FileDownloadOff;
