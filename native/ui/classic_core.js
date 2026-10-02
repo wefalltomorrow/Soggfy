@@ -205,6 +205,7 @@ sgf.refreshControls = () => {
     if(!node?.isConnected)continue;
     if(node.type==='checkbox')node.checked=!!sgf.state[key];
     else if(node.tagName==='SELECT')node.value=sgf.state[key]??node.value;
+    else if(node.type==='range'&&key in sgf.state)node.value=String(sgf.state[key]??node.value);
     else if(node.type==='text'&&key in sgf.state)node.value=sgf.state[key]??'';
   }
   if(sgf.topbar?.isConnected&&sgf.topbar.children[0])

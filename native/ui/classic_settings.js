@@ -134,6 +134,7 @@ sgf.openSettings=()=>{
   const {outer,body}=makeOverlay();
 
   const formatOptions=Object.fromEntries(Object.keys(presets).map(x=>[x,x]));
+  if(sgf.state.outputPreset==='Native')sgf.state.outputPreset='Native Spotify format';
   if(!formatOptions[sgf.state.outputPreset])sgf.state.outputPreset='Custom';
   const format=select('outputPreset',formatOptions,value=>{
     sgf.state.outputPreset=value;sgf.send('outputPreset',value);
