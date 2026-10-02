@@ -22,28 +22,38 @@ static std::wstring Safe(std::wstring s,const wchar_t* fallback) {
     if(ReservedName(s)) s=L"_"+s;
     return s;
 }
-static std::wstring UnicodeSafe(std::wstring s,const wchar_t* fallback) {
-    for(wchar_t& c:s) {
-        if(c<32) c=L'-';
-        else switch(c) {
-            case L'\\': c=L'\uFF3C'; break;
-            case L'/': c=L'\uFF0F'; break;
-            case L':': c=L'\uFF1A'; break;
-            case L'*': c=L'\uFF0A'; break;
-            case L'?': c=L'\uFF1F'; break;
-            case L'"': c=L'\uFF02'; break;
-            case L'<': c=L'\uFF1C'; break;
-            case L'>': c=L'\uFF1E'; break;
-            case L'|': c=L'\uFFE4'; break;
+std::wstring EscapePathValue(const std::wstring& value,const std::wstring& replacement_mode,
+                             const wchar_t* fallback) {
+    std::wstring s=value;
+    auto replacement=[&](wchar_t c)->std::wstring {
+        if(replacement_mode==L"-")return L"-";
+        if(replacement_mode==L"_")return L"_";
+        if(replacement_mode.empty())return L"";
+        switch(c) {
+            case L'\\': return L"＼";
+            case L'/': return L"／";
+            case L':': return L"：";
+            case L'*': return L"＊";
+            case L'?': return L"？";
+            case L'"': return L"＂";
+            case L'<': return L"＜";
+            case L'>': return L"＞";
+            case L'|': return L"￤";
+            default: return L" ";
         }
+    };
+    std::wstring out;out.reserve(s.size()+4);
+    for(wchar_t c:s) {
+        if(c<32 || Invalid(c))out+=replacement(c);
+        else out.push_back(c);
     }
-    for(size_t i=0;i<s.size() && s[i]==L' ';++i)s[i]=L'\u2002';
-    for(size_t i=s.size();i && s[i-1]==L' ';--i)s[i-1]=L'\u2002';
-    for(size_t i=s.size();i && s[i-1]==L'.';--i)s[i-1]=L'\uFF0E';
-    if(s.empty())s=fallback;
-    if(s.size()>120)s.resize(120);
-    if(ReservedName(s))s+=L'\u2002';
-    return s;
+    for(size_t i=0;i<out.size() && out[i]==L' ';++i)out[i]=L'\u2002';
+    for(size_t i=out.size();i && out[i-1]==L' ';--i)out[i-1]=L'\u2002';
+    for(size_t i=out.size();i && out[i-1]==L'.';--i)out[i-1]=L'\uFF0E';
+    if(out.empty())out=fallback;
+    if(out.size()>120)out.resize(120);
+    if(ReservedName(out))out+=L'\u2002';
+    return out;
 }
 static void ReplaceAll(std::wstring& text,const std::wstring& from,const std::wstring& to) {
     if(from.empty())return;
@@ -61,23 +71,23 @@ static std::wstring NormalizeArtists(std::wstring value,bool enabled) {
     return value;
 }
 static std::wstring RenderSegment(std::wstring part,const Catalog& c,const std::wstring& extension,
-                                  bool normalize_artist_separators) {
+                                  bool normalize_artist_separators,const std::wstring& invalid_char_replacement) {
     std::wstring ext=extension;
     if(!ext.empty() && ext.front()==L'.')ext.erase(ext.begin());
     std::wstring artist=c.album_artist.empty()?c.artist:c.album_artist;
     std::wstring all=NormalizeArtists(c.all_artists.empty()?c.artist:c.all_artists,normalize_artist_separators);
-    ReplaceAll(part,L"{track_name}",UnicodeSafe(c.title,L"Untitled"));
-    ReplaceAll(part,L"{artist_name}",UnicodeSafe(artist,L"Unknown Artist"));
-    ReplaceAll(part,L"{all_artist_names}",UnicodeSafe(all,L"Unknown Artist"));
-    ReplaceAll(part,L"{album_name}",UnicodeSafe(c.album,L"Unknown Album"));
+    ReplaceAll(part,L"{track_name}",EscapePathValue(c.title,invalid_char_replacement,L"Untitled"));
+    ReplaceAll(part,L"{artist_name}",EscapePathValue(artist,invalid_char_replacement,L"Unknown Artist"));
+    ReplaceAll(part,L"{all_artist_names}",EscapePathValue(all,invalid_char_replacement,L"Unknown Artist"));
+    ReplaceAll(part,L"{album_name}",EscapePathValue(c.album,invalid_char_replacement,L"Unknown Album"));
     ReplaceAll(part,L"{track_num}",Number(c.track));
     ReplaceAll(part,L"{track_num_2}",Number(c.track,2));
     ReplaceAll(part,L"{disc_num}",Number(c.disc));
     ReplaceAll(part,L"{release_year}",Number(c.release_year));
-    ReplaceAll(part,L"{release_date}",UnicodeSafe(c.release_date,L""));
+    ReplaceAll(part,L"{release_date}",EscapePathValue(c.release_date,invalid_char_replacement,L""));
     ReplaceAll(part,L"{multi_disc_paren}",c.total_discs>1&&c.disc?L" (CD "+Number(c.disc)+L")":L"");
-    ReplaceAll(part,L"{ext}",UnicodeSafe(ext,L"bin"));
-    return UnicodeSafe(part,L"_");
+    ReplaceAll(part,L"{ext}",EscapePathValue(ext,invalid_char_replacement,L"bin"));
+    return EscapePathValue(part,invalid_char_replacement,L"_");
 }
 static bool EndsWithInsensitive(const std::wstring& value,const std::wstring& suffix) {
     if(suffix.size()>value.size())return false;
@@ -111,7 +121,8 @@ std::wstring RelativePath(const Catalog& c,const std::wstring& extension) {
     return out+Safe(c.title,L"Untitled")+extension;
 }
 std::wstring RelativePathTemplate(const Catalog& c,const std::wstring& extension,
-                                  const std::wstring& pattern,bool normalize_artist_separators) {
+                                  const std::wstring& pattern,bool normalize_artist_separators,
+                                  const std::wstring& invalid_char_replacement) {
     if(pattern.empty())return {};
     std::wstring expanded=pattern;
     ReplaceAll(expanded,L"{multi_disc_path}",
@@ -123,7 +134,7 @@ std::wstring RelativePathTemplate(const Catalog& c,const std::wstring& extension
             if(i>start) {
                 auto raw=expanded.substr(start,i-start);
                 if(raw==L"." || raw==L"..")return {};
-                parts.push_back(RenderSegment(raw,c,extension,normalize_artist_separators));
+                parts.push_back(RenderSegment(raw,c,extension,normalize_artist_separators,invalid_char_replacement));
             }
             start=i+1;
         }
@@ -138,9 +149,10 @@ std::wstring RelativePathTemplate(const Catalog& c,const std::wstring& extension
     return out;
 }
 std::wstring OutputPath(const std::wstring& root,const Catalog& item,const std::wstring& extension,
-                        bool music_folder,const std::wstring& pattern,bool normalize_artist_separators) {
+                        bool music_folder,const std::wstring& pattern,bool normalize_artist_separators,
+                        const std::wstring& invalid_char_replacement) {
     auto relative=pattern.empty()?RelativePath(item,extension):
-        RelativePathTemplate(item,extension,pattern,normalize_artist_separators);
+        RelativePathTemplate(item,extension,pattern,normalize_artist_separators,invalid_char_replacement);
     if(relative.empty())relative=RelativePath(item,extension);
     if(pattern.empty() && music_folder && relative.rfind(L"Music\\",0)==0) relative.erase(0,6);
     auto base=root;
