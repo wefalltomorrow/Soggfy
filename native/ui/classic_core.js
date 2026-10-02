@@ -46,13 +46,13 @@ const css = [
 '.sgf-collapsible{padding:4px 4px 0;background:var(--sgf-active);border-radius:4px;overflow:hidden;max-height:33px;transition:max-height .5s ease}.sgf-collapsible[open]{padding:4px;border-bottom:0;max-height:30rem}.sgf-collapsible>summary{border-radius:4px;margin:-4px -4px 0;padding:4px;list-style:none;background-color:var(--sgf-inactive);color:var(--sgf-text);cursor:pointer}.sgf-collapsible[open]>summary{margin-bottom:4px}',
 '.sgf-tag-button{border-radius:4px;border:0;background-color:var(--sgf-inactive);color:var(--sgf-text);font-family:monospace;font-size:11px;cursor:pointer;padding:4px;margin:2px}.sgf-tag-button:hover{background-color:var(--sgf-hover)}',
 '.sgf-button{display:flex;justify-content:center;align-items:center;height:32px;border:none;border-radius:4px;background-color:var(--sgf-inactive);color:var(--sgf-text);gap:4px;padding:2px 8px;font-size:14px;cursor:pointer}',
-'.sgf-topbar-retractor{display:block;width:32px;height:32px;margin-right:8px;border-radius:32px;overflow:hidden;transition:all .15s ease}.sgf-topbar-retractor:hover{display:flex;width:68px;background:rgba(0,0,0,.25);gap:4px}.sgf-topbar-retractor button{margin-right:0!important;flex-shrink:0}',
+'.sgf-topbar-retractor{display:flex;align-items:center;width:32px;height:32px;margin-right:8px;border-radius:32px;overflow:hidden;gap:4px;transition:width .15s ease,background-color .15s ease}.sgf-topbar-retractor:hover{width:68px;background:rgba(0,0,0,.25)}.sgf-topbar-button{display:flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:32px;padding:0;margin:0!important;border:0;border-radius:50%;background:transparent;color:inherit;cursor:pointer;flex:0 0 32px;position:relative;z-index:1}.sgf-topbar-button:hover{background:rgba(255,255,255,.08)}.sgf-topbar-button:focus-visible{outline:2px solid #fff;outline-offset:-2px}',
 '.sgf-select,.sgf-text-input,.sgf-button{transition:background-color .1s ease-in-out}.sgf-select:hover,.sgf-text-input:hover,.sgf-button:hover{background-color:var(--sgf-hover)}',
-'.sgf-settings-overlay{display:flex;align-items:center;justify-content:center;background-color:rgba(0,0,0,.7);position:fixed;width:100%;height:100%;inset:0;overflow:hidden;z-index:99999;user-select:none}.sgf-settings-modal{width:40rem;height:90%;display:block}.sgf-settings-container{background-color:#333;border-radius:10px;box-shadow:0 0 8px 4px rgb(0 0 0 / 15%);height:inherit;max-height:45rem;display:flex;flex-direction:column;position:relative;top:50%;transform:translateY(-50%)}',
+'.sgf-settings-overlay{display:flex;align-items:center;justify-content:center;background-color:rgba(0,0,0,.7);position:fixed;width:100%;height:100%;inset:0;overflow:hidden;z-index:2147483000;pointer-events:auto;user-select:none}.sgf-settings-modal{width:40rem;height:90%;display:block}.sgf-settings-container{background-color:#333;border-radius:10px;box-shadow:0 0 8px 4px rgb(0 0 0 / 15%);height:inherit;max-height:45rem;display:flex;flex-direction:column;position:relative;top:50%;transform:translateY(-50%)}',
 '.sgf-settings-header{display:flex;align-items:baseline;border-bottom:1px solid rgba(255,255,255,.1);justify-content:space-between;padding:32px 32px 12px}.sgf-header-title{font-size:32px;font-weight:700;letter-spacing:-.04em;line-height:36px;text-transform:none}.sgf-settings-closeBtn{background-color:transparent;border:0;padding:8px;color:var(--sgf-text);cursor:pointer}.sgf-settings-closeBtn:hover{transform:scale(1.1)}.sgf-settings-elements{overflow:auto;padding:16px 32px}',
 '.sgf-setting-row{display:flex;align-items:center;flex-direction:row;margin:4px 0;min-height:37px}.sgf-setting-row .col.description{float:left;padding-right:15px;cursor:default;flex:1}.sgf-setting-row .col.action{float:right;text-align:right;min-width:180px}.sgf-setting-rows{display:flex;flex-direction:column;margin:4px 0}.sgf-setting-cols{display:flex;flex-direction:row;align-items:center;gap:4px}.sgf-setting-section{margin:12px 0 22px}.sgf-setting-section h2{margin:0 0 8px}.sgf-subsection{margin-left:20px}',
 '.sgf-status-indicator{background:transparent;border:0;display:flex;position:relative}.sgf-status-indicator-card{display:flex;flex-direction:column;position:absolute;background:#222;border-radius:4px;top:-18px;padding:4px;transform:translateX(calc(-50% + 8px));box-shadow:2px 2px 6px 4px rgb(0 0 0 / 25%);opacity:0;transition:opacity .1s ease-out .5s;z-index:999;max-width:260px;width:max-content}.sgf-status-indicator:hover .sgf-status-indicator-card{opacity:1}.sgf-status-browse-button{background:transparent;border:0;height:24px;display:flex;cursor:pointer;align-items:center}',
-'.sgf-notification-bubble{display:flex;position:fixed;z-index:100000;background:#222;padding:6px 10px;border-radius:4px;pointer-events:none;box-shadow:1px 1px 4px rgb(0 0 0 / 30%);left:50%;bottom:105px;transform:translateX(-50%);animation:sgf-fade-out .2s ease var(--delay,2.5s) forwards}.sgf-notification-wrapper{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500}@keyframes sgf-fade-out{from{opacity:1}to{opacity:0}}',
+'.sgf-notification-bubble{display:flex;position:fixed;z-index:2147483647;background:#222;padding:6px 10px;border-radius:4px;pointer-events:none;box-shadow:1px 1px 4px rgb(0 0 0 / 30%);left:50%;bottom:105px;transform:translateX(-50%);animation:sgf-fade-out .2s ease var(--delay,2.5s) forwards}.sgf-notification-wrapper{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500}@keyframes sgf-fade-out{from{opacity:1}to{opacity:0}}',
 '.sgf-modern-note{font-size:11px;color:#bbb;line-height:16px;margin:4px 0 10px}',`.sgf-readonly-value{font-size:12px;color:var(--sgf-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;display:inline-block;vertical-align:middle}`
 ].join('');
 
@@ -185,25 +185,47 @@ sgf.mountTopbar = existing => {
   if(existing){host.appendChild(existing);return existing;}
   const old=document.getElementById('soggfy-classic-topbar');
   if(old){old.remove();}
-  const fwd=document.querySelector("[data-testid='top-bar-forward-button'],.main-topBar-forward,.main-topBar-responsiveForward");
-  const buttonClass=fwd?.classList?.[0]||'sgf-native-button';
   const div=document.createElement('div');
   div.id='soggfy-classic-topbar';
   div.className='sgf-topbar-retractor';
+
+  const stopTopbarEvent=e=>{
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   const download=document.createElement('button');
-  download.className=buttonClass;
+  download.type='button';
+  download.className='sgf-topbar-button';
+  download.title=sgf.state.downloads?'Soggfy downloads enabled':'Soggfy downloads disabled';
+  download.setAttribute('aria-label',download.title);
   download.innerHTML=sgf.state.downloads?sgf.Icons.FileDownload:sgf.Icons.FileDownloadOff;
-  download.onclick=async()=>{
+  download.addEventListener('click',async e=>{
+    stopTopbarEvent(e);
     sgf.state.downloads=!sgf.state.downloads;
     sgf.send('downloads',sgf.state.downloads?'1':'0');
     download.innerHTML=sgf.state.downloads?sgf.Icons.FileDownload:sgf.Icons.FileDownloadOff;
+    download.title=sgf.state.downloads?'Soggfy downloads enabled':'Soggfy downloads disabled';
+    download.setAttribute('aria-label',download.title);
     if(sgf.state.downloads||sgf.state.playbackSpeed!==1)await sgf.resetCurrentTrack(!sgf.state.downloads);
     sgf.notify(sgf.state.downloads?'Soggfy downloads enabled':'Soggfy downloads disabled');
-  };
+  },true);
+
   const settings=document.createElement('button');
-  settings.className=buttonClass;
+  settings.type='button';
+  settings.className='sgf-topbar-button';
+  settings.title='Soggfy settings';
+  settings.setAttribute('aria-label',settings.title);
   settings.innerHTML=sgf.Icons.Sliders;
-  settings.onclick=()=>{if(sgf.openSettings)sgf.openSettings();};
+  settings.addEventListener('click',e=>{
+    stopTopbarEvent(e);
+    if(typeof sgf.openSettings==='function'){
+      sgf.openSettings();
+      return;
+    }
+    console.warn('Soggfy settings UI is not available');
+    sgf.notify('Soggfy settings UI failed to initialize',sgf.Icons.Warning);
+  },true);
   div.append(download,settings);
   host.appendChild(div);
   sgf.topbar=div;

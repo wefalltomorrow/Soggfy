@@ -124,19 +124,34 @@ function variableTags(){
   return details;
 }
 function makeOverlay(){
-  const outer=document.createElement('div');
-  outer.innerHTML='<div class="sgf-settings-overlay"><div class="sgf-settings-modal" tabindex="1" role="dialog"><div class="sgf-settings-container"><div class="sgf-settings-header"><h1 class="sgf-header-title">Soggfy settings</h1><button aria-label="Close" class="sgf-settings-closeBtn"><svg width="18" height="18" viewBox="0 0 32 32"><path d="M31.098 29.794 16.955 15.65 31.097 1.51 29.683.093 15.54 14.237 1.4.094-.016 1.508 14.126 15.65-.016 29.795l1.414 1.414L15.54 17.065l14.144 14.143" fill="currentColor"/></svg></button></div><div class="sgf-settings-elements"></div></div></div></div>';
-  const overlay=outer.firstElementChild,container=overlay.querySelector('.sgf-settings-container');
-  overlay.querySelector('.sgf-settings-closeBtn').onclick=()=>outer.remove();
+  const overlay=document.createElement('div');
+  overlay.className='sgf-settings-overlay';
+  overlay.innerHTML='<div class="sgf-settings-modal" tabindex="-1" role="dialog" aria-modal="true" aria-label="Soggfy settings"><div class="sgf-settings-container"><div class="sgf-settings-header"><h1 class="sgf-header-title">Soggfy settings</h1><button type="button" aria-label="Close" class="sgf-settings-closeBtn"><svg width="18" height="18" viewBox="0 0 32 32"><path d="M31.098 29.794 16.955 15.65 31.097 1.51 29.683.093 15.54 14.237 1.4.094-.016 1.508 14.126 15.65-.016 29.795l1.414 1.414L15.54 17.065l14.144 14.143" fill="currentColor"/></svg></button></div><div class="sgf-settings-elements"></div></div></div>';
+  const modal=overlay.querySelector('.sgf-settings-modal');
+  const container=overlay.querySelector('.sgf-settings-container');
+  const close=()=>overlay.remove();
+  overlay.querySelector('.sgf-settings-closeBtn').addEventListener('click',e=>{
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  },true);
   let outside=false;
-  overlay.onmousedown=e=>outside=!container.contains(e.target);
-  overlay.onmouseup=e=>{if(outside&&!container.contains(e.target))outer.remove();};
-  return {outer,body:overlay.querySelector('.sgf-settings-elements')};
+  overlay.addEventListener('mousedown',e=>{outside=!container.contains(e.target);},true);
+  overlay.addEventListener('mouseup',e=>{
+    if(outside&&!container.contains(e.target))close();
+    outside=false;
+  },true);
+  overlay.addEventListener('keydown',e=>{if(e.key==='Escape')close();},true);
+  return {overlay,modal,body:overlay.querySelector('.sgf-settings-elements')};
 }
 
 sgf.openSettings=()=>{
-  const existing=document.querySelector('.sgf-settings-overlay');if(existing)return;
-  const {outer,body}=makeOverlay();
+  const existing=document.querySelector('.sgf-settings-overlay');
+  if(existing){
+    existing.querySelector('.sgf-settings-modal')?.focus();
+    return;
+  }
+  const {overlay,modal,body}=makeOverlay();
 
   const formatOptions=Object.fromEntries(Object.keys(presets).map(x=>[x,x]));
   if(sgf.state.outputPreset==='Native'||sgf.state.outputPreset==='Native Spotify format')sgf.state.outputPreset='Original OGG / FLAC';
@@ -217,11 +232,12 @@ sgf.openSettings=()=>{
   );
 
   body.append(general,paths,modern,misc);
-  document.body.appendChild(outer);
+  document.body.appendChild(overlay);
+  modal?.focus();
   sgf.refreshControls?.();
   sgf.send('sync','1');
   const qualityTimer=setInterval(()=>{
-    if(!outer.isConnected){clearInterval(qualityTimer);return;}
+    if(!overlay.isConnected){clearInterval(qualityTimer);return;}
     sgf.send('sync','1');
   },1000);
 };
