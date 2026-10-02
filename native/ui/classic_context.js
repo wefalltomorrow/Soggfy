@@ -5,35 +5,115 @@ if(!sgf||sgf.__contextLoaded)return;
 sgf.__contextLoaded=true;
 
 let contextInfo=null,contextUris=[];
+
+const isSpotifyUri=value =>
+  typeof value==='string' &&
+  /^spotify:(track|episode|album|playlist|artist):[A-Za-z0-9]+$/.test(value);
+
+function selectionFromObject(root){
+  const stack=[root],seen=new Set();let budget=500;
+  while(stack.length&&budget-->0){
+    const value=stack.pop();
+    if(!value||typeof value!=='object'||seen.has(value))continue;
+    seen.add(value);
+
+    const probes=[value,value.props,value.memoizedProps,value.pendingProps].filter(Boolean);
+    for(const p of probes){
+      if(!p||typeof p!=='object')continue;
+      const contextUri=[
+        p.contextUri,p.reference?.uri,p.context?.uri
+      ].find(isSpotifyUri)||'';
+      const directUri=[p.uri,p.item?.uri].find(isSpotifyUri)||'';
+      const uris=Array.isArray(p.uris)?p.uris.filter(isSpotifyUri):[];
+
+      // Match old Sprinkles semantics:
+      // contextUri + uri means a track inside a collection -> ignore the track.
+      if(contextUri&&directUri)return {contextUri,trackUris:[directUri]};
+      if(uris.length)return {contextUri,trackUris:[...new Set(uris)]};
+      if(p.item?.uri&&isSpotifyUri(p.item.uri))return {contextUri,trackUris:[p.item.uri]};
+      if(contextUri)return {contextUri,trackUris:[]};
+      if(directUri)return {contextUri:directUri,trackUris:[]};
+    }
+
+    for(const child of Object.values(value)){
+      if(child&&typeof child==='object'&&!seen.has(child))stack.push(child);
+    }
+  }
+  return null;
+}
+
 function collectContextUris(target){
-  const row=target?.closest?.('div[data-testid="tracklist-row"],.main-trackList-trackListRow,div[role="row"]');
+  const row=target?.closest?.(
+    'div[data-testid="tracklist-row"],.main-trackList-trackListRow,div[role="row"]'
+  );
   contextInfo=row?sgf.trackInfoFromRows?.([row])?.[0]:null;
-  const uris=new Set(contextInfo?.ignoreUris||[]);
-  let node=target;
-  for(let depth=0;node&&depth<8;depth++,node=node.parentElement){
+
+  // A track-row context menu should ignore only that track, exactly like
+  // legacy Sprinkles, not its album/artist/page context as well.
+  if(contextInfo?.uri){
+    contextUris=[contextInfo.uri];
+    return;
+  }
+
+  let selection=null;
+  for(let node=target,depth=0;node&&depth<8&&!selection;node=node.parentElement,depth++){
     for(const key of Object.keys(node)){
-      if(!key.startsWith('__reactProps
+      if(!key.startsWith('__reactProps$')&&!key.startsWith('__reactFiber$'))continue;
+      selection=selectionFromObject(node[key]);
+      if(selection)break;
+    }
+  }
+
+  if(selection){
+    contextUris=selection.trackUris?.length
+      ? [...new Set(selection.trackUris)]
+      : (selection.contextUri?[selection.contextUri]:[]);
+    return;
+  }
+
+  const match=location.pathname.match(/\/(playlist|album|artist)\/([A-Za-z0-9]+)/);
+  contextUris=match?['spotify:'+match[1]+':'+match[2]]:[];
+}
+
+document.addEventListener('contextmenu',event=>collectContextUris(event.target),true);
 
 function addItem(menu,label,icon,handler,reference){
-  const li=(reference?.closest?.('li')||reference)?.cloneNode?.(true);
+  const template=reference?.closest?.('li')||reference;
+  const li=template?.cloneNode?.(true);
   if(!li)return null;
-  const span=li.querySelector('span');if(span)span.textContent=label;
+
+  const span=li.querySelector('span');
+  if(span)span.textContent=label;
+
   const button=li.querySelector('button')||li;
-  button.onclick=e=>{e.preventDefault();e.stopPropagation();handler();menu.closest('[role="menu"],#context-menu')?.remove?.();};
+  button.classList?.remove?.('QgtQw2NJz7giDZxap2BB');
+  button.onclick=event=>{
+    event.preventDefault();
+    event.stopPropagation();
+    handler();
+    menu.closest('[role="menu"],#context-menu')?.remove?.();
+  };
+
   const svg=li.querySelector('svg');
   if(svg&&icon){
-    const repl=sgf.parseHtml(icon);svg.innerHTML=repl.innerHTML;svg.setAttribute('viewBox',repl.getAttribute('viewBox')||'0 0 24 24');
+    const replacement=sgf.parseHtml(icon);
+    svg.innerHTML=replacement.innerHTML;
+    svg.setAttribute('viewBox',replacement.getAttribute('viewBox')||'0 0 24 24');
   }
-  reference.closest?.('li')?.insertAdjacentElement('afterend',li);
+
+  template.insertAdjacentElement('afterend',li);
   return li;
 }
+
 function handleMenu(menu){
   if(!menu||menu.__sgfHandled)return;
-  const ref=menu.querySelector('button,[role="menuitem"]');if(!ref)return;
+  const ref=menu.querySelector('button,[role="menuitem"]');
+  if(!ref)return;
   menu.__sgfHandled=true;
 
   if(sgf.state.liftQueue){
-    const queue=[...menu.querySelectorAll('li,[role="menuitem"]')].find(x=>/add to queue/i.test(x.textContent||''));
+    const queue=[...menu.querySelectorAll('li,[role="menuitem"]')]
+      .find(item=>/add to queue/i.test(item.textContent||''));
     if(queue&&queue.parentElement===menu)menu.insertBefore(queue,menu.firstChild);
   }
 
@@ -43,130 +123,31 @@ function handleMenu(menu){
 
   if(contextUris.length){
     const ignored=contextUris.some(uri=>sgf.isIgnored?.(uri));
-    const primary=contextUris.find(uri=>/^spotify:(track|episode):/.test(uri))||contextUris[0];
-    const type=(primary.split(':')[1]||'item')+(contextUris.length>1?'s':'');
-    addItem(menu,(ignored?'Unignore ':'Ignore ')+type,
-      sgf.Icons.Block,()=>{
+    const resource=contextUris[0].split(':')[1]||'item';
+    const label=resource+(contextUris.length>1?'s':'');
+    addItem(
+      menu,
+      (ignored?'Unignore ':'Ignore ')+label,
+      sgf.Icons.Block,
+      ()=>{
         sgf.setIgnoredMany?.(contextUris,!ignored);
         const current=sgf.currentState?.()?.item;
         sgf.send('ignore_current',sgf.isTrackIgnored?.(current)?'1':'0');
-        sgf.notify((ignored?'Unignored ':'Ignored ')+(contextInfo?.title||type));
-      },ref);
+        sgf.notify((ignored?'Unignored ':'Ignored ')+(contextInfo?.title||label));
+      },
+      ref
+    );
   }
 }
-const obs=new MutationObserver(()=>{
+
+const observer=new MutationObserver(()=>{
   const menus=document.querySelectorAll('#context-menu ul,[role="menu"]');
   for(const menu of menus)handleMenu(menu);
 });
-const start=()=>{if(!document.body){setTimeout(start,100);return;}obs.observe(document.body,{childList:true,subtree:true});};
-start();
-})();)&&!key.startsWith('__reactFiber
 
-function addItem(menu,label,icon,handler,reference){
-  const li=(reference?.closest?.('li')||reference)?.cloneNode?.(true);
-  if(!li)return null;
-  const span=li.querySelector('span');if(span)span.textContent=label;
-  const button=li.querySelector('button')||li;
-  button.onclick=e=>{e.preventDefault();e.stopPropagation();handler();menu.closest('[role="menu"],#context-menu')?.remove?.();};
-  const svg=li.querySelector('svg');
-  if(svg&&icon){
-    const repl=sgf.parseHtml(icon);svg.innerHTML=repl.innerHTML;svg.setAttribute('viewBox',repl.getAttribute('viewBox')||'0 0 24 24');
-  }
-  reference.closest?.('li')?.insertAdjacentElement('afterend',li);
-  return li;
-}
-function handleMenu(menu){
-  if(!menu||menu.__sgfHandled)return;
-  const ref=menu.querySelector('button,[role="menuitem"]');if(!ref)return;
-  menu.__sgfHandled=true;
-
-  if(sgf.state.liftQueue){
-    const queue=[...menu.querySelectorAll('li,[role="menuitem"]')].find(x=>/add to queue/i.test(x.textContent||''));
-    if(queue&&queue.parentElement===menu)menu.insertBefore(queue,menu.firstChild);
-  }
-
-  if(sgf.hasM3UContext?.()){
-    addItem(menu,'Generate M3U',sgf.Icons.SaveAs,()=>sgf.generateM3U?.(),ref);
-  }
-
-  if(contextInfo?.uri){
-    const ignored=sgf.isIgnored?.(contextInfo.uri);
-    addItem(menu,(ignored?'Unignore ':'Ignore ')+(contextInfo.uri.includes(':episode:')?'episode':'track'),
-      sgf.Icons.Block,()=>{
-        sgf.setIgnored?.(contextInfo.uri,!ignored);
-        sgf.send('ignore_current',(!ignored&&sgf.currentState()?.item?.uri===contextInfo.uri)?'1':'0');
-        sgf.notify((ignored?'Unignored ':'Ignored ')+contextInfo.title);
-      },ref);
-  }
-}
-const obs=new MutationObserver(()=>{
-  const menus=document.querySelectorAll('#context-menu ul,[role="menu"]');
-  for(const menu of menus)handleMenu(menu);
-});
-const start=()=>{if(!document.body){setTimeout(start,100);return;}obs.observe(document.body,{childList:true,subtree:true});};
-start();
-})();))continue;
-      const root=node[key],stack=[root],seen=new Set();let budget=350;
-      while(stack.length&&budget-->0){
-        const v=stack.pop();if(!v||typeof v!=='object'||seen.has(v))continue;seen.add(v);
-        for(const [k,x] of Object.entries(v)){
-          if(typeof x==='string'&&/^spotify:(track|episode|album|playlist|artist):/.test(x) &&
-             /uri|context/i.test(k))uris.add(x);
-          else if(Array.isArray(x)&&/uris/i.test(k))for(const u of x)if(typeof u==='string'&&u.startsWith('spotify:'))uris.add(u);
-          else if(x&&typeof x==='object'&&!seen.has(x))stack.push(x);
-        }
-      }
-    }
-  }
-  if(!uris.size){
-    const m=location.pathname.match(/\/(playlist|album|artist)\/([A-Za-z0-9]+)/);
-    if(m)uris.add('spotify:'+m[1]+':'+m[2]);
-  }
-  contextUris=[...uris];
-}
-document.addEventListener('contextmenu',event=>collectContextUris(event.target),true);
-
-function addItem(menu,label,icon,handler,reference){
-  const li=(reference?.closest?.('li')||reference)?.cloneNode?.(true);
-  if(!li)return null;
-  const span=li.querySelector('span');if(span)span.textContent=label;
-  const button=li.querySelector('button')||li;
-  button.onclick=e=>{e.preventDefault();e.stopPropagation();handler();menu.closest('[role="menu"],#context-menu')?.remove?.();};
-  const svg=li.querySelector('svg');
-  if(svg&&icon){
-    const repl=sgf.parseHtml(icon);svg.innerHTML=repl.innerHTML;svg.setAttribute('viewBox',repl.getAttribute('viewBox')||'0 0 24 24');
-  }
-  reference.closest?.('li')?.insertAdjacentElement('afterend',li);
-  return li;
-}
-function handleMenu(menu){
-  if(!menu||menu.__sgfHandled)return;
-  const ref=menu.querySelector('button,[role="menuitem"]');if(!ref)return;
-  menu.__sgfHandled=true;
-
-  if(sgf.state.liftQueue){
-    const queue=[...menu.querySelectorAll('li,[role="menuitem"]')].find(x=>/add to queue/i.test(x.textContent||''));
-    if(queue&&queue.parentElement===menu)menu.insertBefore(queue,menu.firstChild);
-  }
-
-  if(sgf.hasM3UContext?.()){
-    addItem(menu,'Generate M3U',sgf.Icons.SaveAs,()=>sgf.generateM3U?.(),ref);
-  }
-
-  if(contextInfo?.uri){
-    const ignored=sgf.isIgnored?.(contextInfo.uri);
-    addItem(menu,(ignored?'Unignore ':'Ignore ')+(contextInfo.uri.includes(':episode:')?'episode':'track'),
-      sgf.Icons.Block,()=>{
-        sgf.setIgnored?.(contextInfo.uri,!ignored);
-        sgf.send('ignore_current',(!ignored&&sgf.currentState()?.item?.uri===contextInfo.uri)?'1':'0');
-        sgf.notify((ignored?'Unignored ':'Ignored ')+contextInfo.title);
-      },ref);
-  }
-}
-const obs=new MutationObserver(()=>{
-  const menus=document.querySelectorAll('#context-menu ul,[role="menu"]');
-  for(const menu of menus)handleMenu(menu);
-});
-const start=()=>{if(!document.body){setTimeout(start,100);return;}obs.observe(document.body,{childList:true,subtree:true});};
+const start=()=>{
+  if(!document.body){setTimeout(start,100);return;}
+  observer.observe(document.body,{childList:true,subtree:true});
+};
 start();
 })();
