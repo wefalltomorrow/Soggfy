@@ -12,9 +12,26 @@ const ignoreKey='soggfy.ignorelist.v1';
 let ignoreSet=new Set();
 try{ignoreSet=new Set(JSON.parse(localStorage.getItem(ignoreKey)||'[]'));}catch{}
 sgf.isIgnored=uri=>!!uri&&ignoreSet.has(uri);
+sgf.ignoreCandidates=item=>{
+  if(!item)return [];
+  const metadata=item.metadata||item.contextTrack?.metadata||{};
+  const artists=item.artists||item.album?.artists||[];
+  const values=[
+    item.uri,item.contextTrack?.uri,item.album?.uri,item.albumUri,
+    metadata.context_uri,item.contextUri,
+    ...artists.map?.(a=>a?.uri)||[]
+  ].filter(v=>typeof v==='string'&&v.startsWith('spotify:'));
+  return [...new Set(values)];
+};
+sgf.isTrackIgnored=item=>sgf.ignoreCandidates(item).some(uri=>ignoreSet.has(uri));
 sgf.setIgnored=(uri,value)=>{
   if(!uri)return;
   value?ignoreSet.add(uri):ignoreSet.delete(uri);
+  try{localStorage.setItem(ignoreKey,JSON.stringify([...ignoreSet]));}catch{}
+  sgf.refreshVisibleStatuses?.();
+};
+sgf.setIgnoredMany=(uris,value)=>{
+  for(const uri of uris||[])if(uri)value?ignoreSet.add(uri):ignoreSet.delete(uri);
   try{localStorage.setItem(ignoreKey,JSON.stringify([...ignoreSet]));}catch{}
   sgf.refreshVisibleStatuses?.();
 };
@@ -49,15 +66,24 @@ function rowInfo(row){
   if(!uri)return null;
   const title=(trackLink?.textContent||row.querySelector('[data-testid="tracklist-row"] [dir="auto"]')?.textContent||'').trim();
   if(!title)return null;
-  const artists=[...row.querySelectorAll('a[href*="/artist/"]')].map(a=>(a.textContent||'').trim()).filter(Boolean);
-  let album=(row.querySelector('a[href*="/album/"]')?.textContent||'').trim();
+  const artistLinks=[...row.querySelectorAll('a[href*="/artist/"]')];
+  const artists=artistLinks.map(a=>(a.textContent||'').trim()).filter(Boolean);
+  const artistUris=artistLinks.map(a=>uriFromHref(a.getAttribute('href')||'').replace('spotify:track:','spotify:artist:')).filter(x=>x.startsWith('spotify:artist:'));
+  const albumLink=row.querySelector('a[href*="/album/"]');
+  let album=(albumLink?.textContent||'').trim();
+  const albumHref=albumLink?.getAttribute?.('href')||'';
+  const albumMatch=albumHref.match(/\/album\/([A-Za-z0-9]+)/);
+  const albumUri=albumMatch?'spotify:album:'+albumMatch[1]:'';
+  const pageMatch=location.pathname.match(/\/(playlist|album|artist)\/([A-Za-z0-9]+)/);
+  const contextUri=pageMatch?'spotify:'+pageMatch[1]+':'+pageMatch[2]:'';
   if(!album){
     const section=row.closest('section,[data-testid$="-page"]');
     album=(section?.querySelector('h1')?.textContent||document.querySelector('main h1')?.textContent||'').trim();
   }
   const artist=artists[0]||'';
   const allArtists=artists.join(', ')||artist;
-  return {row,uri,title,artist,album,allArtists};
+  const ignoreUris=[uri,albumUri,contextUri,...artistUris].filter(Boolean);
+  return {row,uri,title,artist,album,allArtists,albumUri,contextUri,artistUris,ignoreUris};
 }
 sgf.trackInfoFromRows=rows=>{
   const source=rows?[...rows]:[...document.querySelectorAll('div[data-testid="tracklist-row"],.main-trackList-trackListRow,div[role="row"]')];
@@ -125,7 +151,7 @@ function statusCard(info){
 sgf.renderVisibleStatuses=()=>{
   for(const t of sgf.trackInfoFromRows()){
     let info=sgf.statusMap.get(t.uri);
-    if(sgf.isIgnored(t.uri))info={status:'IGNORED',message:'Ignored',path:''};
+    if((t.ignoreUris||[t.uri]).some(uri=>sgf.isIgnored(uri)))info={status:'IGNORED',message:'Ignored',path:''};
     let old=t.row.__sgf_status_ind;
     if(!info||!info.status){
       if(old){old.remove();delete t.row.__sgf_status_ind;}continue;
@@ -176,7 +202,7 @@ sgf.checkQueue=async()=>{
     lastQueueSig=sig;
     let statuses=new Map();
     if(sgf.state.skipDownloaded)statuses=await sgf.requestStatuses(infos);
-    const remove=infos.filter(x=>(sgf.state.skipIgnored&&sgf.isIgnored(x.uri))||
+    const remove=infos.filter(x=>(sgf.state.skipIgnored&&sgf.isTrackIgnored(x.track))||
       (sgf.state.skipDownloaded&&statuses.get(x.uri)?.status==='DONE')).map(x=>x.track);
     if(remove.length){
       if(typeof sgf.player.removeFromQueue==='function')await sgf.player.removeFromQueue(remove);
@@ -193,7 +219,7 @@ sgf.installPlayerListeners=()=>{
     events?.addListener?.('update',({data}={})=>{
       const item=data?.item||sgf.currentState()?.item;
       if(item?.uri){
-        sgf.send('ignore_current',sgf.isIgnored(item.uri)?'1':'0');
+        sgf.send('ignore_current',sgf.isTrackIgnored(item)?'1':'0');
         setTimeout(()=>sgf.refreshVisibleStatuses(),80);
       }
       if(sgf.state.playbackSpeed!==1)sgf.setPlaybackSpeed?.(sgf.state.playbackSpeed);

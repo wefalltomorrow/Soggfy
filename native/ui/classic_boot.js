@@ -18,7 +18,7 @@ const start=async()=>{
   setTimeout(()=>sgf.send('sync','1'),1000);
   await sgf.initPlayer?.();
   const uri=sgf.currentState()?.item?.uri;
-  if(uri)sgf.send('ignore_current',sgf.isIgnored?.(uri)?'1':'0');
+  if(uri)sgf.send('ignore_current',sgf.isTrackIgnored?.(sgf.currentState()?.item)?'1':'0');
 };
 start();
 })();
