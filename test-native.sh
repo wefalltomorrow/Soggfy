@@ -36,7 +36,9 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/rich_metadata_test.cpp native/ric
 build/rich-metadata-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/bounded_queue_test.cpp -o build/bounded-queue-test
 build/bounded-queue-test
-node --check native/soggfy_ui.js
+for script in native/ui/classic_core.js native/ui/classic_settings.js native/ui/classic_status.js native/ui/classic_context.js native/ui/classic_boot.js; do
+    node --check "$script"
+done
 node tests/metadata_collector_test.js
 
 python3 tests/create_cache_fixtures.py build/cache-fixtures
