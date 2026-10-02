@@ -27,6 +27,10 @@ static constexpr char default_ini[]=
     "Menu=1\r\n"
     "; Empty uses the Windows Music folder plus \\Spotify.\r\n"
     "Save Location=\r\n"
+    "; Optional Soggfy-style relative path template. Empty keeps the smart layout.\r\n"
+    "Path Template=\r\n"
+    "; Path-only cleanup; leaves names such as AC/DC alone.\r\n"
+    "Normalize Artist Separators=1\r\n"
     "Ogg=1\r\n"
     "; Captures native FLAC when Spotify supplies lossless audio.\r\n"
     "Flac=1\r\n"
@@ -102,11 +106,14 @@ void InitSettings(HMODULE proxy) {
     settings.ogg=GetPrivateProfileIntW(L"To Disk",L"Ogg",1,ini.c_str())!=0;
     settings.flac=GetPrivateProfileIntW(L"To Disk",L"FLAC",1,ini.c_str())!=0;
     settings.metadata=GetPrivateProfileIntW(L"To Disk",L"Metadata",1,ini.c_str())!=0;
+    settings.normalize_artist_separators=GetPrivateProfileIntW(L"To Disk",L"Normalize Artist Separators",1,ini.c_str())!=0;
     settings.log=GetPrivateProfileIntW(L"To Disk",L"Log",1,ini.c_str())!=0;
     settings.debug_log=GetPrivateProfileIntW(L"To Disk",L"DebugLog",0,ini.c_str())!=0;
     settings.max_buffered_mib=std::max(8u,std::min(512u,GetPrivateProfileIntW(L"History",L"MaxBufferedMiB",500,ini.c_str())));
-    wchar_t raw[2048],expanded[4096];
+    wchar_t raw[2048],expanded[4096],raw_template[4096];
     GetPrivateProfileStringW(L"To Disk",L"Save Location",L"",raw,2048,ini.c_str());
+    GetPrivateProfileStringW(L"To Disk",L"Path Template",L"",raw_template,4096,ini.c_str());
+    settings.path_template=raw_template;
     PWSTR music=nullptr;
     if(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Music,0,nullptr,&music))) {
         music_path=music; CoTaskMemFree(music);

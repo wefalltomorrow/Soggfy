@@ -165,6 +165,45 @@ void EnrichTags(const Media& media,Tags& tags) {
  }
  ReleaseSRWLockShared(&cache_lock);
 }
+static std::wstring Wide(const std::string& value) {
+ if(value.empty())return {};
+ int count=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,value.data(),int(value.size()),nullptr,0);
+ if(count<=0)return {};
+ std::wstring out(size_t(count),L'\0');
+ if(MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,value.data(),int(value.size()),out.data(),count)!=count)return {};
+ return out;
+}
+static unsigned PositiveNumber(const std::string& value) {
+ if(value.empty())return 0;
+ unsigned result=0;
+ for(char c:value) {
+  if(c<'0'||c>'9')return 0;
+  unsigned digit=unsigned(c-'0');
+  if(result>1000000u)return 0;
+  result=result*10u+digit;
+ }
+ return result;
+}
+void EnrichCatalog(const Media& media,Catalog& catalog) {
+ if(!GetSettings().metadata)return;
+ RichMetadata copy;bool found=false;
+ AcquireSRWLockShared(&cache_lock);
+ if(auto m=cache.Find(Utf8(media.title),Utf8(media.artist),Utf8(media.album),media.duration)){copy=*m;found=true;}
+ ReleaseSRWLockShared(&cache_lock);
+ if(!found)return;
+ auto field=[&](const char* key)->std::string{
+  auto it=copy.fields.find(key);return it==copy.fields.end()?std::string{}:it->second;
+ };
+ auto album_artist=Wide(field("ALBUMARTIST"));if(!album_artist.empty())catalog.album_artist=album_artist;
+ auto artists=Wide(field("ARTIST"));if(!artists.empty())catalog.all_artists=artists;
+ if(catalog.artist.empty()&&!catalog.album_artist.empty())catalog.artist=catalog.album_artist;
+ unsigned track=PositiveNumber(field("TRACKNUMBER"));if(track)catalog.track=track;
+ catalog.disc=PositiveNumber(field("DISCNUMBER"));
+ catalog.total_discs=PositiveNumber(field("DISCTOTAL"));
+ unsigned year=PositiveNumber(field("YEAR"));
+ if(!year){auto date=field("DATE");if(date.size()>=4)year=PositiveNumber(date.substr(0,4));}
+ if(year>=1000&&year<=9999)catalog.release_year=year;
+}
 void StartMetadataCollector(HMODULE cef) {
  const auto now=static_cast<std::uint64_t>(GetTickCount64());
  if(!metadata_init.TryBegin(now))return;

@@ -4,9 +4,9 @@
 namespace history {
 struct Settings {
     bool downloads=false,ogg=true,flac=true,menu=true,music_folder=false;
-    bool metadata=true,log=true,debug_log=false;
+    bool metadata=true,log=true,debug_log=false,normalize_artist_separators=true;
     unsigned max_buffered_mib=500,generation=0,capture_epoch=0;
-    std::wstring root,save_location;
+    std::wstring root,save_location,path_template;
 };
 void InitSettings(HMODULE proxy);
 Settings GetSettings();

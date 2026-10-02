@@ -186,7 +186,11 @@ struct Capture {
 struct Heard { Media media; double start=0,finish=0; };
 static Catalog CatalogFor(const Media& media) {
     Catalog c; c.title=media.title; c.album=media.album; c.track=media.track;
+    c.album_artist=media.album_artist;
+    c.all_artists=media.artist;
     c.artist=media.album_artist.empty() ? media.artist : media.album_artist;
+    EnrichCatalog(media,c);
+    if(!c.album_artist.empty()) c.artist=c.album_artist;
     if(_wcsicmp(c.artist.c_str(),L"Various Artists")==0) c.kind=MediaKind::VariousArtists;
     return c;
 }
@@ -197,8 +201,10 @@ static Publication Publish(Capture& c,const Heard& heard,unsigned expected_epoch
     auto catalog=CatalogFor(heard.media);
     auto settings=GetSettings();
     if(settings.capture_epoch!=expected_epoch || !settings.downloads || !(c.lossless ? settings.flac : settings.ogg)) return Publication::Skipped;
-    std::wstring destination=OutputPath(settings.root,catalog,c.lossless ? L".flac" : L".ogg",settings.music_folder);
-    std::wstring flac=OutputPath(settings.root,catalog,L".flac",settings.music_folder);
+    std::wstring destination=OutputPath(settings.root,catalog,c.lossless ? L".flac" : L".ogg",
+        settings.music_folder,settings.path_template,settings.normalize_artist_separators);
+    std::wstring flac=OutputPath(settings.root,catalog,L".flac",
+        settings.music_folder,settings.path_template,settings.normalize_artist_separators);
     Quality quality=c.Encoding(),lossless;
     if(!c.lossless && ReadQuality(flac,lossless) && lossless.codec==Codec::Flac) {
         Log(("SKIP existing lossless file "+Utf8(flac)).c_str()); return Publication::Skipped;
