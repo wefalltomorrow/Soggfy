@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0-rc.4
+
+- Hardened the release build without changing the RC5-derived capture runtime.
+- Moved release DLL production to a newer Windows/MSYS2 MinGW64 path with GCC 14+ and binutils 2.44+ minimum checks.
+- Added Windows VERSIONINFO metadata generated from the repository VERSION file.
+- Added exact build-toolchain recording in BUILDINFO.txt.
+- Added raw DLL release assets and external SHA-256 coverage for both the DLL and final ZIP.
+- Added CI verification for the version resource, MSVCRT target and release checksum manifest.
+
+# Changelog
+
 ## 3.0.0-rc.3
 
 - Synced the active x64 engine through Floggfy v1.1.0-rc.5.

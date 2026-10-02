@@ -73,7 +73,9 @@ If Spotify becomes unstable after an update, quit it and try `Metadata=0`, then 
 
 ## Build and test
 
-On Debian/Ubuntu/WSL:
+Release builds use a newer Windows/MSYS2 MinGW64 toolchain and include exact compiler/linker details in `BUILDINFO.txt`. See [BUILDING.md](BUILDING.md).
+
+A Debian/Ubuntu/WSL reference build is still supported:
 
 ```bash
 sudo apt install build-essential python3 nodejs mingw-w64
@@ -82,7 +84,7 @@ bash build-native.sh
 python3 package-release.py
 ```
 
-GitHub Actions runs the native regression suite, cross-builds the x64 DLL and uploads a release ZIP artifact.
+GitHub Actions runs the native regression suite, builds the release DLL on Windows with a GCC 14+/binutils 2.44+ floor, verifies the Windows version resource and checksums, then publishes the ZIP, raw DLL, checksum manifest and build-toolchain record.
 
 ## Project history
 
