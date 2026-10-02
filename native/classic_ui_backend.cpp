@@ -121,7 +121,9 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
         }
         try {
             ClassicPathQuery path_query{q.title,q.artist,q.album,q.all_artists};
-            pending.push_back({q,std::wregex(BuildClassicPathRegex(path_query,settings.path_template,
+            const auto& path_template=(q.uri.rfind("spotify:episode:",0)==0 && !settings.podcast_template.empty())
+                ?settings.podcast_template:settings.path_template;
+            pending.push_back({q,std::wregex(BuildClassicPathRegex(path_query,path_template,
                                settings.output_ext,settings.normalize_artist_separators,
                                settings.invalid_char_repl),
                                std::regex_constants::ECMAScript|std::regex_constants::icase),{},0});

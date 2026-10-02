@@ -97,9 +97,16 @@
    scan();if(!player){playback({v:1});return;}
    if(!reported){console.info('FLOGGFY_STATUS:cached player found');reported=true;}
    const state=method(player,'getState').call(player),item=own(state,'item'),m=own(item,'metadata')||{},uri=text(own(item,'uri'));
-   if(!/^spotify:track:[A-Za-z0-9]{22}$/.test(uri||'')){playback({v:1});return;}
-   const data={v:1,title:text(own(m,'title')||own(item,'name')),artist:text(own(m,'artist_name')),
-    album:text(own(m,'album_title')),uri,duration:Number(text(own(m,'duration')||own(own(item,'duration'),'milliseconds')))/1000,SPOTIFY_URI:uri};
+   const isTrack=/^spotify:track:[A-Za-z0-9]{22}$/.test(uri||''),isEpisode=/^spotify:episode:[A-Za-z0-9]{22}$/.test(uri||'');
+   if(!isTrack&&!isEpisode){playback({v:1});return;}
+   const title=text(own(m,'title')||own(item,'name'));
+   const episodeAuthor=text(own(m,'publisher')||own(m,'show_publisher')||own(m,'artist_name')||own(m,'album_artist_name'));
+   const episodeShow=text(own(m,'show_name')||own(m,'album_title')||own(m,'context_title'));
+   const data={v:1,title,
+    artist:isEpisode?(episodeAuthor||episodeShow):text(own(m,'artist_name')),
+    album:isEpisode?(episodeShow||episodeAuthor):text(own(m,'album_title')),
+    uri,duration:Number(text(own(m,'duration')||own(own(item,'duration'),'milliseconds')))/1000,SPOTIFY_URI:uri};
+   if(isEpisode){data.MEDIA_KIND='episode';data.SHOW=data.album;data.AUTHOR=data.artist;}
    if(!data.title||!data.artist||!data.album||!Number.isFinite(data.duration)||data.duration<=0){playback({v:1});return;}
    // Actual current playback quality, never targetBitrateLevel (the preference).
    const quality=own(state,'playbackQuality')||own(state,'playback_quality');

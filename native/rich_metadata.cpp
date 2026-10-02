@@ -22,10 +22,12 @@ static bool Decode(const std::string& s,std::string& out) {
  } return MetadataTextValid(out);
 }
 bool RichMetadata::Matches(const std::string& t,const std::string& a,const std::string& al,double d) const {
- return title==t&&artist==a&&album==al&&std::fabs(duration-d)<=1.0;
+ if(title!=t||std::fabs(duration-d)>1.0)return false;
+ if(kind=="episode")return true; // cache ambiguity checks still reject duplicate episode identities.
+ return artist==a&&album==al;
 }
 bool ParseRichMetadata(const std::string& input,RichMetadata& out,std::string& error) {
- static const std::set<std::string> allowed={"v","playback_quality","title","artist","album","uri","duration","ARTIST","ALBUMARTIST","DATE","YEAR","GENRE","LYRICS","TRACKNUMBER","DISCNUMBER","DISCTOTAL","TRACKTOTAL","ISRC","LABEL","ORGANIZATION","PUBLISHER","COPYRIGHT","PHONOGRAMCOPYRIGHT","COMPOSER","REMIXER","CONDUCTOR","LANGUAGE","COMMENT","SPOTIFY_URI"};
+ static const std::set<std::string> allowed={"v","playback_quality","title","artist","album","uri","duration","MEDIA_KIND","SHOW","AUTHOR","ARTIST","ALBUMARTIST","DATE","YEAR","GENRE","LYRICS","TRACKNUMBER","DISCNUMBER","DISCTOTAL","TRACKTOTAL","ISRC","LABEL","ORGANIZATION","PUBLISHER","COPYRIGHT","PHONOGRAMCOPYRIGHT","COMPOSER","REMIXER","CONDUCTOR","LANGUAGE","COMMENT","SPOTIFY_URI"};
  auto fail=[&](const char* e){error=e; return false;};
  if(input.size()>131072) return fail("metadata too large");
  std::map<std::string,std::string> kv;
@@ -37,10 +39,14 @@ bool ParseRichMetadata(const std::string& input,RichMetadata& out,std::string& e
   if(value.size()>(key=="LYRICS"?65536u:4096u)) return fail("field too large");
   kv.emplace(key,std::move(value)); p=end+1;
  }
- if(kv["v"]!="1"||kv["title"].empty()||kv["artist"].empty()||kv["album"].empty()||kv["uri"].rfind("spotify:track:",0)!=0) return fail("missing identity");
+ const bool track=kv["uri"].rfind("spotify:track:",0)==0;
+ const bool episode=kv["uri"].rfind("spotify:episode:",0)==0;
+ if(kv["v"]!="1"||kv["title"].empty()||kv["artist"].empty()||kv["album"].empty()||(!track&&!episode)) return fail("missing identity");
  char* last=nullptr; double d=strtod(kv["duration"].c_str(),&last);
  if(!last||*last||!std::isfinite(d)||d<=0||d>86400) return fail("invalid duration");
  RichMetadata m; m.title=kv["title"];m.artist=kv["artist"];m.album=kv["album"];m.uri=kv["uri"];m.duration=d;
+ m.kind=episode?"episode":"track";
+ if(!kv["MEDIA_KIND"].empty())m.kind=kv["MEDIA_KIND"];
  const std::set<std::string> levels={"low","normal","high","very_high","lossless","lossless_24","hifi"};
  if(levels.count(kv["playback_quality"]))m.playback_quality=kv["playback_quality"];
  for(auto& entry:kv) if(entry.first[0]>='A'&&entry.first[0]<='Z'&&!entry.second.empty()) m.fields.insert(entry);

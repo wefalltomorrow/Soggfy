@@ -500,7 +500,14 @@ void EnrichCatalog(const Media& media,Catalog& catalog) {
  auto field=[&](const char* key)->std::string{
   auto it=copy.fields.find(key);return it==copy.fields.end()?std::string{}:it->second;
  };
- auto album_artist=Wide(field("ALBUMARTIST"));if(!album_artist.empty())catalog.album_artist=album_artist;
+ if(copy.kind=="episode"||field("MEDIA_KIND")=="episode"){
+  catalog.kind=MediaKind::Podcast;
+  auto show=Wide(field("SHOW"));if(show.empty())show=Wide(copy.album);
+  auto author=Wide(field("AUTHOR"));if(author.empty())author=Wide(copy.artist);
+  if(!show.empty()){catalog.show=show;catalog.album=show;}
+  if(!author.empty()){catalog.author=author;catalog.artist=author;catalog.album_artist=author;catalog.all_artists=author;}
+ }
+  auto album_artist=Wide(field("ALBUMARTIST"));if(!album_artist.empty())catalog.album_artist=album_artist;
  auto artists=Wide(field("ARTIST"));if(!artists.empty())catalog.all_artists=artists;
  if(catalog.artist.empty()&&!catalog.album_artist.empty())catalog.artist=catalog.album_artist;
  unsigned track=PositiveNumber(field("TRACKNUMBER"));if(track)catalog.track=track;

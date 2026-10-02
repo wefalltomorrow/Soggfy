@@ -224,10 +224,12 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
     auto catalog=CatalogFor(heard.media);
     auto settings=GetSettings();
     if(settings.capture_epoch!=expected_epoch || !settings.downloads || !(c.lossless ? settings.flac : settings.ogg)) return {Publication::Skipped,{},"settings changed"};
+    const std::wstring& active_template=(catalog.kind==MediaKind::Podcast && !settings.podcast_template.empty())
+        ?settings.podcast_template:settings.path_template;
     std::wstring destination=OutputPath(settings.root,catalog,c.lossless ? L".flac" : L".ogg",
-        settings.music_folder,settings.path_template,settings.normalize_artist_separators,settings.invalid_char_repl);
+        settings.music_folder,active_template,settings.normalize_artist_separators,settings.invalid_char_repl);
     std::wstring flac=OutputPath(settings.root,catalog,L".flac",
-        settings.music_folder,settings.path_template,settings.normalize_artist_separators,settings.invalid_char_repl);
+        settings.music_folder,active_template,settings.normalize_artist_separators,settings.invalid_char_repl);
     Quality quality=c.Encoding(),lossless;
     if(!c.lossless && ReadQuality(flac,lossless) && lossless.codec==Codec::Flac) {
         Log(("SKIP existing lossless file "+Utf8(flac)).c_str()); return {Publication::Skipped,flac,"Already downloaded"};
