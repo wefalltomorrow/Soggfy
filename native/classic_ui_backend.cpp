@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <array>
+#include <cwctype>
 #include <filesystem>
 #include <regex>
 
@@ -23,7 +24,11 @@ SRWLOCK recent_lock=SRWLOCK_INIT;
 std::array<Recent,64> recent{};
 size_t recent_next=0;
 std::atomic<bool> current_ignored{false};
-void ReplaceAll(std::wstring& text,const std::wstring& from,const std::wstring& to);
+void ReplaceAll(std::wstring& text,const std::wstring& from,const std::wstring& to) {
+    if(from.empty())return;
+    for(size_t at=0;(at=text.find(from,at))!=std::wstring::npos;at+=to.size())
+        text.replace(at,from.size(),to);
+}
 
 std::wstring ComparableArtist(std::wstring value) {
     ReplaceAll(value,L" / ",L", ");
