@@ -34,6 +34,7 @@ ui_files = [
     "native/ui/classic_core.js",
     "native/ui/classic_settings.js",
     "native/ui/classic_status.js",
+    "native/ui/classic_m3u.js",
     "native/ui/classic_context.js",
     "native/ui/classic_boot.js",
 ]

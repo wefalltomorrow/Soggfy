@@ -33,6 +33,10 @@ function handleMenu(menu){
     if(queue&&queue.parentElement===menu)menu.insertBefore(queue,menu.firstChild);
   }
 
+  if(sgf.hasM3UContext?.()){
+    addItem(menu,'Generate M3U',sgf.Icons.SaveAs,()=>sgf.generateM3U?.(),ref);
+  }
+
   if(contextInfo?.uri){
     const ignored=sgf.isIgnored?.(contextInfo.uri);
     addItem(menu,(ignored?'Unignore ':'Ignore ')+(contextInfo.uri.includes(':episode:')?'episode':'track'),

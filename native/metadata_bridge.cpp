@@ -291,10 +291,42 @@ static bool CurrentPlayback(const String* text) {
  }catch(...){PublishClientPlaybackQuality({});}
  return true;
 }
+
+static bool ParseClassicM3U(const std::string& payload,std::wstring& suggested,std::string& playlist,
+                            std::vector<ClassicM3UEntry>& entries) {
+ constexpr char rs=0x1e,fs=0x1f;
+ size_t first=payload.find(rs);
+ if(first==std::string::npos)return false;
+ auto header=payload.substr(0,first);
+ size_t split=header.find(fs);
+ if(split==std::string::npos)return false;
+ suggested=WideUtf8(header.substr(0,split));
+ playlist=header.substr(split+1);
+ if(suggested.empty()||suggested.size()>240||playlist.size()>4096)return false;
+ size_t start=first+1;
+ while(start<payload.size()&&entries.size()<10000) {
+  size_t end=payload.find(rs,start);if(end==std::string::npos)end=payload.size();
+  auto record=payload.substr(start,end-start);
+  std::array<std::string,4> fields;size_t at=0;bool valid=true;
+  for(size_t i=0;i<3;i++) {
+   size_t sep=record.find(fs,at);if(sep==std::string::npos){valid=false;break;}
+   fields[i]=record.substr(at,sep-at);at=sep+1;
+  }
+  if(valid) {
+   fields[3]=record.substr(at);
+   ClassicM3UEntry entry;
+   try{entry.duration_seconds=std::max(0L,std::min(86400L,std::stol(fields[0])));}catch(...){entry.duration_seconds=0;}
+   entry.artist=fields[1];entry.title=fields[2];entry.path=WideUtf8(fields[3]);
+   if(!entry.path.empty())entries.push_back(std::move(entry));
+  }
+  start=end+1;
+ }
+ return !entries.empty();
+}
 static bool ClassicUiMessage(const String* text) {
  constexpr wchar_t prefix[]=L"SOGGFY_UI_V1:";
  constexpr size_t n=sizeof(prefix)/sizeof(*prefix)-1;
- if(!text||!text->str||text->length<=n||text->length>n+65536||wmemcmp(text->str,prefix,n))return false;
+ if(!text||!text->str||text->length<=n||text->length>n+1048576||wmemcmp(text->str,prefix,n))return false;
  if(!GetSettings().classic_ui)return true;
  const wchar_t* body=text->str+n;size_t length=text->length-n;
  const wchar_t* equal=std::find(body,body+length,L'=');
@@ -335,6 +367,12 @@ static bool ClassicUiMessage(const String* text) {
  else if(key==L"ignore_current"){SetClassicCurrentIgnored(flag());return true;}
  else if(key==L"status_batch"){QueueClassicStatusRequest(decoded);return true;}
  else if(key==L"open_folder"){RevealClassicTrack(WideUtf8(decoded));return true;}
+ else if(key==L"save_m3u"){
+  std::wstring suggested;std::string playlist;std::vector<ClassicM3UEntry> entries;
+  if(ParseClassicM3U(decoded,suggested,playlist,entries))SaveClassicM3U(suggested,playlist,entries);
+  else HistoryLog("failed to parse classic M3U request");
+  return true;
+ }
  else return true;
  if(!ok)HistoryLog("classic UI setting could not be saved");
  SyncClassicUi();

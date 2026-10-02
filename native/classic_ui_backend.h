@@ -17,6 +17,15 @@ void SetClassicTrackStatus(const Media& media,const char* status,const std::stri
                            const std::wstring& path={});
 std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<ClassicTrackQuery>& queries);
 bool RevealClassicTrack(const std::wstring& path);
+
+struct ClassicM3UEntry {
+    long duration_seconds=0;
+    std::string artist,title;
+    std::wstring path;
+};
+bool SaveClassicM3U(const std::wstring& suggested_filename,const std::string& playlist_name,
+                    const std::vector<ClassicM3UEntry>& entries);
+
 void SetClassicCurrentIgnored(bool ignored);
 bool ClassicCurrentIgnored();
 }

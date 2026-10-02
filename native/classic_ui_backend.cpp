@@ -1,6 +1,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
+#include <shobjidl.h>
+#include <shlobj.h>
 #include "classic_ui_backend.h"
 #include "classic_path_match.h"
 #include "history_settings.h"
@@ -10,6 +12,7 @@
 #include <array>
 #include <cwctype>
 #include <filesystem>
+#include <memory>
 #include <regex>
 
 namespace history {
@@ -164,6 +167,113 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
         }
     }
     return results;
+}
+
+
+namespace {
+struct M3USaveJob {
+    std::wstring suggested;
+    std::string playlist;
+    std::vector<ClassicM3UEntry> entries;
+};
+static std::string CleanM3UText(std::string value) {
+    for(char& c:value)if(c=='\r'||c=='\n')c=' ';
+    return value;
+}
+static std::string Utf8Path(const std::wstring& value) {
+    if(value.empty())return {};
+    int size=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),int(value.size()),
+                                 nullptr,0,nullptr,nullptr);
+    if(size<=0)return {};
+    std::string out(size_t(size),'\0');
+    if(WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),int(value.size()),
+                           out.data(),size,nullptr,nullptr)!=size)return {};
+    return out;
+}
+static DWORD WINAPI SaveM3UWorker(LPVOID param) {
+    std::unique_ptr<M3USaveJob> job(static_cast<M3USaveJob*>(param));
+    HRESULT initialized=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+    if(FAILED(initialized)&&initialized!=RPC_E_CHANGED_MODE)return 0;
+
+    IFileSaveDialog* dialog=nullptr;
+    HRESULT hr=CoCreateInstance(CLSID_FileSaveDialog,nullptr,CLSCTX_INPROC_SERVER,
+                                IID_IFileSaveDialog,reinterpret_cast<void**>(&dialog));
+    if(SUCCEEDED(hr)&&dialog) {
+        COMDLG_FILTERSPEC types[]={{L"M3U8 playlist",L"*.m3u8"},{L"M3U playlist",L"*.m3u"}};
+        dialog->SetFileTypes(2,types);
+        dialog->SetDefaultExtension(L"m3u8");
+        dialog->SetTitle(L"Soggfy — Generate M3U");
+        if(!job->suggested.empty())dialog->SetFileName(job->suggested.c_str());
+
+        auto settings=GetSettings();
+        IShellItem* initial=nullptr;
+        if(!settings.root.empty() &&
+           SUCCEEDED(SHCreateItemFromParsingName(settings.root.c_str(),nullptr,IID_IShellItem,
+                                                reinterpret_cast<void**>(&initial)))) {
+            dialog->SetFolder(initial);
+            initial->Release();
+        }
+
+        if(SUCCEEDED(dialog->Show(nullptr))) {
+            IShellItem* item=nullptr;
+            PWSTR selected=nullptr;
+            if(SUCCEEDED(dialog->GetResult(&item))&&item) {
+                if(SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH,&selected))&&selected) {
+                    std::filesystem::path output(selected);
+                    std::filesystem::path parent=output.parent_path();
+                    std::string data="#EXTM3U\n#PLAYLIST:"+CleanM3UText(job->playlist)+"\n\n";
+                    for(const auto& entry:job->entries) {
+                        data+="#EXTINF:"+std::to_string(entry.duration_seconds)+","+
+                              CleanM3UText(entry.artist)+" - "+CleanM3UText(entry.title)+"\n";
+                        std::error_code ec;
+                        auto relative=std::filesystem::proximate(std::filesystem::path(entry.path),parent,ec);
+                        std::wstring value=ec?entry.path:relative.wstring();
+                        std::replace(value.begin(),value.end(),L'\\',L'/');
+                        data+=Utf8Path(value)+"\n\n";
+                    }
+                    HANDLE file=CreateFileW(WindowsPath(output.wstring()).c_str(),GENERIC_WRITE,0,nullptr,
+                                            CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
+                    if(file!=INVALID_HANDLE_VALUE) {
+                        DWORD written=0;
+                        bool ok=data.size()<=MAXDWORD &&
+                            WriteFile(file,data.data(),DWORD(data.size()),&written,nullptr) &&
+                            written==data.size();
+                        CloseHandle(file);
+                        if(!ok) {
+                            DeleteFileW(WindowsPath(output.wstring()).c_str());
+                            HistoryLog("failed to write generated M3U playlist");
+                        } else {
+                            HistoryLog(("generated M3U tracks="+std::to_string(job->entries.size())).c_str());
+                        }
+                    } else HistoryLog("failed to create generated M3U playlist");
+                    CoTaskMemFree(selected);
+                }
+                item->Release();
+            }
+        }
+        dialog->Release();
+    }
+    if(SUCCEEDED(initialized))CoUninitialize();
+    return 0;
+}
+}
+
+bool SaveClassicM3U(const std::wstring& suggested_filename,const std::string& playlist_name,
+                    const std::vector<ClassicM3UEntry>& entries) {
+    if(suggested_filename.size()>240||playlist_name.size()>4096||entries.size()>10000)return false;
+    auto job=std::make_unique<M3USaveJob>();
+    job->suggested=suggested_filename;
+    if(job->suggested.empty())job->suggested=L"Spotify.m3u8";
+    if(job->suggested.size()<5 ||
+       _wcsicmp(job->suggested.c_str()+job->suggested.size()-5,L".m3u8")!=0)
+        job->suggested+=L".m3u8";
+    job->playlist=playlist_name;
+    job->entries=entries;
+    HANDLE thread=CreateThread(nullptr,0,SaveM3UWorker,job.get(),0,nullptr);
+    if(!thread)return false;
+    job.release();
+    CloseHandle(thread);
+    return true;
 }
 
 void SetClassicCurrentIgnored(bool ignored) {
