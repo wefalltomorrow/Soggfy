@@ -35,7 +35,12 @@ int main(int argc,char**argv) {
     auto duplicate=out; check(TagFlac(duplicate,tags,out,error),"retagging replaces metadata rather than stacking");
     if(argc==4) {
         FILE* f=fopen(argv[1],"rb"); check(f,"real source opens"); fseek(f,0,SEEK_END); b.resize(ftell(f)); rewind(f); check(fread(b.data(),1,b.size(),f)==b.size(),"real source read"); fclose(f);
-        f=fopen(argv[2],"rb"); check(f,"real artwork opens"); fseek(f,0,SEEK_END); tags.cover.resize(ftell(f)); rewind(f); fread(tags.cover.data(),1,tags.cover.size(),f); fclose(f);
+        f=fopen(argv[2],"rb"); check(f,"real artwork opens");
+        check(fseek(f,0,SEEK_END)==0,"real artwork seek");
+        long artwork_size=ftell(f); check(artwork_size>0,"real artwork size");
+        tags.cover.resize(static_cast<size_t>(artwork_size)); rewind(f);
+        check(fread(tags.cover.data(),1,tags.cover.size(),f)==tags.cover.size(),"real artwork read");
+        fclose(f);
         check(TagFlac(b,tags,out,error),"real source native tagging"); f=fopen(argv[3],"wb"); check(f,"output opens"); check(fwrite(out.data(),1,out.size(),f)==out.size(),"output write"); fclose(f);
     }
     puts("PASS: FLAC metadata, contiguous decoded-frame coverage, native embedded art/tags and original frame preservation");
