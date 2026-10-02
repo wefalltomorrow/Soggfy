@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0-rc.3
+
+- Synced the active x64 engine through Floggfy v1.1.0-rc.5.
+- Fixed the To Disk footer sometimes showing no song or the previous song.
+- Refreshes current-track state from Spotify's cached player state once per second without endpoint requests.
+- Formats visible To Disk footer labels through CEF's public FormatLabel callback before display.
+- Removed the bitrate footer row to match RC5's stricter current-track reporting.
+- Keeps decoder details only when current track identity and quality agree; stale or conflicting state remains unavailable.
+- Retains Soggfy path templates, cached metadata path enrichment, installer/uninstaller, diagnostics and post-processing on top of RC5.
+
 ## 3.0.0-rc.2
 
 - Synced the active x64 engine through Floggfy v1.1.0-rc.4.

@@ -2,8 +2,8 @@
 
 The active x64 implementation started from:
 
-- Mainkill1/Floggfy tag `v1.1.0-rc.4`
-- commit `9eb91dcc42eb68a8b01973ed69ab4eb3e21bfd56`
+- Mainkill1/Floggfy tag `v1.1.0-rc.5`
+- commit `a4fa629628a9756ca3db4b41f4d171fc6ed93a1e`
 
 The original Soggfy repository was at commit:
 
@@ -22,4 +22,4 @@ Community work reviewed while building this fork:
 
 Not every patch was copied literally. Fixes tied to the obsolete x86 installer/hook architecture were reimplemented only where they still apply to the modern x64 design.
 
-RC4's playback-quality tracker and read-only To Disk status rows are included, together with its Linux/Windows regression coverage.
+RC5's current-track footer fixes, cached-state refresh, CEF label formatting and stricter stale-state rejection are included together with its regression coverage.
