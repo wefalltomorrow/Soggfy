@@ -275,7 +275,10 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
     // paths, sidecars, per-song directories, decoder or encoder are involved.
     auto publication=PublishBytes(destination,quality,tagged.data(),tagged.size());
     if(publication==FilePublication::Skipped) return {Publication::Skipped,destination,"Already downloaded"};
-    if(publication==FilePublication::Failed) { Log("final publication failed; existing file retained"); return {Publication::Failed,{},"final publication failed"};
+    if(publication==FilePublication::Failed) {
+        Log("final publication failed; existing file retained");
+        return {Publication::Failed,{},"final publication failed"};
+    }
     std::string line=(publication==FilePublication::Upgraded ? "UPGRADED " : "SAVED ")+Utf8(destination);
     Log(line.c_str());
 

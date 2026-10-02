@@ -147,6 +147,7 @@ static void SyncClassicUi(Frame* preferred=nullptr) {
  }
  if(f){ExecuteFrameCode(f,UiConfigCode(),L"soggfy-config.js");Release(f);}
 }
+static void FlushClassicStatusResponse(Frame* frame);
 static std::atomic<bool> poll_pending{false};static int(*post_task)(int,Task*)=nullptr;
 static void PollAdd(Base* b){++reinterpret_cast<PollTask*>(b)->refs;}
 static int PollDrop(Base* b){auto t=reinterpret_cast<PollTask*>(b);if(--t->refs)return 0;delete t;return 1;}
