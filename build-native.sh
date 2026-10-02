@@ -84,7 +84,7 @@ done
     -static -static-libgcc -static-libstdc++ \
     -Wl,--no-insert-timestamp,--dynamicbase,--nxcompat \
     native/version_proxy.cpp native/pe_imports.cpp native/spotify_hook_discovery.cpp native/audio_history.cpp native/playback_quality.cpp native/playback_quality_windows.cpp native/ogg_history_core.cpp \
-    native/media_session.cpp native/classic_ui_backend.cpp native/ogg_tags.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/history_settings.cpp native/library_layout.cpp \
+    native/media_session.cpp native/classic_ui_backend.cpp native/post_process.cpp native/ogg_tags.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/history_settings.cpp native/library_layout.cpp \
     native/existing_quality.cpp native/file_publication.cpp native/to_disk_menu.cpp native/rich_metadata.cpp native/cached_metadata.cpp native/cached_metadata_windows.cpp native/metadata_bridge.cpp native/async_log.cpp native/version_exports.S native/version.def \
     build/version-resource.o build/minhook-*.o build/ogg-framing.o -I native/vendor/libogg/include \
     -o build/version.dll -lole32 -luuid -liphlpapi -lws2_32 -lruntimeobject -lshell32
