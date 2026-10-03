@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0-rc.14
+
+- Fixed Spotify 1.3.3.264 crashing during startup when Soggfy's native playback-speed hook was installed.
+- Crash-dump analysis showed repeatable execute access violations at a raw low Spotify RVA before the UI loaded, while the upstream Floggfy startup path remained stable.
+- Playback-speed injection now fails closed by Spotify file version instead of trusting the pattern match alone.
+- The native 1-50x speed hook remains enabled only on the runtime-validated Spotify 1.3.1.234 ABI for now.
+- Spotify 1.3.3.264 and other unvalidated builds run at normal 1x speed, leaving capture, Classic UI, metadata and conversion functionality available.
+- The Classic settings slider now displays effective 1x and is disabled when the native speed hook is unavailable.
+- Added regression coverage for the playback-speed compatibility policy.
+
 ## 3.0.0-rc.13
 
 - Expanded Soggfy.log so normal logging records enough state to diagnose capture failures without requiring a debug build.
