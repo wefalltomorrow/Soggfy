@@ -65,10 +65,23 @@ Result Stream::Push(const uint8_t* b, size_t n) {
     }
     return Result::Append;
 }
+const char* ListenRejectName(ListenReject reason) {
+    switch(reason) {
+        case ListenReject::None:return "none";
+        case ListenReject::StartTooLate:return "start_too_late";
+        case ListenReject::ClockDiscontinuity:return "clock_discontinuity";
+        case ListenReject::PositionRewind:return "position_rewind";
+        case ListenReject::PositionAhead:return "position_ahead";
+        case ListenReject::DurationChanged:return "duration_changed";
+    }
+    return "unknown";
+}
+
 std::string Listen::Observe(const std::string& key, double pos, double length,
                             bool is_playing, double time, double playback_rate) {
     std::string done;
     transient=false;
+    reject=ListenReject::None;
     if(!std::isfinite(playback_rate) || playback_rate<0.25 || playback_rate>100.0)
         playback_rate=1.0;
     const double elapsed=time-last_time;
@@ -79,6 +92,10 @@ std::string Listen::Observe(const std::string& key, double pos, double length,
     // expressed in media time rather than fixed 1x seconds.
     const double start_window=std::max(1.5,playback_rate*0.75);
     const double tolerance=std::max(1.5,playback_rate*0.25);
+    last_expected=expected;
+    last_elapsed=elapsed;
+    last_tolerance=tolerance;
+    last_rate=playback_rate;
 
     if(key!=identity) {
         // At accelerated playback the last sampled position can be many media
@@ -90,6 +107,7 @@ std::string Listen::Observe(const std::string& key, double pos, double length,
         start_time=time-(pos/playback_rate);
         duration=length;
         eligible=!key.empty() && pos>=0 && pos<=start_window && length>0;
+        if(!eligible && !key.empty())reject=ListenReject::StartTooLate;
         identity_time=time; pending_start=!eligible && !key.empty();
     } else if(!key.empty()) {
         // SMTC title and timeline are separate snapshots. At a natural end,
@@ -102,12 +120,20 @@ std::string Listen::Observe(const std::string& key, double pos, double length,
         if(pending_start && time-identity_time<=2 &&
            pos>=0 && pos<=start_window && length>0) {
             start_time=time-(pos/playback_rate); duration=length;
-            eligible=true; pending_start=false;
+            eligible=true; pending_start=false;reject=ListenReject::None;
             last_time=time; last_position=pos; playing=is_playing; return {};
         }
-        if(elapsed<0 || elapsed>3 || pos<last_position-tolerance ||
-           pos>expected+tolerance || std::fabs(length-duration)>1.0)
-            eligible=false;
+        if(eligible) {
+            if(elapsed<0 || elapsed>3) {
+                eligible=false;reject=ListenReject::ClockDiscontinuity;
+            } else if(pos<last_position-tolerance) {
+                eligible=false;reject=ListenReject::PositionRewind;
+            } else if(pos>expected+tolerance) {
+                eligible=false;reject=ListenReject::PositionAhead;
+            } else if(std::fabs(length-duration)>1.0) {
+                eligible=false;reject=ListenReject::DurationChanged;
+            }
+        }
         if(eligible && playing && !is_playing &&
            pos>=duration-tolerance && expected>=duration-0.1) {
             done=identity; eligible=false; pending_start=false;
