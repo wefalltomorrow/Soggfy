@@ -544,8 +544,14 @@ static DWORD WINAPI Worker(LPVOID) {
                     double prior_position=listen.last_position,prior_duration=listen.duration,prior_time=listen.last_time;
                     std::string done=listen.Observe(media.Key(),media.position,media.duration,media.playing,Now(),playback_rate);
                     if(was_eligible && !listen.eligible && done.empty()) {
-                        char line[340]; snprintf(line,sizeof(line),"listen invalidated old=%.6f/%.6f new=%.6f/%.6f delta=%.3f rate=%.3f playing=%d",
-                            prior_position,prior_duration,media.position,media.duration,Now()-prior_time,playback_rate,media.playing); Log(line);
+                        const auto identity=Utf8(current.artist)+" - "+Utf8(current.title);
+                        char line[1400]; snprintf(line,sizeof(line),
+                            "%s (incomplete listen reason=%s prior=%.3f/%.3f new=%.3f raw=%.3f/%.3f timeline_age=%.3f delta=%.3f expected=%.3f tolerance=%.3f rate=%.3f playing_before=%d playing_now=%d key_changed=%d)",
+                            identity.c_str(),ListenRejectName(listen.reject),prior_position,prior_duration,
+                            media.position,media.raw_position,media.duration,media.timeline_age,Now()-prior_time,
+                            listen.last_expected,listen.last_tolerance,listen.last_rate,listen.playing,media.playing,
+                            previous!=listen.identity);
+                        LogActivity("failed",line);QueueDiagnostic(line);
                     }
                     if(!done.empty()) {
                         if(current_ignored) {
@@ -553,19 +559,28 @@ static DWORD WINAPI Worker(LPVOID) {
                             LogActivity("finished",Utf8(current.artist)+" - "+Utf8(current.title)+" (ignored)");
                         } else {
                             heard.push_back({current,previous_start,Now()});
-                            Log(("FULL LISTEN "+Utf8(current.title)).c_str());
+                            char line[1024];snprintf(line,sizeof(line),
+                                "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f elapsed_wall=%.3f rate=%.3f ready=%zu active=%zu",
+                                Utf8(current.artist).c_str(),Utf8(current.title).c_str(),prior_position,current.raw_position,
+                                current.duration,current.timeline_age,Now()-previous_start,playback_rate,ready.size(),active.size());
+                            LogActivity("listen_complete",line);QueueDiagnostic(line);
                         }
                     }
                     if(previous!=listen.identity && listen.eligible) {
                         current_ignored=ClassicCurrentIgnored();
                         SetClassicTrackStatus(media,current_ignored?"IGNORED":"IN_PROGRESS",current_ignored?"Ignored":"Downloading...");
-                        LogActivity("started",Utf8(media.artist)+" - "+Utf8(media.title));
+                        char line[1400];snprintf(line,sizeof(line),
+                            "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d speed_config=%.3f speed_hook=%d speed_effective=%.3f start_window=%.3f active=%zu ready=%zu epoch=%u",
+                            Utf8(media.artist).c_str(),Utf8(media.title).c_str(),media.position,media.raw_position,media.duration,
+                            media.timeline_age,media.playing,preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,
+                            std::max(1.5,playback_rate*0.75),active.size(),ready.size(),epoch);
+                        LogActivity("started",line);QueueDiagnostic(line);
                     } else if(previous==listen.identity && listen.eligible) {
                         current_ignored=ClassicCurrentIgnored();
                     }
                     if(was_eligible && !listen.eligible && done.empty()) {
-                        if(!current.title.empty())SetClassicTrackStatus(current,"ERROR","Canceled: track was skipped or listen was incomplete");
-                        LogActivity("failed",Utf8(current.artist)+" - "+Utf8(current.title)+" (incomplete listen)");
+                        if(!current.title.empty())SetClassicTrackStatus(current,"ERROR",
+                            std::string("Canceled: ")+ListenRejectName(listen.reject));
                     }
                     if(previous!=listen.identity) {
                         Log(("TRACK "+Utf8(media.artist)+" - "+Utf8(media.title)).c_str());
@@ -586,7 +601,16 @@ static DWORD WINAPI Worker(LPVOID) {
                     }
                     if(listen.transient) Log("timeline reset at natural end; waiting for matching title");
                     else current=std::move(media);
-                } else { listen.eligible=false; quality.Media({},L"",0,0,Now()); Log("Spotify media snapshot unavailable; listen invalidated"); }
+                } else {
+                    const bool was_eligible=listen.eligible;
+                    listen.eligible=false; quality.Media({},L"",0,0,Now());
+                    if(was_eligible) {
+                        char line[768];snprintf(line,sizeof(line),
+                            "%s - %s (media snapshot unavailable rate=%.3f active=%zu ready=%zu epoch=%u)",
+                            Utf8(current.artist).c_str(),Utf8(current.title).c_str(),playback_rate,active.size(),ready.size(),epoch);
+                        LogActivity("failed",line);QueueDiagnostic(line);
+                    } else QueueDiagnostic("Spotify media snapshot unavailable while no eligible listen was active");
+                }
                 next_media=Now()+0.5;
             }
             PublishPlaybackQuality(quality.Snapshot(client_quality));
