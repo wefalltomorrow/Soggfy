@@ -43,8 +43,9 @@ static ULONGLONG latest_failure_log_time=0;
 static ULONGLONG latest_scan_log_time=0;
 
 // Spotify 1.3.3.264 x64. These RVAs were verified against the official
-// SpotifyFullSetupX64.exe payload. Unlike the old constructor detour, the
-// latest backend calls Spotify's own ContextPlayer speed methods directly.
+// SpotifyFullSetupX64.exe payload. RC20 uses the exact track-player creation
+// target below; the ContextPlayer RVAs are retained only for the older
+// diagnostic/fallback implementation.
 constexpr std::uint32_t k133TrackCreateRva=0x0057968c;
 constexpr std::uint32_t k133VtableRva=0x01a04958;
 constexpr std::uint32_t k133CurrentSetterRva=0x0057e5b8;
