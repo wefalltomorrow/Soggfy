@@ -7,6 +7,7 @@
 #include "async_log.h"
 #include "hook_init_state.h"
 #include "vendor/minhook/include/MinHook.h"
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
