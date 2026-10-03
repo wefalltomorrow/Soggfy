@@ -109,9 +109,9 @@ int main() {
           "50x forward seek exposes position-ahead diagnostic");
 
     Listen rewind;
-    rewind.Observe("one",0,20,true,0);
-    rewind.Observe("one",10,20,true,10);
-    rewind.Observe("one",2,20,true,11);
+    rewind.Observe("one",0,100,true,0,10);
+    rewind.Observe("one",10,100,true,1,10);
+    rewind.Observe("one",0,100,true,2,10);
     check(!rewind.eligible && rewind.reject==ListenReject::PositionRewind,
           "backward seek exposes rewind diagnostic");
 
