@@ -94,7 +94,6 @@ jobs:
           set -euo pipefail
           version="$(tr -d '\r\n' < VERSION)"
           archive="Soggfy-v${version}-Windows-x64.zip"
-          launcher="Soggfy-v${version}-Launcher-Windows-x64.zip"
           test -f build/Soggfy.exe
           objdump -h build/version.dll | grep -q '\.rsrc'
           strings -el build/version.dll | grep -Fq 'Soggfy Spotify history capture proxy'
@@ -105,10 +104,31 @@ jobs:
             exit 1
           fi
           cd dist
-          grep -Fq "  version.dll" SHA256SUMS.txt
           grep -Fq "  $archive" SHA256SUMS.txt
-          grep -Fq "  $launcher" SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
+          python - "$archive" <<'PY'
+          import sys, zipfile
+          required = {
+              "version.dll",
+              "Launcher/Soggfy.exe",
+              "Launcher/Soggfy.dll",
+              "SpotifyHistory.ini",
+              "Launcher/SpotifyHistory.ini",
+              "BUILDINFO.txt",
+              "SHA256SUMS.txt",
+              "README.md",
+              "Scripts/Install.ps1",
+              "Scripts/Uninstall.ps1",
+              "Scripts/PostProcess.ps1",
+              "Scripts/Diagnose.ps1",
+          }
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names = set(z.namelist())
+          missing = sorted(required - names)
+          if missing:
+              raise SystemExit("Missing release files: " + ", ".join(missing))
+          print("All-in-one ZIP contains automatic and launcher payloads.")
+          PY
 
       - name: Publish GitHub release
         shell: pwsh
@@ -118,18 +138,13 @@ jobs:
           $version = (Get-Content VERSION -Raw).Trim()
           $tag = "v$version"
           $archive = "dist/Soggfy-v$version-Windows-x64.zip"
-          $launcher = "dist/Soggfy-v$version-Launcher-Windows-x64.zip"
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
               Write-Host "Release $tag already exists; leaving it unchanged."
               exit 0
           }
           gh release create $tag `
-            "$archive#Soggfy automatic Windows x64" `
-            "$launcher#Soggfy launcher Windows x64" `
-            "dist/version.dll#Soggfy version.dll" `
-            "dist/SHA256SUMS.txt#SHA-256 checksums" `
-            "dist/BUILDINFO.txt#Build toolchain information" `
+            "$archive#Soggfy Windows x64 - everything included" `
             --target "$env:GITHUB_SHA" `
             --title "Soggfy $tag" `
             --notes-file RELEASE_NOTES.md
