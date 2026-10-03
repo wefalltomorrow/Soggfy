@@ -385,8 +385,7 @@ static DWORD WINAPI Worker(LPVOID) {
         while(workers_running.load(std::memory_order_acquire)) {
             double now=Now();
             auto preferences=GetSettings();
-            const double playback_rate=PlaybackSpeedSupported()
-                ? std::max(1.0,preferences.playback_speed) : 1.0;
+            const double playback_rate=PlaybackSpeedEffective();
             if(preferences.generation!=generation) {
                 bool initial=generation==~0u;
                 generation=preferences.generation;
