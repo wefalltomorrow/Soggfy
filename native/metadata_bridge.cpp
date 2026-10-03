@@ -121,7 +121,8 @@ static std::wstring UiConfigCode() {
  const bool speed_supported=PlaybackSpeedSupported();
  add("playbackSpeed",std::to_string(speed_supported?s.playback_speed:1.0));
  add("speedSupported",bit(speed_supported));
- const auto quality=PlaybackQualityLabels(ReadPlaybackQuality());
+ const auto quality_snapshot=ReadPlaybackQuality();
+ const auto quality=PlaybackQualityLabels(quality_snapshot);
  auto quality_value=[](const std::wstring& row) {
   const auto at=row.find(L": ");
   return at==std::wstring::npos?row:row.substr(at+2);
@@ -130,6 +131,7 @@ static std::wstring UiConfigCode() {
  add("qualityLevel",Utf8(quality_value(quality[1])));
  add("qualityFormat",Utf8(quality_value(quality[2])));
  add("qualitySample",Utf8(quality_value(quality[3])));
+ add("qualityAssociation",Utf8(PlaybackAssociationLabel(quality_snapshot)));
  add("root",Utf8(s.root));
  add("template",Utf8(s.path_template));
  add("podcastTemplate",Utf8(s.podcast_template));
