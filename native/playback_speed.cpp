@@ -240,8 +240,8 @@ static std::uintptr_t Find133Context() {
     const auto minimum=reinterpret_cast<std::uintptr_t>(info.lpMinimumApplicationAddress);
     const auto maximum=reinterpret_cast<std::uintptr_t>(info.lpMaximumApplicationAddress);
     std::vector<std::uint8_t> buffer(256*1024);
-    std::vector<std::uintptr_t> candidates;
-    std::vector<std::uintptr_t> active_candidates;
+    std::vector<std::uintptr_t> current_candidates;
+    std::vector<std::uintptr_t> prepared_candidates;
 
     for(std::uintptr_t address=minimum;address<maximum;) {
         MEMORY_BASIC_INFORMATION mbi{};
@@ -262,13 +262,18 @@ static std::uintptr_t Find133Context() {
                         std::uintptr_t value=0;
                         std::memcpy(&value,buffer.data()+offset,sizeof(value));
                         if(value!=wanted)continue;
+
                         const auto candidate=chunk+offset;
                         bool active=false;
-                        if(ContextLooksValid(candidate,&active)) {
-                            candidates.push_back(candidate);
-                            if(active)active_candidates.push_back(candidate);
-                            if(active_candidates.size()>1)return 0;
-                        }
+                        if(!ContextLooksValid(candidate,&active)||!active)continue;
+
+                        std::uintptr_t current=0,prepared=0;
+                        if(!ReadSelf(reinterpret_cast<const void*>(candidate+k133CurrentPlayerOffset),current)||
+                           !ReadSelf(reinterpret_cast<const void*>(candidate+k133PreparedPlayerOffset),prepared))
+                            continue;
+
+                        if(current)current_candidates.push_back(candidate);
+                        else if(prepared)prepared_candidates.push_back(candidate);
                     }
                 }
                 if(wanted_bytes==0)break;
@@ -278,14 +283,18 @@ static std::uintptr_t Find133Context() {
         address=next;
     }
 
-    if(active_candidates.size()==1)return active_candidates.front();
-    if(candidates.size()==1)return candidates.front();
+    // The audible/current TrackPlayer is the strongest signal. A prepared-only
+    // ContextPlayer is useful only when there is no current-track candidate.
+    if(current_candidates.size()==1)return current_candidates.front();
+    if(current_candidates.size()>1)return 0;
+    if(prepared_candidates.size()==1)return prepared_candidates.front();
     return 0;
 }
 
 static bool Apply133(double speed,bool log_change) {
     auto context=latest_context.load(std::memory_order_acquire);
-    if(!ContextLooksValid(context)) {
+    bool active=false;
+    if(!ContextLooksValid(context,&active)||!active) {
         latest_context.store(0,std::memory_order_release);
         effective_speed.store(1.0,std::memory_order_release);
         return false;
@@ -472,19 +481,29 @@ void MaintainPlaybackSpeed(HMODULE module) {
     latest_apply_time=now;
 
     auto context=latest_context.load(std::memory_order_acquire);
-    if(!ContextLooksValid(context)) {
+    bool active=false;
+    if(!ContextLooksValid(context,&active)||!active) {
         latest_context.store(0,std::memory_order_release);
-        if(now-latest_scan_time<1500)return;
+        effective_speed.store(1.0,std::memory_order_release);
+
+        // RC17 could permanently cache the one structurally valid ContextPlayer
+        // that existed during startup even though it had no current/prepared
+        // TrackPlayer. Keep rescanning until a genuinely active player appears.
+        if(now-latest_scan_time<750)return;
         latest_scan_time=now;
         context=Find133Context();
-        if(!context) {
-            effective_speed.store(1.0,std::memory_order_release);
-            return;
-        }
+        if(!context)return;
+
         latest_context.store(context,std::memory_order_release);
-        char line[192];
+
+        std::uintptr_t current=0,prepared=0;
+        ReadSelf(reinterpret_cast<const void*>(context+k133CurrentPlayerOffset),current);
+        ReadSelf(reinterpret_cast<const void*>(context+k133PreparedPlayerOffset),prepared);
+        char line[256];
         std::snprintf(line,sizeof(line),
-            "Spotify 1.3.3 ContextPlayer located at %p",reinterpret_cast<void*>(context));
+            "Spotify 1.3.3 active ContextPlayer located at %p current=%p prepared=%p",
+            reinterpret_cast<void*>(context),reinterpret_cast<void*>(current),
+            reinterpret_cast<void*>(prepared));
         HistoryLog(line);
     }
 
@@ -494,7 +513,18 @@ void MaintainPlaybackSpeed(HMODULE module) {
 void ApplyPlaybackSpeedNow() {
     if(active_backend.load(std::memory_order_acquire)!=PlaybackSpeedBackend::ContextSetter133)
         return;
+
     latest_apply_time=0;
+    auto context=latest_context.load(std::memory_order_acquire);
+    bool active=false;
+    if(!ContextLooksValid(context,&active)||!active) {
+        // Do not run a full process-memory scan on the UI/settings caller.
+        // Wake the normal maintenance path so it can find the active player.
+        latest_context.store(0,std::memory_order_release);
+        latest_scan_time=0;
+        effective_speed.store(1.0,std::memory_order_release);
+        return;
+    }
     Apply133(GetSettings().playback_speed,true);
 }
 
