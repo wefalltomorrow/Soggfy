@@ -216,6 +216,7 @@ sgf.openSettings=()=>{
     row('Spotify quality',readOnly('qualityLevel')),
     row('Current format',readOnly('qualityFormat')),
     row('Sample rate / depth',readOnly('qualitySample')),
+    row('Capture association',readOnly('qualityAssociation')),
     row('Capture native FLAC',toggle('flac')),
     row('Capture Ogg/Vorbis',toggle('ogg')),
     row('Cached metadata enrichment',toggle('metadata')),
