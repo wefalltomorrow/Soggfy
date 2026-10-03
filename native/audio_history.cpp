@@ -231,6 +231,14 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
         settings.music_folder,active_template,settings.normalize_artist_separators,settings.invalid_char_repl);
     std::wstring flac=OutputPath(settings.root,catalog,L".flac",
         settings.music_folder,active_template,settings.normalize_artist_separators,settings.invalid_char_repl);
+    {
+        char line[1400];snprintf(line,sizeof(line),
+            "destination=%s native=%s preset=%s output_ext=%s keep_native=%d embed_cover=%d embed_lyrics=%d save_cover=%d save_lyrics=%d",
+            Utf8(destination).c_str(),c.lossless?"flac":"ogg",Utf8(settings.output_preset).c_str(),
+            Utf8(settings.output_ext).c_str(),settings.keep_native_original,settings.embed_cover_art,
+            settings.embed_lyrics,settings.save_cover_art,settings.save_lyrics);
+        LogActivity("publish_path",line);QueueDiagnostic(line);
+    }
     Quality quality=c.Encoding(),lossless;
     if(!c.lossless && ReadQuality(flac,lossless) && lossless.codec==Codec::Flac) {
         Log(("SKIP existing lossless file "+Utf8(flac)).c_str()); return {Publication::Skipped,flac,"Already downloaded"};
@@ -307,8 +315,14 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
 
     auto post=PostProcessPublishedFile(destination,settings,heard.media.cover,heard.media.cover_extension);
     if(post.state==PostProcessResult::State::Failed) {
-        Log(("post-processing failed: "+post.error).c_str());
+        auto detail="post-processing failed: "+post.error+" native="+Utf8(destination)+" output="+Utf8(post.path);
+        LogActivity("failed",detail);QueueDiagnostic(detail.c_str());
         return {Publication::Failed,post.path,post.error};
+    }
+    {
+        auto final_path=post.path.empty()?destination:post.path;
+        auto detail="publication complete native="+Utf8(destination)+" final="+Utf8(final_path);
+        LogActivity("publish_done",detail);QueueDiagnostic(detail.c_str());
     }
     return {Publication::Saved,post.path.empty()?destination:post.path,{}};
 
@@ -326,6 +340,17 @@ static DWORD WINAPI SaveWorker(LPVOID) {
         if(!saves.Pop(job)){WaitForSingleObject(save_event,200);continue;}
         std::string identity=Utf8(job.heard.media.artist)+" - "+Utf8(job.heard.media.title);
         try {
+            {
+                auto settings=GetSettings();
+                char line[1400];snprintf(line,sizeof(line),
+                    "%s capture=%s capture_duration=%.3f media_duration=%.3f pages_or_frames=%u bytes=%llu listen_wall=%.3f epoch=%u current_epoch=%u preset=%s ffmpeg=%s",
+                    identity.c_str(),job.capture->lossless?"flac":"ogg",job.capture->Duration(),job.heard.media.duration,
+                    job.capture->lossless?job.capture->coverage.frames:job.capture->stream.pages,
+                    static_cast<unsigned long long>(job.capture->bytes),job.heard.finish-job.heard.start,
+                    job.epoch,settings.capture_epoch,Utf8(settings.output_preset).c_str(),
+                    settings.ffmpeg_path.empty()?"<auto>":Utf8(settings.ffmpeg_path).c_str());
+                LogActivity("publish",line);QueueDiagnostic(line);
+            }
             SetClassicTrackStatus(job.heard.media,"CONVERTING","Converting...");
             auto result=Publish(*job.capture,job.heard,job.epoch);
             if(result.state==Publication::Saved || (result.state==Publication::Skipped && !result.path.empty())) {
