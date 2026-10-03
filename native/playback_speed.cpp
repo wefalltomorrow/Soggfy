@@ -518,10 +518,12 @@ void ApplyPlaybackSpeedNow() {
     auto context=latest_context.load(std::memory_order_acquire);
     bool active=false;
     if(!ContextLooksValid(context,&active)||!active) {
+        // Do not run a full process-memory scan on the UI/settings caller.
+        // Wake the normal maintenance path so it can find the active player.
         latest_context.store(0,std::memory_order_release);
         latest_scan_time=0;
-        context=Find133Context();
-        if(context)latest_context.store(context,std::memory_order_release);
+        effective_speed.store(1.0,std::memory_order_release);
+        return;
     }
     Apply133(GetSettings().playback_speed,true);
 }
