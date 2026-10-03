@@ -152,47 +152,83 @@ PlaybackQualitySnapshot PlaybackQualityTracker::Snapshot(const std::string &clie
   std::copy(title_.begin(), title_.end(), out.title.begin());
   if (identity_.empty() || last_time_ < settle_until_)
     return out;
+
   out.level = ParsePlaybackLevel(client_quality);
+  const bool client_lossless =
+      out.level == PlaybackLevel::Lossless || out.level == PlaybackLevel::Lossless24;
+  const auto compatible = [&](const Candidate &c) {
+    if (out.level == PlaybackLevel::Unknown) return true;
+    return c.format == PlaybackFormat::Flac ? client_lossless : !client_lossless;
+  };
+  const auto describe = [&](const Candidate &c) {
+    out.detected_format = c.format;
+    out.detected_rate = c.format == PlaybackFormat::Flac ? c.flac.rate : c.ogg.rate;
+    out.detected_bits = c.format == PlaybackFormat::Flac ? c.flac.bits : 0;
+  };
+
+  const Candidate *detected = nullptr;
+  bool detected_ambiguous = false;
   const Candidate *selected = nullptr;
+  bool selected_ambiguous = false;
+  const bool started_near_beginning = arrival_ - start_ <= 3.0;
+
   for (const auto &c : streams_) {
     if (c.broken || !c.metadata || c.born <= generation_floor_ ||
-        c.born < start_ - 20 || c.born > arrival_ + 3)
+        c.born < start_ - 20 || c.born > arrival_ + 3 || !compatible(c))
       continue;
-    double length = c.format == PlaybackFormat::Flac && c.flac.rate
-                        ? double(c.flac.total_samples) / c.flac.rate
-                        : (c.complete ? c.ogg.Duration() : 0);
-    // A Vorbis BOS has no duration or track identity; read-ahead alone is not evidence.
+
+    // Surface a decoder header while the song is playing only when observation
+    // began near the start. Otherwise a fresh BOS is more likely next-track
+    // read-ahead and should stay hidden until duration corroborates it.
+    if (started_near_beginning) {
+      if (!detected) detected = &c;
+      else detected_ambiguous = true;
+    }
+
+    const double length = c.format == PlaybackFormat::Flac && c.flac.rate
+                              ? double(c.flac.total_samples) / c.flac.rate
+                              : (c.complete ? c.ogg.Duration() : 0);
     if (length <= 0 || std::fabs(length - duration_) > 1.0)
       continue;
-    if (selected)
-      return out; // Read-ahead and same-duration streams must not be guessed.
-    selected = &c;
+    if (!selected) selected = &c;
+    else selected_ambiguous = true;
   }
-  if (!selected)
+
+  if (selected_ambiguous) {
+    out.association = PlaybackAssociation::Ambiguous;
     return out;
-  const auto &c = *selected;
-  // A current client quality that contradicts a decoder is a reason to wait,
-  // not to assign a read-ahead decoder's codec to that song.
-  const bool lossless = out.level == PlaybackLevel::Lossless || out.level == PlaybackLevel::Lossless24;
-  if (out.level != PlaybackLevel::Unknown &&
-      ((c.format == PlaybackFormat::Flac && !lossless) || (c.format == PlaybackFormat::Ogg && lossless)))
+  }
+
+  if (selected) {
+    const auto &c = *selected;
+    describe(c);
+    out.format = c.format;
+    out.rate = out.detected_rate;
+    out.bits = out.detected_bits;
+    out.association = c.complete ? PlaybackAssociation::Complete : PlaybackAssociation::Matched;
+    if (c.format == PlaybackFormat::Flac) {
+      out.level = c.flac.bits == 24 ? PlaybackLevel::Lossless24 : PlaybackLevel::Lossless;
+    } else if (out.level == PlaybackLevel::Unknown) {
+      out.level = c.ogg.bitrate == 320000 ? PlaybackLevel::VeryHigh :
+                  c.ogg.bitrate == 160000 ? PlaybackLevel::High :
+                  c.ogg.bitrate == 96000 ? PlaybackLevel::Normal : PlaybackLevel::Lossy;
+    }
+    if (c.complete) {
+      const double length = c.format == PlaybackFormat::Flac
+                                ? double(c.flac.total_samples) / c.flac.rate : c.ogg.Duration();
+      out.bitrate = double(c.bytes) * 8 / length;
+    }
     return out;
-  out.format = c.format;
-  out.rate = c.format == PlaybackFormat::Flac ? c.flac.rate : c.ogg.rate;
-  if (c.format == PlaybackFormat::Flac) {
-    out.bits = c.flac.bits;
-    out.level = c.flac.bits == 24 ? PlaybackLevel::Lossless24 : PlaybackLevel::Lossless;
-  } else if (out.level == PlaybackLevel::Unknown) {
-    out.level = c.ogg.bitrate == 320000 ? PlaybackLevel::VeryHigh :
-                c.ogg.bitrate == 160000 ? PlaybackLevel::High :
-                c.ogg.bitrate == 96000 ? PlaybackLevel::Normal : PlaybackLevel::Lossy;
   }
-  if (c.complete) {
-    const double length = c.format == PlaybackFormat::Flac
-                              ? double(c.flac.total_samples) / c.flac.rate : c.ogg.Duration();
-    out.bitrate = double(c.bytes) * 8 / length;
+
+  if (detected_ambiguous) {
+    out.association = PlaybackAssociation::Ambiguous;
+    return out;
   }
-  // Never divide read-ahead bytes by partial decoded coverage.
+  if (detected) {
+    describe(*detected);
+    out.association = PlaybackAssociation::Detected;
+  }
   return out;
 }
 uint64_t PlaybackIdentity(const std::string &key) {
@@ -231,14 +267,30 @@ std::array<std::wstring, 4> PlaybackQualityLabels(const PlaybackQualitySnapshot 
   std::array<std::wstring, 4> rows = {L"Song: " + (safe.empty() ? L"Unavailable" : safe),
                                       std::wstring(L"Quality: ")+level, L"Format: Unavailable",
                                       L"Sample rate: Unavailable"};
-  if (q.format == PlaybackFormat::Unknown) return rows;
-  rows[2] = q.format == PlaybackFormat::Flac ? L"Format: FLAC" : L"Format: Ogg";
-  if (q.rate) {
-    auto number = std::to_wstring(q.rate);
+  const bool validated = q.format != PlaybackFormat::Unknown;
+  const auto format = validated ? q.format : q.detected_format;
+  const auto rate = validated ? q.rate : q.detected_rate;
+  const auto bits = validated ? q.bits : q.detected_bits;
+  if (format == PlaybackFormat::Unknown) return rows;
+  rows[2] = format == PlaybackFormat::Flac ? L"Format: FLAC" : L"Format: Ogg/Vorbis";
+  if (!validated) rows[2] += L" (detected)";
+  if (rate) {
+    auto number = std::to_wstring(rate);
     for (int p = int(number.size()) - 3; p > 0; p -= 3) number.insert(size_t(p), L",");
     rows[3] = L"Sample rate: " + number + L" Hz";
-    if(q.bits) rows[3] += L" / " + std::to_wstring(q.bits) + L"-bit";
+    if(bits) rows[3] += L" / " + std::to_wstring(bits) + L"-bit";
+    if(!validated) rows[3] += L" (detected)";
   }
   return rows;
+}
+
+std::wstring PlaybackAssociationLabel(const PlaybackQualitySnapshot &q) {
+  switch(q.association) {
+    case PlaybackAssociation::Detected:return L"Pending - native stream detected";
+    case PlaybackAssociation::Matched:return L"Matched - capturing";
+    case PlaybackAssociation::Complete:return L"Complete";
+    case PlaybackAssociation::Ambiguous:return L"Ambiguous - waiting for unique stream";
+    default:return L"Unavailable";
+  }
 }
 } // namespace history
