@@ -470,17 +470,39 @@ static DWORD WINAPI Worker(LPVOID) {
                     auto c=std::make_unique<Capture>(); c->born=s.time;
                     active[s.context]=std::move(c);
                     found=active.find(s.context);
-                    char line[160]; snprintf(line,sizeof(line),"BOS ctx=%llx seq=%u serial=%u rate=%u channels=%u",
-                        static_cast<unsigned long long>(s.context),page.sequence,page.serial,page.rate,page.channels); Log(line);
+                    char line[512]; snprintf(line,sizeof(line),
+                        "ogg_bos ctx=%llx seq=%u serial=%u rate=%u channels=%u media=%s pos=%.3f raw=%.3f duration=%.3f rate_effective=%.3f",
+                        static_cast<unsigned long long>(s.context),page.sequence,page.serial,page.rate,page.channels,
+                        Utf8(current.title).c_str(),current.position,current.raw_position,current.duration,playback_rate);
+                    LogActivity("capture",line);QueueDiagnostic(line);
                 }
                 if(found==active.end()) continue;
-                Capture& c=*found->second; Result result=c.stream.Push(s.bytes,s.length);
+                Capture& c=*found->second;
+                const auto expected_seq=c.stream.next;
+                const auto expected_serial=c.stream.serial;
+                const auto prior_samples=c.stream.samples;
+                const auto prior_pages=c.stream.pages;
+                Result result=c.stream.Push(s.bytes,s.length);
                 if(result==Result::Replay) {
-                    if(DebugLoggingEnabled())Log("Ogg replayed page ignored");
+                    if(DebugLoggingEnabled()) {
+                        char line[512];snprintf(line,sizeof(line),
+                            "ogg_replay ctx=%llx seq=%u expected=%u serial=%u flags=0x%02x granule=%lld pages=%u bytes=%llu",
+                            static_cast<unsigned long long>(s.context),page.sequence,expected_seq,page.serial,page.flags,
+                            static_cast<long long>(page.granule),prior_pages,static_cast<unsigned long long>(c.bytes));
+                        Log(line);
+                    }
                     continue;
                 }
                 if(result==Result::Invalid || result==Result::Ignore) {
-                    active.erase(found); Log("stream discarded: page gap or integrity failure"); continue;
+                    char line[1024];snprintf(line,sizeof(line),
+                        "ogg_rejected result=%s ctx=%llx seq=%u expected_seq=%u serial=%u expected_serial=%u flags=0x%02x granule=%lld prior_samples=%lld pages=%u bytes=%llu media=%s pos=%.3f raw=%.3f duration=%.3f rate=%.3f",
+                        result==Result::Invalid?"invalid":"ignore",
+                        static_cast<unsigned long long>(s.context),page.sequence,expected_seq,page.serial,expected_serial,page.flags,
+                        static_cast<long long>(page.granule),static_cast<long long>(prior_samples),prior_pages,
+                        static_cast<unsigned long long>(c.bytes),Utf8(current.title).c_str(),current.position,current.raw_position,
+                        current.duration,playback_rate);
+                    LogActivity("failed",line);QueueDiagnostic(line);
+                    active.erase(found); continue;
                 }
                 size_t reserved=publishing_reserved.load();
                 for(const auto& item:active) reserved+=item.second->data.capacity();
@@ -493,8 +515,12 @@ static DWORD WINAPI Worker(LPVOID) {
                 c.bytes+=s.length;
                 if(result==Result::Complete) {
                     c.finished=s.time;
-                    char line[200]; snprintf(line,sizeof(line),"EOS pages=%u bytes=%llu duration=%.6f capture_seconds=%.3f",
-                      c.stream.pages,static_cast<unsigned long long>(c.bytes),c.stream.Duration(),c.finished-c.born); Log(line);
+                    char line[768]; snprintf(line,sizeof(line),
+                      "ogg_eos ctx=%llx pages=%u bytes=%llu stream_duration=%.6f capture_seconds=%.3f media=%s media_pos=%.3f raw=%.3f media_duration=%.3f rate=%.3f ready_before=%zu",
+                      static_cast<unsigned long long>(s.context),c.stream.pages,static_cast<unsigned long long>(c.bytes),
+                      c.stream.Duration(),c.finished-c.born,Utf8(current.title).c_str(),current.position,current.raw_position,
+                      current.duration,playback_rate,ready.size());
+                    LogActivity("capture",line);QueueDiagnostic(line);
                     ready.push_back(std::move(found->second)); active.erase(found);
                 }
             }
