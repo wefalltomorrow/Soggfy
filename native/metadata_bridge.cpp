@@ -118,8 +118,9 @@ static std::wstring UiConfigCode() {
  add("blockTelemetry",bit(s.block_telemetry));
  add("liftQueue",bit(s.lift_add_to_queue));
  add("keepNative",bit(s.keep_native_original));
- add("playbackSpeed",std::to_string(s.playback_speed));
- add("speedSupported",bit(PlaybackSpeedSupported()));
+ const bool speed_supported=PlaybackSpeedSupported();
+ add("playbackSpeed",std::to_string(speed_supported?s.playback_speed:1.0));
+ add("speedSupported",bit(speed_supported));
  const auto quality=PlaybackQualityLabels(ReadPlaybackQuality());
  auto quality_value=[](const std::wstring& row) {
   const auto at=row.find(L": ");

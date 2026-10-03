@@ -2,6 +2,7 @@
 #include <windows.h>
 #include "playback_speed.h"
 #include "playback_speed_discovery.h"
+#include "playback_speed_compat.h"
 #include "history_settings.h"
 #include "hook_init_state.h"
 #include "vendor/minhook/include/MinHook.h"
@@ -9,6 +10,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <vector>
+
+extern "C" FARPROC ResolveVersionExport(unsigned index);
 
 namespace history {
 namespace {
@@ -19,6 +23,42 @@ using CreateTrackPlayer=std::uint64_t(*)(
 static CreateTrackPlayer original=nullptr;
 static hooks::InitController speed_init;
 static std::atomic<bool> supported{false};
+
+struct SpotifyVersion {
+    std::uint16_t major=0,minor=0,patch=0,build=0;
+};
+
+static bool ModuleVersion(HMODULE module,SpotifyVersion& out) {
+    wchar_t path[32768]{};
+    const DWORD length=GetModuleFileNameW(module,path,static_cast<DWORD>(sizeof(path)/sizeof(path[0])));
+    if(!length || length>=sizeof(path)/sizeof(path[0]))return false;
+
+    using SizeFn=DWORD (WINAPI*)(LPCWSTR,LPDWORD);
+    using InfoFn=BOOL (WINAPI*)(LPCWSTR,DWORD,DWORD,LPVOID);
+    using QueryFn=BOOL (WINAPI*)(LPCVOID,LPCWSTR,LPVOID*,PUINT);
+    auto size_fn=reinterpret_cast<SizeFn>(::ResolveVersionExport(7));
+    auto info_fn=reinterpret_cast<InfoFn>(::ResolveVersionExport(8));
+    auto query_fn=reinterpret_cast<QueryFn>(::ResolveVersionExport(16));
+    if(!size_fn||!info_fn||!query_fn)return false;
+
+    DWORD ignored=0;
+    const DWORD bytes=size_fn(path,&ignored);
+    if(!bytes||bytes>4*1024*1024)return false;
+    std::vector<std::uint8_t> buffer(bytes);
+    if(!info_fn(path,0,bytes,buffer.data()))return false;
+
+    VS_FIXEDFILEINFO* fixed=nullptr;
+    UINT fixed_bytes=0;
+    if(!query_fn(buffer.data(),L"\\",reinterpret_cast<void**>(&fixed),&fixed_bytes)||
+       !fixed||fixed_bytes<sizeof(VS_FIXEDFILEINFO)||fixed->dwSignature!=VS_FFI_SIGNATURE)
+        return false;
+
+    out.major=static_cast<std::uint16_t>(fixed->dwFileVersionMS>>16);
+    out.minor=static_cast<std::uint16_t>(fixed->dwFileVersionMS&0xffffu);
+    out.patch=static_cast<std::uint16_t>(fixed->dwFileVersionLS>>16);
+    out.build=static_cast<std::uint16_t>(fixed->dwFileVersionLS&0xffffu);
+    return true;
+}
 
 static std::uint64_t Hook(std::uint64_t a1,std::uint64_t player_meta,void* track_meta,
                           double native_speed,unsigned int normalization,int urgency,
@@ -52,6 +92,23 @@ void StartPlaybackSpeed(HMODULE module) {
     const auto now=static_cast<std::uint64_t>(GetTickCount64());
     if(speed_init.State()==hooks::InitState::Active)return;
     if(!speed_init.TryBegin(now))return;
+
+    SpotifyVersion version{};
+    if(!ModuleVersion(module,version)) {
+        HistoryLog("playback-speed hook disabled: Spotify.dll version could not be verified");
+        speed_init.MarkUnsupported();
+        return;
+    }
+    if(!PlaybackSpeedVersionSupported(version.major,version.minor,version.patch,version.build)) {
+        char line[240];
+        std::snprintf(line,sizeof(line),
+            "playback-speed hook disabled for Spotify %u.%u.%u.%u: player ABI not validated; capture remains available at 1x",
+            unsigned(version.major),unsigned(version.minor),unsigned(version.patch),unsigned(version.build));
+        HistoryLog(line);
+        speed_init.MarkUnsupported();
+        return;
+    }
+
     std::size_t image_size=0;
     if(!ImageSize(module,image_size)) {
         HistoryLog("playback-speed discovery unavailable: invalid Spotify.dll image");

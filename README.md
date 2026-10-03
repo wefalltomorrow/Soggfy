@@ -9,7 +9,7 @@ The goal is to keep the interaction model people used in old Soggfy while replac
 - Uses the old Soggfy-style top-bar Downloads button and Soggfy settings modal.
 - Shows per-track status icons for downloading, converting, completed, failed, warning and ignored states.
 - Restores Skip Downloaded Tracks, Skip Ignored Tracks, Ignore/Unignore and Generate M3U.
-- Restores the old 1–50x playback-speed control with a validated modern x64 Spotify player hook. Unsupported layouts fail closed.
+- Restores the old 1–50x playback-speed control only on explicitly runtime-validated Spotify player ABIs. Unsupported or newer builds fail closed at 1x instead of risking startup.
 - Restores old-style output presets including MP3, M4A/AAC, Opus and custom FFmpeg output.
 - Always captures Spotify's native Ogg or FLAC first, and keeps native FLAC lossless.
 - Embeds artwork, lyrics and rich locally cached metadata when enabled.
@@ -26,7 +26,7 @@ The goal is to keep the interaction model people used in old Soggfy while replac
 
 ## Install
 
-The Floggfy 1.1.0 capture/startup base was live-tested against Windows x64 Spotify 1.3.3.264. Its dynamic audio/connectivity resolver was also validated against signed Spotify DLLs from 1.3.0.277, 1.2.94.583 and 1.2.92.148. The Classic Soggfy UI and playback-speed additions still need normal real-client validation as Spotify UI internals change over time. Microsoft Store installs remain unvalidated.
+The Floggfy 1.1.0 capture/startup base was live-tested against Windows x64 Spotify 1.3.3.264. Its dynamic audio/connectivity resolver was also validated against signed Spotify DLLs from 1.3.0.277, 1.2.94.583 and 1.2.92.148. Soggfy's native playback-speed hook is currently enabled only on Spotify 1.3.1.234; Spotify 1.3.3.264 runs at 1x while that newer player ABI is being revalidated. The Classic Soggfy UI still needs normal real-client validation as Spotify UI internals change over time. Microsoft Store installs remain unvalidated.
 
 Releases use a single all-in-one Windows x64 ZIP. It contains both startup modes; install **only one**.
 

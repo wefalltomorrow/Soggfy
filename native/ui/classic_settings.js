@@ -182,7 +182,7 @@ sgf.openSettings=()=>{
   };
 
   const general=section('General',
-    row('Playback speed',(()=>{const n=slider('playbackSpeed');n.title=sgf.state.speedSupported?'Native accelerated playback':'This Spotify build has not exposed a validated native speed hook yet';return n;})()),
+    row('Playback speed',(()=>{const n=slider('playbackSpeed');const supported=!!sgf.state.speedSupported;n.title=supported?'Native accelerated playback':'Disabled on this Spotify build because the native player ABI is not validated';if(!supported)n.querySelectorAll('input').forEach(input=>{input.disabled=true;});return n;})()),
     row('Output format',format),
     custom,
     row('Skip downloaded tracks',toggle('skipDownloaded')),
