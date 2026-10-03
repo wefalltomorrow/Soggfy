@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0-rc.18
+
+- Fixed Spotify 1.3.3.264 playback speed remaining at 1x because RC17 could cache an inactive startup ContextPlayer whose current and prepared TrackPlayer pointers were both null.
+- Context discovery now ignores inactive ContextPlayer objects and keeps rescanning until a real current or prepared TrackPlayer exists.
+- A unique current-track ContextPlayer is preferred over prepared-only candidates.
+- Cached ContextPlayer state is discarded and reacquired when it becomes inactive across startup or track transitions.
+- Full ContextPlayer memory scans stay on the maintenance path rather than the Classic UI/settings caller.
+- The log now records the acquired active ContextPlayer plus current/prepared TrackPlayer addresses.
+- RC17's native speed getter verification and direct TrackPlayer setter fallback remain in place.
+
 ## 3.0.0-rc.17
 
 - Fixed RC16 reporting configured playback speed as effective even when Spotify 1.3.3.264 was still playing at 1x.
