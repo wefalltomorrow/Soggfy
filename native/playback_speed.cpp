@@ -563,10 +563,16 @@ static bool Start133TrackCreateBackend(HMODULE module,std::size_t image_size,
     if(status==MH_OK)
         status=MH_CreateHook(target,reinterpret_cast<void*>(Hook),
                              reinterpret_cast<void**>(&original));
-    if(status==MH_OK)status=MH_EnableHook(target);
+    if(status==MH_OK) {
+        // Publish the backend before threads are resumed with the detour active,
+        // so the very first TrackPlayer creation can update effective_speed.
+        active_backend.store(PlaybackSpeedBackend::TrackCreate133,std::memory_order_release);
+        status=MH_EnableHook(target);
+        if(status!=MH_OK&&status!=MH_ERROR_ENABLED)
+            active_backend.store(PlaybackSpeedBackend::Unsupported,std::memory_order_release);
+    }
 
     if(status==MH_OK||status==MH_ERROR_ENABLED) {
-        active_backend.store(PlaybackSpeedBackend::TrackCreate133,std::memory_order_release);
         supported.store(true,std::memory_order_release);
         speed_init.Activate();
         char line[320];
