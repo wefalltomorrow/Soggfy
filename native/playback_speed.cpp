@@ -40,6 +40,7 @@ static ULONGLONG latest_scan_time=0;
 static ULONGLONG latest_apply_time=0;
 static double latest_logged_speed=-1.0;
 static ULONGLONG latest_failure_log_time=0;
+static ULONGLONG latest_scan_log_time=0;
 
 // Spotify 1.3.3.264 x64. These RVAs were verified against the official
 // SpotifyFullSetupX64.exe payload. Unlike the old constructor detour, the
@@ -233,15 +234,72 @@ static bool WritablePrivate(const MEMORY_BASIC_INFORMATION& mbi) {
            protect==PAGE_EXECUTE_READWRITE||protect==PAGE_EXECUTE_WRITECOPY;
 }
 
+static void Log133PlayerLikeFields(std::uintptr_t candidate) {
+    if(!candidate)return;
+    const auto module=reinterpret_cast<std::uintptr_t>(latest_module);
+    unsigned found=0;
+    for(std::size_t offset=0x100;offset<=0xc00;offset+=sizeof(std::uintptr_t)) {
+        std::uintptr_t object=0;
+        if(!ReadSelf(reinterpret_cast<const void*>(candidate+offset),object)||
+           !object||object==candidate)
+            continue;
+
+        TrackSpeedSetter setter=nullptr;
+        TrackSpeedGetter getter=nullptr;
+        if(!PlayerSpeedFunctions(object,setter,getter))continue;
+
+        std::uintptr_t vtable=0;
+        ReadSelf(reinterpret_cast<const void*>(object),vtable);
+        const auto setter_address=reinterpret_cast<std::uintptr_t>(setter);
+        const auto getter_address=reinterpret_cast<std::uintptr_t>(getter);
+        const auto vtable_rva=(vtable>=module&&vtable<module+latest_image_size)?vtable-module:0;
+        const auto setter_rva=(setter_address>=module&&setter_address<module+latest_image_size)?
+            setter_address-module:0;
+        const auto getter_rva=(getter_address>=module&&getter_address<module+latest_image_size)?
+            getter_address-module:0;
+
+        char line[384];
+        std::snprintf(line,sizeof(line),
+            "speed_scan_playerlike context=%p offset=0x%04zx object=%p vtable=%p vtable_rva=0x%llx setter_rva=0x%llx getter_rva=0x%llx",
+            reinterpret_cast<void*>(candidate),offset,reinterpret_cast<void*>(object),
+            reinterpret_cast<void*>(vtable),
+            static_cast<unsigned long long>(vtable_rva),
+            static_cast<unsigned long long>(setter_rva),
+            static_cast<unsigned long long>(getter_rva));
+        HistoryLog(line);
+        if(++found>=8)break;
+    }
+
+    if(!found) {
+        char line[192];
+        std::snprintf(line,sizeof(line),
+            "speed_scan_playerlike context=%p none_in_range=0x100-0xc00",
+            reinterpret_cast<void*>(candidate));
+        HistoryLog(line);
+    }
+}
+
 static std::uintptr_t Find133Context() {
     SYSTEM_INFO info{};
     GetSystemInfo(&info);
     const auto wanted=reinterpret_cast<std::uintptr_t>(latest_module)+k133VtableRva;
     const auto minimum=reinterpret_cast<std::uintptr_t>(info.lpMinimumApplicationAddress);
     const auto maximum=reinterpret_cast<std::uintptr_t>(info.lpMaximumApplicationAddress);
+    const ULONGLONG now=GetTickCount64();
+    const bool log_scan=GetSettings().playback_speed>1.0 &&
+        now-latest_scan_log_time>=5000;
+
     std::vector<std::uint8_t> buffer(256*1024);
     std::vector<std::uintptr_t> current_candidates;
     std::vector<std::uintptr_t> prepared_candidates;
+    std::uint64_t writable_regions=0;
+    std::uint64_t scanned_bytes=0;
+    std::uint64_t readable_chunks=0;
+    unsigned vtable_hits=0;
+    unsigned valid_layouts=0;
+    unsigned inactive_layouts=0;
+    unsigned invalid_layouts=0;
+    unsigned logged_candidates=0;
 
     for(std::uintptr_t address=minimum;address<maximum;) {
         MEMORY_BASIC_INFORMATION mbi{};
@@ -251,27 +309,56 @@ static std::uintptr_t Find133Context() {
         if(next<=address)break;
 
         if(WritablePrivate(mbi) && mbi.RegionSize<=256ull*1024*1024) {
+            ++writable_regions;
             for(std::uintptr_t chunk=base;chunk<next;) {
                 const auto wanted_bytes=static_cast<std::size_t>(
                     (next-chunk)<buffer.size()?(next-chunk):buffer.size());
                 SIZE_T copied=0;
                 if(ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<const void*>(chunk),
                                      buffer.data(),wanted_bytes,&copied)&&copied>=sizeof(std::uintptr_t)) {
+                    ++readable_chunks;
+                    scanned_bytes+=copied;
                     std::size_t offset=static_cast<std::size_t>((8-(chunk&7u))&7u);
                     for(;offset+sizeof(std::uintptr_t)<=copied;offset+=sizeof(std::uintptr_t)) {
                         std::uintptr_t value=0;
                         std::memcpy(&value,buffer.data()+offset,sizeof(value));
                         if(value!=wanted)continue;
 
+                        ++vtable_hits;
                         const auto candidate=chunk+offset;
+                        std::uintptr_t current=0,prepared=0,dispatcher=0;
+                        const bool current_read=ReadSelf(
+                            reinterpret_cast<const void*>(candidate+k133CurrentPlayerOffset),current);
+                        const bool prepared_read=ReadSelf(
+                            reinterpret_cast<const void*>(candidate+k133PreparedPlayerOffset),prepared);
+                        const bool dispatcher_read=ReadSelf(
+                            reinterpret_cast<const void*>(candidate+k133DispatcherOffset),dispatcher);
+                        const bool current_ok=current_read&&TrackPlayerLooksValid(current);
+                        const bool prepared_ok=prepared_read&&TrackPlayerLooksValid(prepared);
+
                         bool active=false;
-                        if(!ContextLooksValid(candidate,&active)||!active)continue;
+                        const bool valid=ContextLooksValid(candidate,&active);
+                        if(valid) {
+                            ++valid_layouts;
+                            if(!active)++inactive_layouts;
+                        } else {
+                            ++invalid_layouts;
+                        }
 
-                        std::uintptr_t current=0,prepared=0;
-                        if(!ReadSelf(reinterpret_cast<const void*>(candidate+k133CurrentPlayerOffset),current)||
-                           !ReadSelf(reinterpret_cast<const void*>(candidate+k133PreparedPlayerOffset),prepared))
-                            continue;
+                        if(log_scan&&logged_candidates<6) {
+                            char line[512];
+                            std::snprintf(line,sizeof(line),
+                                "speed_scan_candidate context=%p valid=%d active=%d current=%p current_read=%d current_ok=%d prepared=%p prepared_read=%d prepared_ok=%d dispatcher=%p dispatcher_read=%d",
+                                reinterpret_cast<void*>(candidate),valid,active,
+                                reinterpret_cast<void*>(current),current_read,current_ok,
+                                reinterpret_cast<void*>(prepared),prepared_read,prepared_ok,
+                                reinterpret_cast<void*>(dispatcher),dispatcher_read);
+                            HistoryLog(line);
+                            Log133PlayerLikeFields(candidate);
+                            ++logged_candidates;
+                        }
 
+                        if(!valid||!active)continue;
                         if(current)current_candidates.push_back(candidate);
                         else if(prepared)prepared_candidates.push_back(candidate);
                     }
@@ -285,10 +372,27 @@ static std::uintptr_t Find133Context() {
 
     // The audible/current TrackPlayer is the strongest signal. A prepared-only
     // ContextPlayer is useful only when there is no current-track candidate.
-    if(current_candidates.size()==1)return current_candidates.front();
-    if(current_candidates.size()>1)return 0;
-    if(prepared_candidates.size()==1)return prepared_candidates.front();
-    return 0;
+    std::uintptr_t selected=0;
+    if(current_candidates.size()==1)selected=current_candidates.front();
+    else if(current_candidates.empty()&&prepared_candidates.size()==1)
+        selected=prepared_candidates.front();
+
+    if(log_scan) {
+        latest_scan_log_time=now;
+        char line[512];
+        std::snprintf(line,sizeof(line),
+            "speed_scan_summary requested=%.3fx wanted_vtable=%p writable_regions=%llu readable_chunks=%llu scanned_mib=%.2f vtable_hits=%u valid_layouts=%u inactive=%u invalid=%u current_candidates=%zu prepared_candidates=%zu selected=%p",
+            GetSettings().playback_speed,reinterpret_cast<void*>(wanted),
+            static_cast<unsigned long long>(writable_regions),
+            static_cast<unsigned long long>(readable_chunks),
+            static_cast<double>(scanned_bytes)/(1024.0*1024.0),
+            vtable_hits,valid_layouts,inactive_layouts,invalid_layouts,
+            current_candidates.size(),prepared_candidates.size(),
+            reinterpret_cast<void*>(selected));
+        HistoryLog(line);
+    }
+
+    return selected;
 }
 
 static bool Apply133(double speed,bool log_change) {
@@ -407,7 +511,17 @@ static bool Start133Backend(HMODULE module,std::size_t image_size) {
     active_backend.store(PlaybackSpeedBackend::ContextSetter133,std::memory_order_release);
     supported.store(true,std::memory_order_release);
     speed_init.Activate();
-    HistoryLog("Spotify 1.3.3 ContextPlayer playback-speed backend validated");
+    {
+        char line[512];
+        std::snprintf(line,sizeof(line),
+            "Spotify 1.3.3 ContextPlayer playback-speed backend validated base=%p image_size=0x%zx vtable=%p current_wrapper=%p prepared_wrapper=%p current_offset=0x%zx prepared_offset=0x%zx dispatcher_offset=0x%zx",
+            reinterpret_cast<void*>(module),image_size,
+            reinterpret_cast<void*>(reinterpret_cast<std::uintptr_t>(module)+k133VtableRva),
+            reinterpret_cast<void*>(reinterpret_cast<std::uintptr_t>(module)+k133CurrentSetterRva),
+            reinterpret_cast<void*>(reinterpret_cast<std::uintptr_t>(module)+k133PreparedSetterRva),
+            k133CurrentPlayerOffset,k133PreparedPlayerOffset,k133DispatcherOffset);
+        HistoryLog(line);
+    }
     return true;
 }
 

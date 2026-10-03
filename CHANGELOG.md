@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.19
+
+- Added detailed, rate-limited diagnostics for Spotify 1.3.3.264 playback-speed discovery after RC18 still failed to locate an active TrackPlayer.
+- Logs the Spotify module/vtable/wrapper addresses used by the backend.
+- Logs writable-region scan coverage, raw ContextPlayer vtable hits, valid/inactive/invalid layout counts, current/prepared candidate counts and the selected context.
+- Logs raw current/prepared/dispatcher fields for candidate ContextPlayer objects and whether those player pointers match the expected TrackPlayer shape.
+- Scans the nearby ContextPlayer object for player-like pointers and records their offsets plus vtable/setter/getter RVAs, making changed 1.3.3 object offsets much easier to identify from one user log.
+- Diagnostics run only while a speed above 1x is requested and are limited to one scan report every five seconds.
+
 ## 3.0.0-rc.18
 
 - Fixed Spotify 1.3.3.264 playback speed remaining at 1x because RC17 could cache an inactive startup ContextPlayer whose current and prepared TrackPlayer pointers were both null.

@@ -120,7 +120,7 @@ If the injected UI is unavailable after a Spotify update, capture can still be e
 
 ## Diagnostics
 
-`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages.
+`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages. On Spotify 1.3.3.264, unresolved accelerated-playback discovery also emits a rate-limited `speed_scan_*` report with ContextPlayer candidates and nearby player-like object offsets.
 
 Enable **Debug log** in Soggfy settings for the high-volume timeline trace: each media-session sample plus replayed Ogg-page details. This is intended for short troubleshooting runs because the log is capped and rotates by truncation when it reaches its size limit.
 
