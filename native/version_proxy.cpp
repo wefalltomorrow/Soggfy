@@ -388,6 +388,7 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
         if (GetModuleHandleExW(0, L"Spotify.dll", &module)) {
             StartConnectivityHook(module);
             history::StartPlaybackSpeed(module);
+            history::MaintainPlaybackSpeed(module);
             if (i >= 80) StartAudioHistory(module, proxy_module);
             FreeLibrary(module);
         }
