@@ -374,6 +374,17 @@ static DWORD WINAPI Worker(LPVOID) {
                     Log(enabled ? "To Disk capture enabled" : "To Disk capture disabled");
                 }
                 epoch=preferences.capture_epoch;
+                const auto preset=Utf8(preferences.output_preset);
+                const auto root=Utf8(preferences.root);
+                const auto ffmpeg=Utf8(preferences.ffmpeg_path);
+                char line[1536];
+                snprintf(line,sizeof(line),
+                    "generation=%u epoch=%u enabled=%d downloads=%d ogg=%d flac=%d speed_config=%.3f speed_hook=%d speed_effective=%.3f preset=%s ffmpeg=%s root=%s debug=%d",
+                    preferences.generation,preferences.capture_epoch,enabled,preferences.downloads,
+                    preferences.ogg,preferences.flac,preferences.playback_speed,
+                    PlaybackSpeedSupported(),playback_rate,preset.c_str(),
+                    ffmpeg.empty()?"<auto>":ffmpeg.c_str(),root.c_str(),preferences.debug_log);
+                LogActivity("config",line);
             }
             if(!enabled && !quality_enabled.load(std::memory_order_relaxed)) {
                 PublishPlaybackQuality({});
