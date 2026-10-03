@@ -542,6 +542,14 @@ static DWORD WINAPI Worker(LPVOID) {
                     std::string previous=listen.identity; double previous_start=listen.start_time;
                     bool was_eligible=listen.eligible;
                     double prior_position=listen.last_position,prior_duration=listen.duration,prior_time=listen.last_time;
+                    if(DebugLoggingEnabled()) {
+                        char line[1200];snprintf(line,sizeof(line),
+                            "media_sample title=%s artist=%s key=%s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d prior=%.3f prior_duration=%.3f wall_delta=%.3f speed_config=%.3f speed_hook=%d rate=%.3f eligible=%d active=%zu ready=%zu",
+                            Utf8(media.title).c_str(),Utf8(media.artist).c_str(),media.Key().c_str(),media.position,media.raw_position,
+                            media.duration,media.timeline_age,media.playing,prior_position,prior_duration,Now()-prior_time,
+                            preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,listen.eligible,active.size(),ready.size());
+                        Log(line);
+                    }
                     std::string done=listen.Observe(media.Key(),media.position,media.duration,media.playing,Now(),playback_rate);
                     if(was_eligible && !listen.eligible && done.empty()) {
                         const auto identity=Utf8(current.artist)+" - "+Utf8(current.title);
@@ -637,7 +645,18 @@ static DWORD WINAPI Worker(LPVOID) {
                     ready.erase(ready.begin()+match); h=heard.erase(h);
                 } else if(matches>1 || now-h->finish>10) {
                     SetClassicTrackStatus(h->media,"ERROR",matches>1?"Ambiguous audio stream association":"Completed audio stream was not found");
-                    Log("completed listen discarded: missing or ambiguous Ogg association"); h=heard.erase(h);
+                    std::string candidates;
+                    for(size_t i=0;i<ready.size() && i<6;i++) {
+                        char item[160];snprintf(item,sizeof(item),"%s%.3fs@%+.3fs",
+                            i?",":"",ready[i]->Duration(),ready[i]->born-h->start);
+                        candidates+=item;
+                    }
+                    char line[1400];snprintf(line,sizeof(line),
+                        "%s - %s (stream association failed matches=%zu ready=%zu media_duration=%.3f listen_start=%.3f listen_finish=%.3f wait=%.3f candidates=[%s])",
+                        Utf8(h->media.artist).c_str(),Utf8(h->media.title).c_str(),matches,ready.size(),
+                        h->media.duration,h->start,h->finish,now-h->finish,candidates.c_str());
+                    LogActivity("failed",line);QueueDiagnostic(line);
+                    h=heard.erase(h);
                 } else ++h;
             }
             ready.erase(std::remove_if(ready.begin(),ready.end(),[now](const auto& c){return now-c->finished>600;}),ready.end());
@@ -648,8 +667,11 @@ static DWORD WINAPI Worker(LPVOID) {
                 size_t buffered=0;
                 for(const auto& item:active) buffered+=item.second->data.capacity();
                 for(const auto& item:ready) buffered+=item->data.capacity();
-                char line[350]; snprintf(line,sizeof(line),"status calls=%ld pages=%ld dropped=%ld active=%zu ready=%zu saved=%u pos=%.3f/%.3f eligible=%d buffered=%zu",
-                  calls,pages,dropped,active.size(),ready.size(),saved_count.load(),current.position,current.duration,listen.eligible,buffered); Log(line); next_log=now+10;
+                char line[900]; snprintf(line,sizeof(line),
+                  "status calls=%ld pages=%ld dropped=%ld active=%zu ready=%zu heard=%zu saved=%u title=%s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f eligible=%d pending=%d rate=%.3f speed_config=%.3f speed_hook=%d buffered=%zu",
+                  calls,pages,dropped,active.size(),ready.size(),heard.size(),saved_count.load(),Utf8(current.title).c_str(),
+                  current.position,current.raw_position,current.duration,current.timeline_age,listen.eligible,listen.pending_start,
+                  playback_rate,preferences.playback_speed,PlaybackSpeedSupported(),buffered); Log(line); next_log=now+5;
             }
             WaitForSingleObject(event,50);
         }
