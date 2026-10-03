@@ -231,6 +231,14 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
         settings.music_folder,active_template,settings.normalize_artist_separators,settings.invalid_char_repl);
     std::wstring flac=OutputPath(settings.root,catalog,L".flac",
         settings.music_folder,active_template,settings.normalize_artist_separators,settings.invalid_char_repl);
+    {
+        char line[1400];snprintf(line,sizeof(line),
+            "destination=%s native=%s preset=%s output_ext=%s keep_native=%d embed_cover=%d embed_lyrics=%d save_cover=%d save_lyrics=%d",
+            Utf8(destination).c_str(),c.lossless?"flac":"ogg",Utf8(settings.output_preset).c_str(),
+            Utf8(settings.output_ext).c_str(),settings.keep_native_original,settings.embed_cover_art,
+            settings.embed_lyrics,settings.save_cover_art,settings.save_lyrics);
+        LogActivity("publish_path",line);QueueDiagnostic(line);
+    }
     Quality quality=c.Encoding(),lossless;
     if(!c.lossless && ReadQuality(flac,lossless) && lossless.codec==Codec::Flac) {
         Log(("SKIP existing lossless file "+Utf8(flac)).c_str()); return {Publication::Skipped,flac,"Already downloaded"};
@@ -307,8 +315,14 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
 
     auto post=PostProcessPublishedFile(destination,settings,heard.media.cover,heard.media.cover_extension);
     if(post.state==PostProcessResult::State::Failed) {
-        Log(("post-processing failed: "+post.error).c_str());
+        auto detail="post-processing failed: "+post.error+" native="+Utf8(destination)+" output="+Utf8(post.path);
+        LogActivity("failed",detail);QueueDiagnostic(detail.c_str());
         return {Publication::Failed,post.path,post.error};
+    }
+    {
+        auto final_path=post.path.empty()?destination:post.path;
+        auto detail="publication complete native="+Utf8(destination)+" final="+Utf8(final_path);
+        LogActivity("publish_done",detail);QueueDiagnostic(detail.c_str());
     }
     return {Publication::Saved,post.path.empty()?destination:post.path,{}};
 
@@ -326,6 +340,17 @@ static DWORD WINAPI SaveWorker(LPVOID) {
         if(!saves.Pop(job)){WaitForSingleObject(save_event,200);continue;}
         std::string identity=Utf8(job.heard.media.artist)+" - "+Utf8(job.heard.media.title);
         try {
+            {
+                auto settings=GetSettings();
+                char line[1400];snprintf(line,sizeof(line),
+                    "%s capture=%s capture_duration=%.3f media_duration=%.3f pages_or_frames=%u bytes=%llu listen_wall=%.3f epoch=%u current_epoch=%u preset=%s ffmpeg=%s",
+                    identity.c_str(),job.capture->lossless?"flac":"ogg",job.capture->Duration(),job.heard.media.duration,
+                    job.capture->lossless?job.capture->coverage.frames:job.capture->stream.pages,
+                    static_cast<unsigned long long>(job.capture->bytes),job.heard.finish-job.heard.start,
+                    job.epoch,settings.capture_epoch,Utf8(settings.output_preset).c_str(),
+                    settings.ffmpeg_path.empty()?"<auto>":Utf8(settings.ffmpeg_path).c_str());
+                LogActivity("publish",line);QueueDiagnostic(line);
+            }
             SetClassicTrackStatus(job.heard.media,"CONVERTING","Converting...");
             auto result=Publish(*job.capture,job.heard,job.epoch);
             if(result.state==Publication::Saved || (result.state==Publication::Skipped && !result.path.empty())) {
@@ -374,6 +399,17 @@ static DWORD WINAPI Worker(LPVOID) {
                     Log(enabled ? "To Disk capture enabled" : "To Disk capture disabled");
                 }
                 epoch=preferences.capture_epoch;
+                const auto preset=Utf8(preferences.output_preset);
+                const auto root=Utf8(preferences.root);
+                const auto ffmpeg=Utf8(preferences.ffmpeg_path);
+                char line[1536];
+                snprintf(line,sizeof(line),
+                    "generation=%u epoch=%u enabled=%d downloads=%d ogg=%d flac=%d speed_config=%.3f speed_hook=%d speed_effective=%.3f preset=%s ffmpeg=%s root=%s debug=%d",
+                    preferences.generation,preferences.capture_epoch,enabled,preferences.downloads,
+                    preferences.ogg,preferences.flac,preferences.playback_speed,
+                    PlaybackSpeedSupported(),playback_rate,preset.c_str(),
+                    ffmpeg.empty()?"<auto>":ffmpeg.c_str(),root.c_str(),preferences.debug_log);
+                LogActivity("config",line);
             }
             if(!enabled && !quality_enabled.load(std::memory_order_relaxed)) {
                 PublishPlaybackQuality({});
@@ -459,17 +495,39 @@ static DWORD WINAPI Worker(LPVOID) {
                     auto c=std::make_unique<Capture>(); c->born=s.time;
                     active[s.context]=std::move(c);
                     found=active.find(s.context);
-                    char line[160]; snprintf(line,sizeof(line),"BOS ctx=%llx seq=%u serial=%u rate=%u channels=%u",
-                        static_cast<unsigned long long>(s.context),page.sequence,page.serial,page.rate,page.channels); Log(line);
+                    char line[512]; snprintf(line,sizeof(line),
+                        "ogg_bos ctx=%llx seq=%u serial=%u rate=%u channels=%u media=%s pos=%.3f raw=%.3f duration=%.3f rate_effective=%.3f",
+                        static_cast<unsigned long long>(s.context),page.sequence,page.serial,page.rate,page.channels,
+                        Utf8(current.title).c_str(),current.position,current.raw_position,current.duration,playback_rate);
+                    LogActivity("capture",line);QueueDiagnostic(line);
                 }
                 if(found==active.end()) continue;
-                Capture& c=*found->second; Result result=c.stream.Push(s.bytes,s.length);
+                Capture& c=*found->second;
+                const auto expected_seq=c.stream.next;
+                const auto expected_serial=c.stream.serial;
+                const auto prior_samples=c.stream.samples;
+                const auto prior_pages=c.stream.pages;
+                Result result=c.stream.Push(s.bytes,s.length);
                 if(result==Result::Replay) {
-                    if(DebugLoggingEnabled())Log("Ogg replayed page ignored");
+                    if(DebugLoggingEnabled()) {
+                        char line[512];snprintf(line,sizeof(line),
+                            "ogg_replay ctx=%llx seq=%u expected=%u serial=%u flags=0x%02x granule=%lld pages=%u bytes=%llu",
+                            static_cast<unsigned long long>(s.context),page.sequence,expected_seq,page.serial,page.flags,
+                            static_cast<long long>(page.granule),prior_pages,static_cast<unsigned long long>(c.bytes));
+                        Log(line);
+                    }
                     continue;
                 }
                 if(result==Result::Invalid || result==Result::Ignore) {
-                    active.erase(found); Log("stream discarded: page gap or integrity failure"); continue;
+                    char line[1024];snprintf(line,sizeof(line),
+                        "ogg_rejected result=%s ctx=%llx seq=%u expected_seq=%u serial=%u expected_serial=%u flags=0x%02x granule=%lld prior_samples=%lld pages=%u bytes=%llu media=%s pos=%.3f raw=%.3f duration=%.3f rate=%.3f",
+                        result==Result::Invalid?"invalid":"ignore",
+                        static_cast<unsigned long long>(s.context),page.sequence,expected_seq,page.serial,expected_serial,page.flags,
+                        static_cast<long long>(page.granule),static_cast<long long>(prior_samples),prior_pages,
+                        static_cast<unsigned long long>(c.bytes),Utf8(current.title).c_str(),current.position,current.raw_position,
+                        current.duration,playback_rate);
+                    LogActivity("failed",line);QueueDiagnostic(line);
+                    active.erase(found); continue;
                 }
                 size_t reserved=publishing_reserved.load();
                 for(const auto& item:active) reserved+=item.second->data.capacity();
@@ -482,8 +540,12 @@ static DWORD WINAPI Worker(LPVOID) {
                 c.bytes+=s.length;
                 if(result==Result::Complete) {
                     c.finished=s.time;
-                    char line[200]; snprintf(line,sizeof(line),"EOS pages=%u bytes=%llu duration=%.6f capture_seconds=%.3f",
-                      c.stream.pages,static_cast<unsigned long long>(c.bytes),c.stream.Duration(),c.finished-c.born); Log(line);
+                    char line[768]; snprintf(line,sizeof(line),
+                      "ogg_eos ctx=%llx pages=%u bytes=%llu stream_duration=%.6f capture_seconds=%.3f media=%s media_pos=%.3f raw=%.3f media_duration=%.3f rate=%.3f ready_before=%zu",
+                      static_cast<unsigned long long>(s.context),c.stream.pages,static_cast<unsigned long long>(c.bytes),
+                      c.stream.Duration(),c.finished-c.born,Utf8(current.title).c_str(),current.position,current.raw_position,
+                      current.duration,playback_rate,ready.size());
+                    LogActivity("capture",line);QueueDiagnostic(line);
                     ready.push_back(std::move(found->second)); active.erase(found);
                 }
             }
@@ -505,10 +567,24 @@ static DWORD WINAPI Worker(LPVOID) {
                     std::string previous=listen.identity; double previous_start=listen.start_time;
                     bool was_eligible=listen.eligible;
                     double prior_position=listen.last_position,prior_duration=listen.duration,prior_time=listen.last_time;
+                    if(DebugLoggingEnabled()) {
+                        char line[1200];snprintf(line,sizeof(line),
+                            "media_sample title=%s artist=%s key=%s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d prior=%.3f prior_duration=%.3f wall_delta=%.3f speed_config=%.3f speed_hook=%d rate=%.3f eligible=%d active=%zu ready=%zu",
+                            Utf8(media.title).c_str(),Utf8(media.artist).c_str(),media.Key().c_str(),media.position,media.raw_position,
+                            media.duration,media.timeline_age,media.playing,prior_position,prior_duration,Now()-prior_time,
+                            preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,listen.eligible,active.size(),ready.size());
+                        Log(line);
+                    }
                     std::string done=listen.Observe(media.Key(),media.position,media.duration,media.playing,Now(),playback_rate);
                     if(was_eligible && !listen.eligible && done.empty()) {
-                        char line[340]; snprintf(line,sizeof(line),"listen invalidated old=%.6f/%.6f new=%.6f/%.6f delta=%.3f rate=%.3f playing=%d",
-                            prior_position,prior_duration,media.position,media.duration,Now()-prior_time,playback_rate,media.playing); Log(line);
+                        const auto identity=Utf8(current.artist)+" - "+Utf8(current.title);
+                        char line[1400]; snprintf(line,sizeof(line),
+                            "%s (incomplete listen reason=%s prior=%.3f/%.3f new=%.3f raw=%.3f/%.3f timeline_age=%.3f delta=%.3f expected=%.3f tolerance=%.3f rate=%.3f playing_before=%d playing_now=%d key_changed=%d)",
+                            identity.c_str(),ListenRejectName(listen.reject),prior_position,prior_duration,
+                            media.position,media.raw_position,media.duration,media.timeline_age,Now()-prior_time,
+                            listen.last_expected,listen.last_tolerance,listen.last_rate,listen.playing,media.playing,
+                            previous!=listen.identity);
+                        LogActivity("failed",line);QueueDiagnostic(line);
                     }
                     if(!done.empty()) {
                         if(current_ignored) {
@@ -516,19 +592,28 @@ static DWORD WINAPI Worker(LPVOID) {
                             LogActivity("finished",Utf8(current.artist)+" - "+Utf8(current.title)+" (ignored)");
                         } else {
                             heard.push_back({current,previous_start,Now()});
-                            Log(("FULL LISTEN "+Utf8(current.title)).c_str());
+                            char line[1024];snprintf(line,sizeof(line),
+                                "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f elapsed_wall=%.3f rate=%.3f ready=%zu active=%zu",
+                                Utf8(current.artist).c_str(),Utf8(current.title).c_str(),prior_position,current.raw_position,
+                                current.duration,current.timeline_age,Now()-previous_start,playback_rate,ready.size(),active.size());
+                            LogActivity("listen_complete",line);QueueDiagnostic(line);
                         }
                     }
                     if(previous!=listen.identity && listen.eligible) {
                         current_ignored=ClassicCurrentIgnored();
                         SetClassicTrackStatus(media,current_ignored?"IGNORED":"IN_PROGRESS",current_ignored?"Ignored":"Downloading...");
-                        LogActivity("started",Utf8(media.artist)+" - "+Utf8(media.title));
+                        char line[1400];snprintf(line,sizeof(line),
+                            "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d speed_config=%.3f speed_hook=%d speed_effective=%.3f start_window=%.3f active=%zu ready=%zu epoch=%u",
+                            Utf8(media.artist).c_str(),Utf8(media.title).c_str(),media.position,media.raw_position,media.duration,
+                            media.timeline_age,media.playing,preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,
+                            std::max(1.5,playback_rate*0.75),active.size(),ready.size(),epoch);
+                        LogActivity("started",line);QueueDiagnostic(line);
                     } else if(previous==listen.identity && listen.eligible) {
                         current_ignored=ClassicCurrentIgnored();
                     }
                     if(was_eligible && !listen.eligible && done.empty()) {
-                        if(!current.title.empty())SetClassicTrackStatus(current,"ERROR","Canceled: track was skipped or listen was incomplete");
-                        LogActivity("failed",Utf8(current.artist)+" - "+Utf8(current.title)+" (incomplete listen)");
+                        if(!current.title.empty())SetClassicTrackStatus(current,"ERROR",
+                            std::string("Canceled: ")+ListenRejectName(listen.reject));
                     }
                     if(previous!=listen.identity) {
                         Log(("TRACK "+Utf8(media.artist)+" - "+Utf8(media.title)).c_str());
@@ -549,7 +634,16 @@ static DWORD WINAPI Worker(LPVOID) {
                     }
                     if(listen.transient) Log("timeline reset at natural end; waiting for matching title");
                     else current=std::move(media);
-                } else { listen.eligible=false; quality.Media({},L"",0,0,Now()); Log("Spotify media snapshot unavailable; listen invalidated"); }
+                } else {
+                    const bool was_eligible=listen.eligible;
+                    listen.eligible=false; quality.Media({},L"",0,0,Now());
+                    if(was_eligible) {
+                        char line[768];snprintf(line,sizeof(line),
+                            "%s - %s (media snapshot unavailable rate=%.3f active=%zu ready=%zu epoch=%u)",
+                            Utf8(current.artist).c_str(),Utf8(current.title).c_str(),playback_rate,active.size(),ready.size(),epoch);
+                        LogActivity("failed",line);QueueDiagnostic(line);
+                    } else QueueDiagnostic("Spotify media snapshot unavailable while no eligible listen was active");
+                }
                 next_media=Now()+0.5;
             }
             PublishPlaybackQuality(quality.Snapshot(client_quality));
@@ -576,7 +670,18 @@ static DWORD WINAPI Worker(LPVOID) {
                     ready.erase(ready.begin()+match); h=heard.erase(h);
                 } else if(matches>1 || now-h->finish>10) {
                     SetClassicTrackStatus(h->media,"ERROR",matches>1?"Ambiguous audio stream association":"Completed audio stream was not found");
-                    Log("completed listen discarded: missing or ambiguous Ogg association"); h=heard.erase(h);
+                    std::string candidates;
+                    for(size_t i=0;i<ready.size() && i<6;i++) {
+                        char item[160];snprintf(item,sizeof(item),"%s%.3fs@%+.3fs",
+                            i?",":"",ready[i]->Duration(),ready[i]->born-h->start);
+                        candidates+=item;
+                    }
+                    char line[1400];snprintf(line,sizeof(line),
+                        "%s - %s (stream association failed matches=%zu ready=%zu media_duration=%.3f listen_start=%.3f listen_finish=%.3f wait=%.3f candidates=[%s])",
+                        Utf8(h->media.artist).c_str(),Utf8(h->media.title).c_str(),matches,ready.size(),
+                        h->media.duration,h->start,h->finish,now-h->finish,candidates.c_str());
+                    LogActivity("failed",line);QueueDiagnostic(line);
+                    h=heard.erase(h);
                 } else ++h;
             }
             ready.erase(std::remove_if(ready.begin(),ready.end(),[now](const auto& c){return now-c->finished>600;}),ready.end());
@@ -587,8 +692,11 @@ static DWORD WINAPI Worker(LPVOID) {
                 size_t buffered=0;
                 for(const auto& item:active) buffered+=item.second->data.capacity();
                 for(const auto& item:ready) buffered+=item->data.capacity();
-                char line[350]; snprintf(line,sizeof(line),"status calls=%ld pages=%ld dropped=%ld active=%zu ready=%zu saved=%u pos=%.3f/%.3f eligible=%d buffered=%zu",
-                  calls,pages,dropped,active.size(),ready.size(),saved_count.load(),current.position,current.duration,listen.eligible,buffered); Log(line); next_log=now+10;
+                char line[900]; snprintf(line,sizeof(line),
+                  "status calls=%ld pages=%ld dropped=%ld active=%zu ready=%zu heard=%zu saved=%u title=%s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f eligible=%d pending=%d rate=%.3f speed_config=%.3f speed_hook=%d buffered=%zu",
+                  calls,pages,dropped,active.size(),ready.size(),heard.size(),saved_count.load(),Utf8(current.title).c_str(),
+                  current.position,current.raw_position,current.duration,current.timeline_age,listen.eligible,listen.pending_start,
+                  playback_rate,preferences.playback_speed,PlaybackSpeedSupported(),buffered); Log(line); next_log=now+5;
             }
             WaitForSingleObject(event,50);
         }

@@ -6,7 +6,7 @@
 #include <cstdio>
 namespace history {namespace {
 constexpr size_t cap=5*1024*1024;
-struct Record {char event[16];char detail[768];};
+struct Record {char event[16];char detail[1536];};
 static std::array<Record,128> queue;static size_t head=0,tail=0,count=0;
 static SRWLOCK lock=SRWLOCK_INIT;static HANDLE signal=nullptr;
 static void Push(const char* event,const char* text){
@@ -22,7 +22,7 @@ static DWORD WINAPI Run(LPVOID){
   if(!got){WaitForSingleObject(signal,1000);continue;}
   auto s=GetSettings();if(!s.log||s.root.empty()||(std::strcmp(r.event,"debug")==0&&!s.debug_log))continue;
   if(!EnsureDirectory(s.root))continue;
-  SYSTEMTIME t;GetSystemTime(&t);char line[1000];int n=snprintf(line,sizeof(line),"%04u-%02u-%02uT%02u:%02u:%02uZ %s %s\r\n",t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond,r.event,r.detail);
+  SYSTEMTIME t;GetSystemTime(&t);char line[1800];int n=snprintf(line,sizeof(line),"%04u-%02u-%02uT%02u:%02u:%02uZ %s %s\r\n",t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond,r.event,r.detail);
   if(n>0&&n<int(sizeof(line)))WriteCappedLog(s.root+L"\\Soggfy.log",std::string(line,size_t(n)));
  }
 }

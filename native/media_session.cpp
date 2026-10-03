@@ -142,9 +142,11 @@ bool MediaReader::Read(Media& out,bool include_artwork,double playback_rate) {
     Call(timeline.p,10,&pos); Call(timeline.p,11,&updated);
     media.duration=double(end-start)/10000000.0;
     media.position=double(pos-start)/10000000.0;
+    media.raw_position=media.position;
     FILETIME now; GetSystemTimeAsFileTime(&now);
     uint64_t ticks=(uint64_t(now.dwHighDateTime)<<32)|now.dwLowDateTime;
     double elapsed=(double(ticks)-double(updated))/10000000.0;
+    media.timeline_age=elapsed;
     if(!std::isfinite(playback_rate) || playback_rate<0.25 || playback_rate>100.0)
         playback_rate=1.0;
     if(media.playing && elapsed>=0 && elapsed<86400)

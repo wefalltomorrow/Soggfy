@@ -22,11 +22,22 @@ struct Stream {
 };
 // Media positions must be extrapolated from the public timeline timestamp.
 // Completed identity is returned only on a natural transition at the end.
+enum class ListenReject {
+    None,
+    StartTooLate,
+    ClockDiscontinuity,
+    PositionRewind,
+    PositionAhead,
+    DurationChanged
+};
+const char* ListenRejectName(ListenReject reason);
 struct Listen {
     std::string identity;
     double start_time = 0, last_time = 0, last_position = 0, duration = 0;
     double identity_time = 0;
+    double last_expected = 0, last_elapsed = 0, last_tolerance = 0, last_rate = 1;
     bool eligible = false, playing = false, transient = false, pending_start = false;
+    ListenReject reject = ListenReject::None;
     std::string Observe(const std::string& key, double position, double length,
                         bool is_playing, double time, double playback_rate=1.0);
 };

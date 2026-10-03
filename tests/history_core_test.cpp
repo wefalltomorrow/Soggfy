@@ -61,7 +61,11 @@ int main() {
     Listen seek; seek.Observe("one",0,10,true,0); seek.Observe("one",8,10,true,1);
     seek.Observe("one",9,10,true,2);
     check(seek.Observe("two",0,10,true,3).empty(),"seek cannot manufacture full listen");
-    Listen halfway; halfway.Observe("one",5,10,true,0); halfway.Observe("one",9,10,true,4);
+    Listen halfway; halfway.Observe("one",5,10,true,0);
+    check(!halfway.eligible && halfway.reject==ListenReject::StartTooLate &&
+          std::string(ListenRejectName(halfway.reject))=="start_too_late",
+          "starting halfway exposes start-too-late diagnostic");
+    halfway.Observe("one",9,10,true,4);
     check(halfway.Observe("two",0,10,true,5).empty(),"starting halfway rejected");
     Listen delayed_metadata; delayed_metadata.Observe("one",0,10,true,0);
     for(int i=1;i<10;i++) delayed_metadata.Observe("one",i,10,true,i);
@@ -101,6 +105,27 @@ int main() {
     Listen fast_seek;
     fast_seek.Observe("fast",0,200,true,0,50);
     fast_seek.Observe("fast",100,200,true,0.5,50);
-    check(!fast_seek.eligible,"50x forward seek beyond expected progress is rejected");
-    std::puts("PASS: Ogg integrity and complete-listen cases");
+    check(!fast_seek.eligible && fast_seek.reject==ListenReject::PositionAhead,
+          "50x forward seek exposes position-ahead diagnostic");
+
+    Listen rewind;
+    rewind.Observe("one",0,100,true,0,10);
+    rewind.Observe("one",10,100,true,1,10);
+    rewind.Observe("one",0,100,true,2,10);
+    check(!rewind.eligible && rewind.reject==ListenReject::PositionRewind,
+          "backward seek exposes rewind diagnostic");
+
+    Listen duration_change;
+    duration_change.Observe("one",0,20,true,0);
+    duration_change.Observe("one",1,25,true,1);
+    check(!duration_change.eligible && duration_change.reject==ListenReject::DurationChanged,
+          "duration mismatch exposes duration diagnostic");
+
+    Listen clock_gap;
+    clock_gap.Observe("one",0,20,true,0);
+    clock_gap.Observe("one",1,20,true,4);
+    check(!clock_gap.eligible && clock_gap.reject==ListenReject::ClockDiscontinuity,
+          "long media polling gap exposes clock diagnostic");
+
+    std::puts("PASS: Ogg integrity, complete-listen cases and diagnostics");
 }

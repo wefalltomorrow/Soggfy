@@ -118,6 +118,12 @@ For troubleshooting only, set Classic UI=0 and Native Menu=1 in the Soggfy secti
 
 If the injected UI is unavailable after a Spotify update, capture can still be enabled with Downloads=1 in SpotifyHistory.ini.
 
+## Diagnostics
+
+`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages.
+
+Enable **Debug log** in Soggfy settings for the high-volume timeline trace: each media-session sample plus replayed Ogg-page details. This is intended for short troubleshooting runs because the log is capped and rotates by truncation when it reaches its size limit.
+
 ## Safety / implementation notes
 
 The current UI does not restore the old localhost WebSocket server or old x86 decoder hook.

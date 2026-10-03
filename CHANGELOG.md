@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0-rc.13
+
+- Expanded Soggfy.log so normal logging records enough state to diagnose capture failures without requiring a debug build.
+- Logs capture configuration changes including configured/effective playback speed, speed-hook availability, codec toggles, output preset, FFmpeg path and save root.
+- Logs Ogg BOS/EOS details, page sequence/serial/granule state on rejection, compressed byte/page counts and capture-vs-media duration.
+- Logs raw Windows media position separately from Soggfy's extrapolated position, timeline snapshot age, playing state and playback rate.
+- Incomplete-listen failures now state the exact reason: start too late, media-clock discontinuity, rewind, position ahead of expected progress or duration change.
+- Logs full-listen completion, stream association candidates, publication destination, native/output format and post-processing result.
+- Debug Log additionally records every sampled media timeline and replayed Ogg-page details.
+- Added regression coverage for the new listen rejection diagnostics.
+
 ## 3.0.0-rc.12
 
 - Changed GitHub Releases to publish one all-in-one Windows x64 ZIP instead of multiple build assets.
