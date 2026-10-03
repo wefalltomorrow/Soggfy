@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0-rc.20
+
+- Replaced the Spotify 1.3.3.264 ContextPlayer speed backend after RC19 showed that the only matching AudioSessionImpl instances stayed inactive during real music playback.
+- Revalidated the official 1.3.3.264 Spotify.dll and identified the actual track-player creation routine at RVA `0x0057968c`.
+- The identified routine receives playback speed as its fourth Windows x64 argument in XMM3 and logs that value as `speed: %f`; its stack arguments match Soggfy's existing 13-argument track-player hook ABI.
+- Added exact byte validation for the target prologue, XMM3 speed-copy sequence, stack-argument layout and speed-log store before any hook is installed.
+- The 1.3.3 backend no longer relies on RC13's fuzzy target discovery or runtime ContextPlayer memory scanning.
+- Speed changes on 1.3.3.264 take effect on the next TrackPlayer creation, so changing speed mid-song requires restarting the song or starting another track.
+- `speed_effective` is updated only when the 1.3.3 track-create hook actually runs.
+- Added a concise `Spotify 1.3.3 track-player create` diagnostic containing native/requested/applied speed.
+
 ## 3.0.0-rc.19
 
 - Added detailed, rate-limited diagnostics for Spotify 1.3.3.264 playback-speed discovery after RC18 still failed to locate an active TrackPlayer.
