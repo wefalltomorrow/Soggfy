@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0-rc.16
+
+- Restored native playback-speed support on Spotify for Windows x64 1.3.3.264 with a new version-specific backend.
+- Reverse-engineered the official 1.3.3.264 Spotify.dll from the current x64 installer and identified Spotify's own ContextPlayer current/prepared-track playback-speed methods.
+- The 1.3.3 backend no longer hooks the obsolete track-player constructor used by older Spotify builds.
+- Startup validates the exact 1.3.3.264 method prologues, ContextPlayer vtable assignment and speed-method vtable slots before enabling the feature.
+- Soggfy locates the live ContextPlayer instance conservatively and re-validates its current/prepared player objects before applying speed.
+- Speed changes on 1.3.3.264 apply directly without recreating the current track, and the configured speed is maintained across track transitions.
+- Spotify 1.3.1.234 keeps the older validated constructor-hook backend; unknown builds still fail closed at 1x.
+- Added backend-selection regression coverage for both supported Spotify versions.
+
 ## 3.0.0-rc.15
 
 - Improved the Modern Capture panel so Ogg/Vorbis format and sample rate can appear as soon as a plausible native decoder stream is observed near the start of the current track.

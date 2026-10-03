@@ -14,7 +14,7 @@ sgf.state = Object.assign({
   downloads:false, ogg:true, flac:true, metadata:true, log:true, debug:false, normalize:true,
   skipDownloaded:false, skipIgnored:false, embedCover:true, saveCover:true, embedLyrics:true,
   saveLyrics:true, saveCanvas:false, blockTelemetry:true, liftQueue:false, keepNative:true,
-  playbackSpeed:1, speedSupported:false,
+  playbackSpeed:1, speedSupported:false, speedImmediate:false,
   qualitySong:'Unavailable', qualityLevel:'Unavailable', qualityFormat:'Unavailable', qualitySample:'Unavailable', qualityAssociation:'Unavailable',
   root:'', template:'', podcastTemplate:'', canvasTemplate:'',
   invalidChars:'unicode', outputPreset:'Native', outputExt:'', outputArgs:'', ffmpegPath:''
@@ -106,6 +106,7 @@ sgf.applyConfig = payload => {
     for(const key of strings)if(p.has(key))sgf.state[key]=p.get(key)||'';
     if(p.has('playbackSpeed'))sgf.state.playbackSpeed=Math.max(1,Math.min(50,Number(p.get('playbackSpeed'))||1));
     if(p.has('speedSupported'))sgf.state.speedSupported=sgf.flag(p,'speedSupported',sgf.state.speedSupported);
+    if(p.has('speedImmediate'))sgf.state.speedImmediate=sgf.flag(p,'speedImmediate',sgf.state.speedImmediate);
     if(sgf.refreshControls)sgf.refreshControls();
   } catch {}
 };
@@ -163,15 +164,17 @@ sgf.setPlaybackSpeed = async speed => {
   speed=Math.max(1,Math.min(50,Number(speed)||1));
   sgf.state.playbackSpeed=speed;
   sgf.send('playbackSpeed',String(speed));
-  if(speed===1||sgf.state.speedSupported){
-    // The native x64 hook reads Playback Speed when Spotify constructs the
-    // track player. Re-create the current track so a change applies now.
-    const reset=await sgf.resetCurrentTrack(!sgf.state.downloads);
-    if(!reset&&speed!==1)sgf.notify('Playback speed will apply on the next local track',sgf.Icons.Warning);
-    return true;
+  if(!sgf.state.speedSupported){
+    sgf.notify('Accelerated playback is unavailable on this Spotify build',sgf.Icons.Warning);
+    return false;
   }
-  sgf.notify('Accelerated playback is unavailable on this Spotify build',sgf.Icons.Warning);
-  return false;
+  if(sgf.state.speedImmediate)return true;
+
+  // Older validated builds apply speed while constructing a track player.
+  // Re-create the current track so a change applies now.
+  const reset=await sgf.resetCurrentTrack(!sgf.state.downloads);
+  if(!reset&&speed!==1)sgf.notify('Playback speed will apply on the next local track',sgf.Icons.Warning);
+  return true;
 };
 
 sgf.findTopbarHost = () => {

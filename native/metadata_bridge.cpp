@@ -121,6 +121,7 @@ static std::wstring UiConfigCode() {
  const bool speed_supported=PlaybackSpeedSupported();
  add("playbackSpeed",std::to_string(speed_supported?s.playback_speed:1.0));
  add("speedSupported",bit(speed_supported));
+ add("speedImmediate",bit(speed_supported&&PlaybackSpeedImmediate()));
  const auto quality_snapshot=ReadPlaybackQuality();
  const auto quality=PlaybackQualityLabels(quality_snapshot);
  auto quality_value=[](const std::wstring& row) {
@@ -368,7 +369,12 @@ static bool ClassicUiMessage(const String* text) {
  else if(key==L"blockTelemetry")ok=SetBlockTelemetry(flag());
  else if(key==L"liftQueue")ok=SetLiftAddToQueue(flag());
  else if(key==L"keepNative")ok=SetKeepNativeOriginal(flag());
- else if(key==L"playbackSpeed") {try{ok=SetPlaybackSpeed(std::stod(decoded));}catch(...){ok=false;}}
+ else if(key==L"playbackSpeed") {
+  try{
+   ok=SetPlaybackSpeed(std::stod(decoded));
+   if(ok)ApplyPlaybackSpeedNow();
+  }catch(...){ok=false;}
+ }
  else if(key==L"template")ok=SetPathTemplate(WideUtf8(decoded));
  else if(key==L"podcastTemplate")ok=SetPodcastTemplate(WideUtf8(decoded));
  else if(key==L"canvasTemplate")ok=SetCanvasTemplate(WideUtf8(decoded));
