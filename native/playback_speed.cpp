@@ -12,6 +12,8 @@
 #include <cstring>
 #include <vector>
 
+extern "C" FARPROC ResolveVersionExport(unsigned index);
+
 namespace history {
 namespace {
 using CreateTrackPlayer=std::uint64_t(*)(
@@ -21,8 +23,6 @@ using CreateTrackPlayer=std::uint64_t(*)(
 static CreateTrackPlayer original=nullptr;
 static hooks::InitController speed_init;
 static std::atomic<bool> supported{false};
-
-extern "C" FARPROC ResolveVersionExport(unsigned index);
 
 struct SpotifyVersion {
     std::uint16_t major=0,minor=0,patch=0,build=0;
@@ -36,9 +36,9 @@ static bool ModuleVersion(HMODULE module,SpotifyVersion& out) {
     using SizeFn=DWORD (WINAPI*)(LPCWSTR,LPDWORD);
     using InfoFn=BOOL (WINAPI*)(LPCWSTR,DWORD,DWORD,LPVOID);
     using QueryFn=BOOL (WINAPI*)(LPCVOID,LPCWSTR,LPVOID*,PUINT);
-    auto size_fn=reinterpret_cast<SizeFn>(ResolveVersionExport(7));
-    auto info_fn=reinterpret_cast<InfoFn>(ResolveVersionExport(8));
-    auto query_fn=reinterpret_cast<QueryFn>(ResolveVersionExport(16));
+    auto size_fn=reinterpret_cast<SizeFn>(::ResolveVersionExport(7));
+    auto info_fn=reinterpret_cast<InfoFn>(::ResolveVersionExport(8));
+    auto query_fn=reinterpret_cast<QueryFn>(::ResolveVersionExport(16));
     if(!size_fn||!info_fn||!query_fn)return false;
 
     DWORD ignored=0;
