@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.17
+
+- Fixed RC16 reporting configured playback speed as effective even when Spotify 1.3.3.264 was still playing at 1x.
+- Added real TrackPlayer speed verification through Spotify's own getter instead of trusting the ContextPlayer wrapper return value.
+- If Spotify's 1.3.3 ContextPlayer wrapper is a no-op, Soggfy now falls back to the underlying TrackPlayer vtable speed setter used by Spotify itself and verifies the result immediately.
+- Current and prepared players are handled separately with the mode values observed in Spotify 1.3.3.264's native wrapper code.
+- Capture/listen timing now uses the verified effective playback rate instead of the configured slider value, preventing false position-rewind failures when a speed request was not actually applied.
+- Soggfy.log now records `speed_verified` or `speed_failed` with requested/effective rates, ContextPlayer/TrackPlayer addresses, wrapper results and before/after native speed readings.
+
 ## 3.0.0-rc.16
 
 - Restored native playback-speed support on Spotify for Windows x64 1.3.3.264 with a new version-specific backend.

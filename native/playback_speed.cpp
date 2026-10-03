@@ -4,8 +4,10 @@
 #include "playback_speed_discovery.h"
 #include "playback_speed_compat.h"
 #include "history_settings.h"
+#include "async_log.h"
 #include "hook_init_state.h"
 #include "vendor/minhook/include/MinHook.h"
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -23,17 +25,21 @@ using CreateTrackPlayer=std::uint64_t(*)(
     std::uint64_t,unsigned int,std::uint64_t,std::uint64_t,std::uint64_t,std::uint64_t
 );
 using ContextSpeedSetter=unsigned char(*)(void*,double);
+using TrackSpeedSetter=void(*)(void*,double,unsigned int);
+using TrackSpeedGetter=double(*)(void*);
 
 static CreateTrackPlayer original=nullptr;
 static hooks::InitController speed_init;
 static std::atomic<bool> supported{false};
 static std::atomic<PlaybackSpeedBackend> active_backend{PlaybackSpeedBackend::Unsupported};
 static std::atomic<std::uintptr_t> latest_context{0};
+static std::atomic<double> effective_speed{1.0};
 static HMODULE latest_module=nullptr;
 static std::size_t latest_image_size=0;
 static ULONGLONG latest_scan_time=0;
 static ULONGLONG latest_apply_time=0;
 static double latest_logged_speed=-1.0;
+static ULONGLONG latest_failure_log_time=0;
 
 // Spotify 1.3.3.264 x64. These RVAs were verified against the official
 // SpotifyFullSetupX64.exe payload. Unlike the old constructor detour, the
@@ -185,6 +191,39 @@ static bool ContextLooksValid(std::uintptr_t candidate,bool* active=nullptr) {
     return true;
 }
 
+static bool PlayerSpeedFunctions(std::uintptr_t player,TrackSpeedSetter& setter,
+                                 TrackSpeedGetter& getter) {
+    setter=nullptr;getter=nullptr;
+    if(!player)return false;
+    std::uintptr_t vtable=0,setter_address=0,getter_address=0;
+    if(!ReadSelf(reinterpret_cast<const void*>(player),vtable)||!vtable||
+       !ReadSelf(reinterpret_cast<const void*>(vtable+0xc0),setter_address)||
+       !ReadSelf(reinterpret_cast<const void*>(vtable+0xc8),getter_address)||
+       !ExecutableInSpotify(setter_address)||!ExecutableInSpotify(getter_address))
+        return false;
+    setter=reinterpret_cast<TrackSpeedSetter>(setter_address);
+    getter=reinterpret_cast<TrackSpeedGetter>(getter_address);
+    return true;
+}
+
+static bool ReadPlayerSpeed(std::uintptr_t player,double& speed) {
+    TrackSpeedSetter setter=nullptr;TrackSpeedGetter getter=nullptr;
+    if(!PlayerSpeedFunctions(player,setter,getter))return false;
+    speed=getter(reinterpret_cast<void*>(player));
+    return std::isfinite(speed)&&speed>0.0&&speed<100.0;
+}
+
+static bool SetPlayerSpeedDirect(std::uintptr_t player,double speed,unsigned int mode,
+                                 double& before,double& after) {
+    TrackSpeedSetter setter=nullptr;TrackSpeedGetter getter=nullptr;
+    if(!PlayerSpeedFunctions(player,setter,getter))return false;
+    before=getter(reinterpret_cast<void*>(player));
+    if(!std::isfinite(before)||before<=0.0||before>=100.0)return false;
+    setter(reinterpret_cast<void*>(player),speed,mode);
+    after=getter(reinterpret_cast<void*>(player));
+    return std::isfinite(after)&&after>0.0&&after<100.0;
+}
+
 static bool WritablePrivate(const MEMORY_BASIC_INFORMATION& mbi) {
     if(mbi.State!=MEM_COMMIT||mbi.Type!=MEM_PRIVATE||
        (mbi.Protect&PAGE_GUARD)||(mbi.Protect&PAGE_NOACCESS))
@@ -248,26 +287,69 @@ static bool Apply133(double speed,bool log_change) {
     auto context=latest_context.load(std::memory_order_acquire);
     if(!ContextLooksValid(context)) {
         latest_context.store(0,std::memory_order_release);
+        effective_speed.store(1.0,std::memory_order_release);
         return false;
     }
     if(!std::isfinite(speed)||speed<1.0||speed>50.0)speed=1.0;
 
-    auto current=reinterpret_cast<ContextSpeedSetter>(
-        reinterpret_cast<std::uint8_t*>(latest_module)+k133CurrentSetterRva);
-    auto prepared=reinterpret_cast<ContextSpeedSetter>(
-        reinterpret_cast<std::uint8_t*>(latest_module)+k133PreparedSetterRva);
-
-    const bool current_result=current(reinterpret_cast<void*>(context),speed)!=0;
-    const bool prepared_result=prepared(reinterpret_cast<void*>(context),speed)!=0;
-    if(log_change && std::fabs(speed-latest_logged_speed)>0.0001) {
-        char line[256];
-        std::snprintf(line,sizeof(line),
-            "Spotify 1.3.3 playback speed %.3fx applied through ContextPlayer current=%d prepared=%d",
-            speed,current_result,prepared_result);
-        HistoryLog(line);
-        latest_logged_speed=speed;
+    std::uintptr_t current_player=0,prepared_player=0;
+    if(!ReadSelf(reinterpret_cast<const void*>(context+k133CurrentPlayerOffset),current_player)||
+       !ReadSelf(reinterpret_cast<const void*>(context+k133PreparedPlayerOffset),prepared_player)) {
+        effective_speed.store(1.0,std::memory_order_release);
+        return false;
     }
-    return current_result||prepared_result;
+
+    double current_before=0,current_after=0,prepared_before=0,prepared_after=0;
+    bool current_verified=false,prepared_verified=false;
+
+    // First use Spotify's public-internal ContextPlayer wrappers. On 1.3.3 the
+    // wrappers can return success without changing music playback, so verify
+    // the nested TrackPlayer's real speed afterwards.
+    auto current_wrapper=reinterpret_cast<ContextSpeedSetter>(
+        reinterpret_cast<std::uint8_t*>(latest_module)+k133CurrentSetterRva);
+    auto prepared_wrapper=reinterpret_cast<ContextSpeedSetter>(
+        reinterpret_cast<std::uint8_t*>(latest_module)+k133PreparedSetterRva);
+    const bool current_result=current_wrapper(reinterpret_cast<void*>(context),speed)!=0;
+    const bool prepared_result=prepared_wrapper(reinterpret_cast<void*>(context),speed)!=0;
+
+    if(current_player&&ReadPlayerSpeed(current_player,current_after))
+        current_verified=std::fabs(current_after-speed)<0.001;
+    if(prepared_player&&ReadPlayerSpeed(prepared_player,prepared_after))
+        prepared_verified=std::fabs(prepared_after-speed)<0.001;
+
+    // Spotify 1.2.67+ can hard-block the ContextPlayer speed path for music.
+    // The wrappers themselves show the actual low-level ABI: TrackPlayer
+    // vtable +0xc0 is the setter and +0xc8 is the getter. If the wrapper was a
+    // no-op, apply the exact same TrackPlayer call directly and verify it.
+    if(current_player&&!current_verified) {
+        SetPlayerSpeedDirect(current_player,speed,0,current_before,current_after);
+        current_verified=std::fabs(current_after-speed)<0.001;
+    }
+    if(prepared_player&&!prepared_verified) {
+        SetPlayerSpeedDirect(prepared_player,speed,2,prepared_before,prepared_after);
+        prepared_verified=std::fabs(prepared_after-speed)<0.001;
+    }
+
+    const bool verified=current_verified||(!current_player&&prepared_verified);
+    effective_speed.store(verified?speed:1.0,std::memory_order_release);
+
+    const ULONGLONG now=GetTickCount64();
+    const bool changed=std::fabs(speed-latest_logged_speed)>0.0001;
+    const bool should_log_failure=!verified && now-latest_failure_log_time>=5000;
+    if(log_change&&(changed||should_log_failure)) {
+        char line[768];
+        std::snprintf(line,sizeof(line),
+            "requested=%.3fx effective=%.3fx context=%p current=%p prepared=%p wrapper_current=%d wrapper_prepared=%d current_before=%.6f current_after=%.6f current_verified=%d prepared_before=%.6f prepared_after=%.6f prepared_verified=%d",
+            speed,effective_speed.load(std::memory_order_acquire),
+            reinterpret_cast<void*>(context),reinterpret_cast<void*>(current_player),
+            reinterpret_cast<void*>(prepared_player),current_result,prepared_result,
+            current_before,current_after,current_verified,prepared_before,prepared_after,prepared_verified);
+        HistoryLog(line);
+        LogActivity(verified?"speed_verified":"speed_failed",line);
+        if(changed)latest_logged_speed=speed;
+        if(!verified)latest_failure_log_time=now;
+    }
+    return verified;
 }
 
 static bool StartConstructorBackend(HMODULE module,std::size_t image_size,std::uint64_t now) {
@@ -305,6 +387,7 @@ static bool StartConstructorBackend(HMODULE module,std::size_t image_size,std::u
 }
 
 static bool Start133Backend(HMODULE module,std::size_t image_size) {
+    effective_speed.store(1.0,std::memory_order_release);
     if(!Verify133Layout(module,image_size)) {
         HistoryLog("Spotify 1.3.3 playback-speed layout verification failed; staying at 1x");
         speed_init.MarkUnsupported();
@@ -327,6 +410,13 @@ bool PlaybackSpeedSupported() {
 
 bool PlaybackSpeedImmediate() {
     return active_backend.load(std::memory_order_acquire)==PlaybackSpeedBackend::ContextSetter133;
+}
+
+double PlaybackSpeedEffective() {
+    const auto backend=active_backend.load(std::memory_order_acquire);
+    if(backend==PlaybackSpeedBackend::ConstructorHook&&supported.load(std::memory_order_acquire))
+        return std::max(1.0,GetSettings().playback_speed);
+    return effective_speed.load(std::memory_order_acquire);
 }
 
 void StartPlaybackSpeed(HMODULE module) {
@@ -387,7 +477,10 @@ void MaintainPlaybackSpeed(HMODULE module) {
         if(now-latest_scan_time<1500)return;
         latest_scan_time=now;
         context=Find133Context();
-        if(!context)return;
+        if(!context) {
+            effective_speed.store(1.0,std::memory_order_release);
+            return;
+        }
         latest_context.store(context,std::memory_order_release);
         char line[192];
         std::snprintf(line,sizeof(line),
