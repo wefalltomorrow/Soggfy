@@ -27,6 +27,10 @@ int main() {
  assert(ParseRichMetadata("v=1&title=Episode&artist=Publisher&album=Show&duration=1800&uri=spotify%3Aepisode%3A123&MEDIA_KIND=episode&SHOW=Show&AUTHOR=Publisher",m,e));
  assert(m.kind=="episode" && m.fields.at("SHOW")=="Show" && m.fields.at("AUTHOR")=="Publisher");
  assert(m.Matches("Episode","Different Windows Artist","Different Windows Album",1800.4));
+ assert(ParsePlaybackMetadata("v=1&title=Sparse%20Episode&uri=spotify%3Aepisode%3A456&duration=4030&playback_quality=high",m,e));
+ assert(m.kind=="episode" && m.title=="Sparse Episode" && m.artist.empty() && m.album.empty() && m.playback_quality=="high");
+ assert(!ParseRichMetadata("v=1&title=Sparse%20Episode&uri=spotify%3Aepisode%3A456&duration=4030",m,e));
+ assert(!ParsePlaybackMetadata("v=1&title=Show&uri=spotify%3Ashow%3A456&duration=4030",m,e));
 
  std::cout<<"PASS: bounded UTF-8 metadata, identity matching and ambiguity rejection\n";
 }
