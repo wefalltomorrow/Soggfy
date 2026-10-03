@@ -43,8 +43,10 @@ static ULONGLONG latest_failure_log_time=0;
 static ULONGLONG latest_scan_log_time=0;
 
 // Spotify 1.3.3.264 x64. These RVAs were verified against the official
-// SpotifyFullSetupX64.exe payload. Unlike the old constructor detour, the
-// latest backend calls Spotify's own ContextPlayer speed methods directly.
+// SpotifyFullSetupX64.exe payload. RC20 uses the exact track-player creation
+// target below; the ContextPlayer RVAs are retained only for the older
+// diagnostic/fallback implementation.
+constexpr std::uint32_t k133TrackCreateRva=0x0057968c;
 constexpr std::uint32_t k133VtableRva=0x01a04958;
 constexpr std::uint32_t k133CurrentSetterRva=0x0057e5b8;
 constexpr std::uint32_t k133PreparedSetterRva=0x0057e9a8;
@@ -109,6 +111,18 @@ static std::uint64_t Hook(std::uint64_t a1,std::uint64_t player_meta,void* track
                           std::uint64_t a12,std::uint64_t a13) {
     const auto configured=GetSettings().playback_speed;
     const double speed=configured>1.0?configured:native_speed;
+
+    if(active_backend.load(std::memory_order_acquire)==PlaybackSpeedBackend::TrackCreate133) {
+        effective_speed.store(speed,std::memory_order_release);
+        char line[320];
+        std::snprintf(line,sizeof(line),
+            "Spotify 1.3.3 track-player create: native=%.3fx requested=%.3fx applied=%.3fx track_select_flag=%u start_position_ms=%llu",
+            native_speed,configured,speed,track_select_flag,
+            static_cast<unsigned long long>(start_position_ms));
+        HistoryLog(line);
+        LogActivity("speed_applied",line);
+    }
+
     return original(a1,player_meta,track_meta,speed,normalization,urgency,track_select_flag,
                     a8,a9,start_position_ms,seek_timestamp,a12,a13);
 }
@@ -123,6 +137,38 @@ static bool ImageSize(HMODULE module,std::size_t& size) {
     const auto image_size=nt->OptionalHeader.SizeOfImage;
     if(image_size<0x1000||image_size>0x80000000u)return false;
     size=image_size;return true;
+}
+
+static bool Verify133TrackCreate(HMODULE module,std::size_t image_size) {
+    auto* base=reinterpret_cast<const std::uint8_t*>(module);
+    if(!base||image_size<k133TrackCreateRva+0x1a0)return false;
+
+    // Spotify 1.3.3.264 AudioSessionImpl track-player creation routine.
+    // The fourth x64 argument is the playback-speed double in XMM3. The
+    // 0x36 anchor copies XMM3 to XMM7 before the function logs "speed: %f".
+    constexpr std::uint8_t prefix[]={
+        0x48,0x8b,0xc4,0x55,0x53,0x56,0x57,0x41,0x54,0x41,0x55,0x41,
+        0x56,0x41,0x57,0x48,0x8d,0xa8,0xf8,0xfc,0xff,0xff,0x48,0x81,
+        0xec,0xc8,0x03,0x00,0x00,0x0f,0x29,0x70,0xa8,0x0f,0x29,0x78,
+        0x98
+    };
+    constexpr std::uint8_t speed_anchor[]={
+        0x0f,0x28,0xfb,0x49,0x8b,0xf0,0x48,0x89,0x55,0xc8,0x48,0x8b,
+        0xf9,0x48,0x89,0x55,0x30,0x4c,0x89,0x85,0x80,0x01,0x00,0x00
+    };
+    constexpr std::uint8_t stack_anchor[]={
+        0x44,0x8b,0xa5,0x30,0x03,0x00,0x00,0x44,0x89,0x64,0x24,0x48,
+        0x44,0x8b,0xad,0x38,0x03,0x00,0x00,0x44,0x89,0x6c,0x24,0x4c,
+        0x48,0x8b,0x85,0x48,0x03,0x00,0x00
+    };
+    constexpr std::uint8_t speed_log_anchor[]={
+        0xf2,0x0f,0x11,0x7c,0x24,0x20
+    };
+
+    return std::memcmp(base+k133TrackCreateRva,prefix,sizeof(prefix))==0 &&
+           std::memcmp(base+k133TrackCreateRva+0x36,speed_anchor,sizeof(speed_anchor))==0 &&
+           std::memcmp(base+k133TrackCreateRva+0x4e,stack_anchor,sizeof(stack_anchor))==0 &&
+           std::memcmp(base+k133TrackCreateRva+0x197,speed_log_anchor,sizeof(speed_log_anchor))==0;
 }
 
 static bool Verify133Layout(HMODULE module,std::size_t image_size) {
@@ -499,6 +545,55 @@ static bool StartConstructorBackend(HMODULE module,std::size_t image_size,std::u
     return false;
 }
 
+static bool Start133TrackCreateBackend(HMODULE module,std::size_t image_size,
+                                       std::uint64_t now) {
+    effective_speed.store(1.0,std::memory_order_release);
+    latest_module=module;
+    latest_image_size=image_size;
+
+    if(!Verify133TrackCreate(module,image_size)) {
+        HistoryLog("Spotify 1.3.3 track-player creation layout verification failed; staying at 1x");
+        speed_init.MarkUnsupported();
+        return false;
+    }
+
+    void* target=reinterpret_cast<std::uint8_t*>(module)+k133TrackCreateRva;
+    MH_STATUS status=MH_Initialize();
+    if(status==MH_ERROR_ALREADY_INITIALIZED)status=MH_OK;
+    if(status==MH_OK)
+        status=MH_CreateHook(target,reinterpret_cast<void*>(Hook),
+                             reinterpret_cast<void**>(&original));
+    if(status==MH_OK) {
+        // Publish the backend before threads are resumed with the detour active,
+        // so the very first TrackPlayer creation can update effective_speed.
+        active_backend.store(PlaybackSpeedBackend::TrackCreate133,std::memory_order_release);
+        status=MH_EnableHook(target);
+        if(status!=MH_OK&&status!=MH_ERROR_ENABLED)
+            active_backend.store(PlaybackSpeedBackend::Unsupported,std::memory_order_release);
+    }
+
+    if(status==MH_OK||status==MH_ERROR_ENABLED) {
+        supported.store(true,std::memory_order_release);
+        speed_init.Activate();
+        char line[320];
+        std::snprintf(line,sizeof(line),
+            "Spotify 1.3.3 exact track-player creation speed hook active at Spotify.dll+0x%08x; speed is XMM3/argument4 and applies when a TrackPlayer is created",
+            k133TrackCreateRva);
+        HistoryLog(line);
+        return true;
+    }
+
+    char line[240];
+    std::snprintf(line,sizeof(line),
+        "Spotify 1.3.3 exact track-player creation hook failed: %s",
+        MH_StatusToString(status));
+    HistoryLog(line);
+    if(status==MH_ERROR_NOT_EXECUTABLE||status==MH_ERROR_UNSUPPORTED_FUNCTION)
+        speed_init.MarkUnsupported();
+    else speed_init.Retry(now);
+    return false;
+}
+
 static bool Start133Backend(HMODULE module,std::size_t image_size) {
     effective_speed.store(1.0,std::memory_order_release);
     if(!Verify133Layout(module,image_size)) {
@@ -575,6 +670,10 @@ void StartPlaybackSpeed(HMODULE module) {
 
     if(backend==PlaybackSpeedBackend::ConstructorHook) {
         StartConstructorBackend(module,image_size,now);
+        return;
+    }
+    if(backend==PlaybackSpeedBackend::TrackCreate133) {
+        Start133TrackCreateBackend(module,image_size,now);
         return;
     }
     if(backend==PlaybackSpeedBackend::ContextSetter133) {
