@@ -30,8 +30,8 @@ struct SpotifyVersion {
 
 static bool ModuleVersion(HMODULE module,SpotifyVersion& out) {
     wchar_t path[32768]{};
-    const DWORD length=GetModuleFileNameW(module,path,static_cast<DWORD>(std::size(path)));
-    if(!length || length>=std::size(path))return false;
+    const DWORD length=GetModuleFileNameW(module,path,static_cast<DWORD>(sizeof(path)/sizeof(path[0])));
+    if(!length || length>=sizeof(path)/sizeof(path[0]))return false;
 
     using SizeFn=DWORD (WINAPI*)(LPCWSTR,LPDWORD);
     using InfoFn=BOOL (WINAPI*)(LPCWSTR,DWORD,DWORD,LPVOID);
