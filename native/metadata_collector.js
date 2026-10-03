@@ -107,7 +107,7 @@
     album:isEpisode?(episodeShow||episodeAuthor):text(own(m,'album_title')),
     uri,duration:Number(text(own(m,'duration')||own(own(item,'duration'),'milliseconds')))/1000,SPOTIFY_URI:uri};
    if(isEpisode){data.MEDIA_KIND='episode';data.SHOW=data.album;data.AUTHOR=data.artist;}
-   if(!data.title||!data.artist||!data.album||!Number.isFinite(data.duration)||data.duration<=0){playback({v:1});return;}
+   if(!data.title||!Number.isFinite(data.duration)||data.duration<=0){playback({v:1});return;}
    // Actual current playback quality, never targetBitrateLevel (the preference).
    const quality=own(state,'playbackQuality')||own(state,'playback_quality');
    const raw=own(quality,'bitrateLevel')||own(quality,'bitrate_level');
@@ -118,6 +118,9 @@
    if(level==='hifi24')level='lossless_24';
    if(['low','normal','high','very_high','lossless','lossless_24','hifi'].includes(level))data.playback_quality=level;
    playback({v:1,title:data.title,artist:data.artist,album:data.album,uri,duration:data.duration,playback_quality:data.playback_quality});
+   // Keep the current-item heartbeat for episodes even when Spotify omits
+   // show/publisher fields. Rich podcast enrichment still requires both.
+   if(isEpisode&&(!data.artist||!data.album))return;
    for(const record of records)cached(data,record);
    merge(data,item); // Current playback snapshot wins over older cached data.
    const encode=()=>Object.entries(data).filter(([,v])=>v!==undefined&&v!==null&&v!=='').map(([k,v])=>k+'='+encodeURIComponent(String(v))).join('&');

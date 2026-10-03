@@ -2,8 +2,8 @@
 
 The active x64 implementation started from:
 
-- Mainkill1/Floggfy tag `v1.1.0-rc.5`
-- commit `a4fa629628a9756ca3db4b41f4d171fc6ed93a1e`
+- Mainkill1/Floggfy tag `v1.1.0`
+- commit `dbf1ba819a7a7a52e9992ad5c786ac74b9a93cac`
 
 The original Soggfy repository was at commit:
 
@@ -22,7 +22,9 @@ Community work reviewed while building this fork:
 
 Not every patch was copied literally. Fixes tied to the obsolete x86 installer/hook architecture were reimplemented only where they still apply to the modern x64 design.
 
-RC5's current-track footer fixes, cached-state refresh, CEF label formatting and stricter stale-state rejection are included together with its regression coverage.
+Floggfy v1.1.0's optional explicit launcher and episode current-item identity fixes are included. The launcher is packaged separately from automatic `version.dll` mode, matching upstream's one-mode-at-a-time design.
+
+Soggfy's capture core intentionally remains ahead of Floggfy v1.1.0 in a few places: replayed Ogg pages are tolerated without duplicate writes, complete-listen validation is aware of accelerated playback, and the Classic UI/path/post-processing layers remain Soggfy-specific. A wholesale rebase would regress those fixes, so upstream changes are merged selectively.
 
 
 ## Compatibility references

@@ -26,18 +26,27 @@ The goal is to keep the interaction model people used in old Soggfy while replac
 
 ## Install
 
-The Floggfy RC5 capture base was live-tested against Windows x64 Spotify 1.3.3.264. Its dynamic audio/connectivity resolver was also validated against signed Spotify DLLs from 1.3.0.277, 1.2.94.583 and 1.2.92.148. The Classic Soggfy UI and playback-speed additions still need normal real-client validation as Spotify UI internals change over time. Microsoft Store installs remain unvalidated.
+The Floggfy 1.1.0 capture/startup base was live-tested against Windows x64 Spotify 1.3.3.264. Its dynamic audio/connectivity resolver was also validated against signed Spotify DLLs from 1.3.0.277, 1.2.94.583 and 1.2.92.148. The Classic Soggfy UI and playback-speed additions still need normal real-client validation as Spotify UI internals change over time. Microsoft Store installs remain unvalidated.
+
+Two startup modes are provided. Install **only one**.
+
+**Automatic mode** is the normal choice:
 
 1. Quit Spotify.
-2. Download the Windows x64 ZIP from Releases.
-3. Extract it.
-4. Run Scripts\Install.ps1, or manually copy version.dll beside Spotify.exe (normally %APPDATA%\Spotify).
-5. Start Spotify.
-6. Use the Soggfy Downloads button in Spotify's top bar to enable capture.
-7. Use the sliders button beside it to open Soggfy settings.
-8. Play a track from start to finish without seeking or skipping.
+2. Download `Soggfy-v*-Windows-x64.zip` from Releases and extract it.
+3. Run `Scripts\Install.ps1`, or manually copy `version.dll` beside `Spotify.exe` (normally `%APPDATA%\Spotify`).
+4. Start Spotify normally.
 
-The installer backs up a pre-existing version.dll instead of silently overwriting it. Scripts\Uninstall.ps1 restores that backup.
+The installer backs up a pre-existing `version.dll` instead of silently overwriting it. `Scripts\Uninstall.ps1` restores that backup.
+
+**Launcher mode** is an optional fallback when Windows/Spotify skips the adjacent `version.dll`:
+
+1. Quit Spotify and remove Soggfy's automatic `version.dll` from the Spotify folder.
+2. Extract `Soggfy-v*-Launcher-Windows-x64.zip` beside `Spotify.exe`.
+3. Start `Soggfy.exe`. It stops Spotify processes from that same installation, starts a fresh Spotify process and explicitly loads the adjacent `Soggfy.dll`.
+4. Keep `Soggfy.exe` and `Soggfy.dll` from the same release.
+
+After either startup mode, use the Soggfy Downloads button in Spotify's top bar, open settings with the sliders button, and play a track from start to finish without seeking or skipping.
 
 ## Classic Soggfy UI
 
@@ -140,7 +149,7 @@ CI covers native capture, FLAC/Ogg tagging, cache metadata, path templates, issu
 
 The previous 2024 x86 Soggfy source is preserved under legacy/ for reference.
 
-The active x64 capture base is synced through Mainkill1/Floggfy v1.1.0-rc.5. See UPSTREAMS.md for the exact source revision and community work reviewed while building this fork.
+The active x64 base is synced selectively through Mainkill1/Floggfy v1.1.0. See UPSTREAMS.md for the exact source revision and community work reviewed while building this fork.
 
 ## Credits
 

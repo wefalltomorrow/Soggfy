@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0-rc.11
+
+- Synced selected upstream improvements through Mainkill1/Floggfy v1.1.0.
+- Added Floggfy 1.1.0's optional explicit launcher as a separate `Soggfy.exe` + `Soggfy.dll` startup mode while keeping normal `version.dll` automatic mode unchanged.
+- Launcher mode stops running Spotify processes from the same installation, starts a fresh process, explicitly loads the adjacent DLL before application startup and waits for Soggfy readiness.
+- Kept automatic and launcher packages separate so the two injection modes cannot accidentally be installed together.
+- Ported upstream episode current-item handling so sparse episode titles remain visible even when music artist/album fields are absent.
+- Episode playback quality identity now uses the Spotify episode URI, preventing same-title episodes from borrowing stale decoder details.
+- Retained Soggfy's newer Ogg replay tolerance, accelerated complete-listen validation, Classic UI, legacy-library matching and post-processing instead of rebasing onto the older upstream capture core.
+- Updated release packaging, checksums, CI verification, README and upstream tracking for the new launcher artifact.
+
 ## 3.0.0-rc.10
 
 - Fixed complete-listen validation incorrectly assuming 1x playback while Soggfy's native speed control was running Spotify faster.
