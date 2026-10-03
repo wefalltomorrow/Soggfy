@@ -93,7 +93,6 @@ jobs:
           set -euo pipefail
           version="$(tr -d '\r\n' < VERSION)"
           archive="Soggfy-v${version}-Windows-x64.zip"
-          launcher="Soggfy-v${version}-Launcher-Windows-x64.zip"
           test -f build/Soggfy.exe
           objdump -h build/version.dll | grep -q '\.rsrc'
           strings -el build/version.dll | grep -Fq 'Soggfy Spotify history capture proxy'
@@ -104,14 +103,35 @@ jobs:
             exit 1
           fi
           cd dist
-          grep -Fq "  version.dll" SHA256SUMS.txt
           grep -Fq "  $archive" SHA256SUMS.txt
-          grep -Fq "  $launcher" SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
+          python - "$archive" <<'PY'
+          import sys, zipfile
+          required = {
+              "version.dll",
+              "Launcher/Soggfy.exe",
+              "Launcher/Soggfy.dll",
+              "SpotifyHistory.ini",
+              "Launcher/SpotifyHistory.ini",
+              "BUILDINFO.txt",
+              "SHA256SUMS.txt",
+              "README.md",
+              "Scripts/Install.ps1",
+              "Scripts/Uninstall.ps1",
+              "Scripts/PostProcess.ps1",
+              "Scripts/Diagnose.ps1",
+          }
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names = set(z.namelist())
+          missing = sorted(required - names)
+          if missing:
+              raise SystemExit("Missing release files: " + ", ".join(missing))
+          print("All-in-one ZIP contains automatic and launcher payloads.")
+          PY
 
       - name: Upload Windows x64 artifact
         uses: actions/upload-artifact@v7
         with:
           name: Soggfy-Windows-x64
-          path: dist/*
+          path: dist/Soggfy-v*-Windows-x64.zip
           if-no-files-found: error

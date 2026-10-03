@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.12
+
+- Changed GitHub Releases to publish one all-in-one Windows x64 ZIP instead of multiple build assets.
+- The root of the ZIP contains automatic `version.dll` mode, settings, scripts, build information, checksums and documentation.
+- Optional launcher mode now lives under `Launcher/` in the same ZIP.
+- Release CI verifies that both automatic and launcher payloads are present in the single archive.
+- GitHub's automatically generated source-code ZIP and tarball remain visible separately.
+
 ## 3.0.0-rc.11
 
 - Synced selected upstream improvements through Mainkill1/Floggfy v1.1.0.
