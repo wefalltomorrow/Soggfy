@@ -6,6 +6,7 @@ namespace history {
 enum class PlaybackSpeedBackend : unsigned char {
     Unsupported,
     ConstructorHook,
+    TrackCreate133,
     ContextSetter133
 };
 
