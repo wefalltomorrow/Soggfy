@@ -1,23 +1,22 @@
-# Soggfy v3.0.0-rc.13
+# Soggfy v3.0.0-rc.14
 
-RC13 is a diagnostic release for the remaining "starts but does not save" capture problem.
+RC14 fixes the startup crash on Spotify for Windows x64 1.3.3.264.
 
-## Much more useful Soggfy.log
+## What the crash dumps showed
 
-Normal logging now records:
+Three independent dumps from Spotify 1.3.3.264 with Soggfy RC13 all failed the same way: an execute access violation at the same unmapped low address during very early Spotify.dll startup. Floggfy v1.1.0 works on this same Spotify build, and the extra early native hook present in Soggfy is the restored playback-speed hook.
 
-- capture configuration, configured/effective playback speed and whether the native speed hook is active;
-- Ogg BOS/EOS, stream duration, page/byte counts and capture elapsed time;
-- exact Ogg sequence, serial, flags and granule values if a stream is rejected;
-- raw Windows media position, Soggfy's extrapolated position, timeline age, duration and playing state;
-- the exact reason a complete listen is invalidated;
-- completed-listen to compressed-stream association details;
-- publication destination, native/output format, FFmpeg selection and post-processing result.
+The old speed-target pattern still produced a unique match on 1.3.3.264, but the player constructor ABI/layout is no longer safe to call with the 1.3.1-era signature. That meant the old "unique pattern = safe" validation was not strict enough.
 
-With **Debug log** enabled, RC13 also records each 500 ms media sample and Ogg replay details.
+## RC14 behavior
 
-## Why this matters versus Floggfy 1.1.0
+- Spotify 1.3.3.264 no longer installs the unsafe playback-speed hook.
+- Soggfy therefore runs at 1x on this build, matching Floggfy's working playback path.
+- Capture, Classic UI, Skip Downloaded, metadata and FFmpeg conversion remain enabled.
+- The speed control is disabled in the UI when the build is not explicitly validated.
+- Spotify 1.3.1.234 keeps the native 1-50x speed feature because that ABI was runtime-validated.
+- Unknown/new Spotify versions also fail closed at 1x instead of risking a startup crash.
 
-Floggfy 1.1.0 downloads successfully on the same Spotify build using its normal 1x capture/listen path. Soggfy keeps that capture base but adds the Classic UI, optional 1-50x playback and rate-aware listen validation. The recent Soggfy log shows captures starting but being rejected as incomplete listens before publication, so RC13 instruments that Soggfy-specific layer rather than changing the working upstream hooks blindly.
+Once normal downloading is confirmed on 1.3.3.264, the speed hook can be reworked separately against the new player ABI.
 
 The release remains one all-in-one Windows x64 ZIP.
