@@ -7,6 +7,7 @@
 namespace history {
 enum class PlaybackFormat { Unknown, Ogg, Flac };
 enum class PlaybackLevel { Unknown, Low, Normal, High, VeryHigh, Lossless, Lossless24, Lossy };
+enum class PlaybackAssociation { Unavailable, Detected, Matched, Complete, Ambiguous };
 PlaybackLevel ParsePlaybackLevel(const std::string &);
 struct PlaybackQualitySnapshot {
   std::array<wchar_t, 192> title{};
@@ -16,6 +17,10 @@ struct PlaybackQualitySnapshot {
   double bitrate = 0;
   unsigned bits = 0;
   PlaybackLevel level = PlaybackLevel::Unknown;
+  PlaybackFormat detected_format = PlaybackFormat::Unknown;
+  unsigned detected_rate = 0;
+  unsigned detected_bits = 0;
+  PlaybackAssociation association = PlaybackAssociation::Unavailable;
 };
 class PlaybackQualityTracker {
   struct Candidate {
@@ -52,6 +57,7 @@ public:
 };
 uint64_t PlaybackIdentity(const std::string &);
 std::array<std::wstring, 4> PlaybackQualityLabels(const PlaybackQualitySnapshot &);
+std::wstring PlaybackAssociationLabel(const PlaybackQualitySnapshot &);
 // Windows bridge: worker publishes a fixed-size snapshot; menu only reads RAM.
 void PublishPlaybackQuality(const PlaybackQualitySnapshot &);
 void PublishClientPlaybackQuality(const PlaybackQualitySnapshot &);

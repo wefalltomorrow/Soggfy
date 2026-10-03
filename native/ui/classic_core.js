@@ -15,7 +15,7 @@ sgf.state = Object.assign({
   skipDownloaded:false, skipIgnored:false, embedCover:true, saveCover:true, embedLyrics:true,
   saveLyrics:true, saveCanvas:false, blockTelemetry:true, liftQueue:false, keepNative:true,
   playbackSpeed:1, speedSupported:false,
-  qualitySong:'Unavailable', qualityLevel:'Unavailable', qualityFormat:'Unavailable', qualitySample:'Unavailable',
+  qualitySong:'Unavailable', qualityLevel:'Unavailable', qualityFormat:'Unavailable', qualitySample:'Unavailable', qualityAssociation:'Unavailable',
   root:'', template:'', podcastTemplate:'', canvasTemplate:'',
   invalidChars:'unicode', outputPreset:'Native', outputExt:'', outputArgs:'', ffmpegPath:''
 }, sgf.state || {});
@@ -102,7 +102,7 @@ sgf.applyConfig = payload => {
     const bools=['downloads','ogg','flac','metadata','log','debug','normalize','skipDownloaded','skipIgnored','embedCover','saveCover','embedLyrics','saveLyrics','saveCanvas','blockTelemetry','liftQueue','keepNative'];
     for(const key of bools)sgf.state[key]=sgf.flag(p,key,sgf.state[key]);
     const strings=['root','template','podcastTemplate','canvasTemplate','invalidChars','outputPreset','outputExt','outputArgs','ffmpegPath',
-      'qualitySong','qualityLevel','qualityFormat','qualitySample'];
+      'qualitySong','qualityLevel','qualityFormat','qualitySample','qualityAssociation'];
     for(const key of strings)if(p.has(key))sgf.state[key]=p.get(key)||'';
     if(p.has('playbackSpeed'))sgf.state.playbackSpeed=Math.max(1,Math.min(50,Number(p.get('playbackSpeed'))||1));
     if(p.has('speedSupported'))sgf.state.speedSupported=sgf.flag(p,'speedSupported',sgf.state.speedSupported);

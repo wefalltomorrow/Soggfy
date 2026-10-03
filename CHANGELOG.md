@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0-rc.15
+
+- Improved the Modern Capture panel so Ogg/Vorbis format and sample rate can appear as soon as a plausible native decoder stream is observed near the start of the current track.
+- Added a separate Capture association row with Pending, Matched, Complete, Ambiguous or Unavailable state.
+- Kept strict identity rules: a detected Ogg header is shown as detected/pending, not promoted to a validated current-track format until duration/identity corroboration succeeds.
+- Mid-track read-ahead remains hidden to avoid labeling the next song's decoder as the current song.
+- Ogg is now labeled Ogg/Vorbis in the UI.
+- On Spotify builds where accelerated playback is disabled for ABI safety, the settings page now shows a clear read-only 1x status instead of an inert slider.
+- Added regression coverage for pending native-stream detection, sample-rate display and association labels.
+
 ## 3.0.0-rc.14
 
 - Fixed Spotify 1.3.3.264 crashing during startup when Soggfy's native playback-speed hook was installed.

@@ -182,7 +182,18 @@ sgf.openSettings=()=>{
   };
 
   const general=section('General',
-    row('Playback speed',(()=>{const n=slider('playbackSpeed');const supported=!!sgf.state.speedSupported;n.title=supported?'Native accelerated playback':'Disabled on this Spotify build because the native player ABI is not validated';if(!supported)n.querySelectorAll('input').forEach(input=>{input.disabled=true;});return n;})()),
+    row('Playback speed',(()=>{
+      if(!sgf.state.speedSupported){
+        const n=document.createElement('span');
+        n.className='sgf-readonly-value';
+        n.textContent='1x (disabled for this Spotify build)';
+        n.title='Native accelerated playback is disabled because this Spotify player ABI is not validated yet.';
+        return n;
+      }
+      const n=slider('playbackSpeed');
+      n.title='Native accelerated playback';
+      return n;
+    })()),
     row('Output format',format),
     custom,
     row('Skip downloaded tracks',toggle('skipDownloaded')),
@@ -216,6 +227,7 @@ sgf.openSettings=()=>{
     row('Spotify quality',readOnly('qualityLevel')),
     row('Current format',readOnly('qualityFormat')),
     row('Sample rate / depth',readOnly('qualitySample')),
+    row('Capture association',readOnly('qualityAssociation')),
     row('Capture native FLAC',toggle('flac')),
     row('Capture Ogg/Vorbis',toggle('ogg')),
     row('Cached metadata enrichment',toggle('metadata')),
