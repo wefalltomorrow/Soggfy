@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.22
+
+- Fixed RC21 rejecting the exact Spotify 1.3.3.264 SessionTrackPlayer object because its dispatcher/player interface methods were required to reside inside Spotify.dll.
+- Live RC21 logging consistently showed `raw_hits=1 valid=0` while tracks were playing, proving discovery found the exact vtable object but validation discarded it.
+- SessionTrackPlayer validation now accepts virtual methods from any committed executable module while retaining the exact Spotify vtable match and readable object-layout checks.
+- The native setter is now attempted even when Spotify reports playback-speed automation entries; the native getter decides whether the request actually took effect.
+- Added `speed_session_raw` diagnostics for exact-vtable objects that still fail validation, including dispatcher/player pointers, method executability, vector size and cached speed.
+- Effective speed remains verified against Spotify's live underlying-player getter before Soggfy reports accelerated playback.
+
 ## 3.0.0-rc.21
 
 - Replaced RC20's Spotify 1.3.3.264 AudioSessionImpl track-creation speed hook after live logging proved that exact routine never ran for the active music session, even across new tracks.
