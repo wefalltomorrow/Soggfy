@@ -1,28 +1,46 @@
-# Soggfy v3.0.0-rc.23
+# Soggfy v3.0.0-rc.24
 
-RC23 fixes the Spotify startup crash introduced by RC22 and makes the 1.3.3.264 speed path safer to diagnose.
+RC24 fixes the startup crash that remained in RC23 by moving Spotify-native hook installation out of the loader race entirely.
 
-## RC22 crash diagnosis
+## What the RC23 crash dump proved
 
-Two independent RC22 crash dumps reproduce the same failure:
+The supplied RC23 minidump is definitely running Soggfy 3.0.0.23 with Spotify 1.3.3.264.
+
+It reproduces the same signature seen in RC22 and the earlier RC13 crashes:
 
 - exception: `0xc0000005` execute access violation
-- attempted instruction address: `0x01f7e69c`
-- the attempted address is outside every loaded module
-- the immediate return address on the crashing thread is inside Spotify.dll at RVA `0x00052a0c`
+- attempted address: `0x01f7e69c`
+- immediate return address: `Spotify.dll+0x00052a0c`
 
-That pattern is consistent with an invalid indirect interface call rather than a normal fault inside Soggfy's DLL.
+Disassembly of the exact Spotify 1.3.3.264 DLL shows that `Spotify.dll+0x00052a06` is:
 
-RC22 had started treating a memory-scanned SessionTrackPlayer-shaped object as callable during Spotify startup. It could then invoke Spotify's native getter/setter before Spotify itself had ever exposed that object through the real methods. That was too aggressive.
+`call [Spotify.dll+0x01953738]`
 
-## RC23 behavior
+and that IAT slot is Spotify's normal import for `GetCommandLineW`.
 
-- Keeps the exact Spotify 1.3.3.264 SessionTrackPlayer setter/getter hooks and byte/vtable validation.
-- A SessionTrackPlayer pointer is now considered callable only after Spotify itself passes that exact `this` pointer through the hooked native setter or getter.
-- Process-memory scans are diagnostic-only. They can inspect the exact vtable object and log its player pointer, automation state and cached speed, but they never call a Spotify method on a scanned pointer.
-- Adds `speed_session_hook setter` and `speed_session_hook getter` records for the first few genuine Spotify calls, including the real `this` pointer and native/requested rate.
-- Once a genuine Spotify-owned SessionTrackPlayer has been observed, maintenance can safely apply the configured rate to that same object and verify it with Spotify's native getter.
-- If Spotify never calls either speed method, the log now says so explicitly and includes setter/getter call counters.
-- `speed_effective` remains at 1x until Spotify's genuine live object reports the requested rate.
+The value `0x01f7e69c` is not a valid Windows function pointer. It is the raw PE hint/name RVA that exists in the import thunk before the Windows loader resolves that entry.
 
-The capture and conversion paths are unchanged.
+So the crash is not caused by the latest SessionTrackPlayer object validation itself. Soggfy was beginning MinHook/IAT work as soon as `Spotify.dll` became visible in the module list, which can happen while Windows is still resolving that DLL's normal imports.
+
+## RC24 behavior
+
+- Does not install any Spotify.dll-native hooks merely because the module is visible.
+- Verifies five normal Spotify imports are already resolved to committed executable addresses:
+  - `GetCommandLineW`
+  - `GetCurrentProcessId`
+  - `GetModuleHandleW`
+  - `GetProcAddress`
+  - `VirtualProtect`
+- Rejects raw unresolved import RVAs before any native hook is installed.
+- Requires a further 1500 ms quiet grace period after those imports become resolved.
+- Only after that gate opens does Soggfy start:
+  - the connectivity IAT hook,
+  - the playback-speed hook,
+  - playback-speed maintenance,
+  - and native audio-history hooks.
+- The log records:
+  `Spotify.dll normal imports resolved; deferred native hooks released after 1500 ms loader grace`
+  when native hook installation is finally allowed.
+- RC23's safer rule remains: memory-scanned SessionTrackPlayer candidates are diagnostic-only and are never called unless Spotify itself exposes the object through the hooked speed methods.
+
+Capture/conversion behavior is otherwise unchanged.
