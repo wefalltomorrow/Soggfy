@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.0.0-rc.26
+
+- Replaced the non-functional Spotify 1.3.3.264 SessionTrackPlayer/ContextPlayer speed experiments with the original Soggfy-style decoded-PCM thinning strategy.
+- RC25 logging proved the configured rate changed while effective speed stayed at 1x and both native SessionTrackPlayer hook call counters remained zero.
+- Added an exact, version-validated PCM filter-chain hook at RVA `0x00463954` with matching vtable slot `0x019c7c68`.
+- The new hook lets Spotify process each live PCM block normally, then exposes only `produced / configured_speed` samples to the sink, preserving the complete compressed capture while accelerating audible playback.
+- Added `speed_pcm_hook` diagnostics with input/produced/kept sample counts and conservative effective-speed reporting.
+- Added regression tests for classic PCM thinning math.
+- Expanded the CEF ad filter to current regional `*-spclient.spotify.com/ads/` and `/ad-logic/` endpoints while keeping normal Spotify metadata/audio traffic allowed.
+- Added regional ad-filter regression tests.
+- Retained RC25's loader-readiness gate and read-only IAT handling.
+
 ## 3.0.0-rc.25
 
 - Fixed RC24 crashing while checking Spotify's loader readiness.
