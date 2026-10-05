@@ -1,21 +1,28 @@
-# Soggfy v3.0.0-rc.22
+# Soggfy v3.0.0-rc.23
 
-RC22 fixes the SessionTrackPlayer discovery mistake exposed by the RC21 live log.
+RC23 fixes the Spotify startup crash introduced by RC22 and makes the 1.3.3.264 speed path safer to diagnose.
 
-## What RC21 proved
+## RC22 crash diagnosis
 
-RC21 successfully enabled the exact Spotify 1.3.3.264 SessionTrackPlayer setter/getter backend, and every scan found exactly one object whose first pointer matched the validated SessionTrackPlayer vtable. However, RC21 reported `raw_hits=1 valid=0` continuously — including while a new track was actively playing — so it rejected the real object before ever calling Spotify's speed setter.
+Two independent RC22 crash dumps reproduce the same failure:
 
-The rejection came from an over-strict safety check: RC21 required the SessionTrackPlayer's dispatcher and underlying-player virtual methods to live inside Spotify.dll. Those fields are interface objects and their implementations can live in another executable module even though the SessionTrackPlayer itself is the exact byte-validated Spotify class.
+- exception: `0xc0000005` execute access violation
+- attempted instruction address: `0x01f7e69c`
+- the attempted address is outside every loaded module
+- the immediate return address on the crashing thread is inside Spotify.dll at RVA `0x00052a0c`
 
-## RC22 changes
+That pattern is consistent with an invalid indirect interface call rather than a normal fault inside Soggfy's DLL.
 
-- Keeps the exact Spotify 1.3.3.264 SessionTrackPlayer vtable match at `Spotify.dll+0x01a07308`.
-- Keeps exact byte/vtable validation of Spotify's native speed setter at `+0x005a8d18` and getter at `+0x005a17d8`.
-- Accepts dispatcher/player virtual methods from any committed executable module instead of incorrectly requiring every implementation to reside inside Spotify.dll.
-- Still requires the SessionTrackPlayer's exact vtable, readable object fields, a sane automation vector, a readable dispatcher vtable/method, and a readable underlying-player getter when a player exists.
-- Actually calls Spotify's setter even when playback-speed automation entries are present; Spotify itself can accept or reject the request, and Soggfy then verifies the result with the native getter.
-- Adds a detailed `speed_session_raw` diagnostic for any exact-vtable object that still fails validation. It records dispatcher/player pointers, virtual method executability, automation-vector size and cached speed so another false-negative can be diagnosed from one log.
-- `speed_effective` remains conservative: it changes from 1x only when Spotify's live underlying player reports the requested rate.
+RC22 had started treating a memory-scanned SessionTrackPlayer-shaped object as callable during Spotify startup. It could then invoke Spotify's native getter/setter before Spotify itself had ever exposed that object through the real methods. That was too aggressive.
 
-As before, disable Spotify **Automix** under **Edit -> Preferences -> Playback** while testing complete-listen capture.
+## RC23 behavior
+
+- Keeps the exact Spotify 1.3.3.264 SessionTrackPlayer setter/getter hooks and byte/vtable validation.
+- A SessionTrackPlayer pointer is now considered callable only after Spotify itself passes that exact `this` pointer through the hooked native setter or getter.
+- Process-memory scans are diagnostic-only. They can inspect the exact vtable object and log its player pointer, automation state and cached speed, but they never call a Spotify method on a scanned pointer.
+- Adds `speed_session_hook setter` and `speed_session_hook getter` records for the first few genuine Spotify calls, including the real `this` pointer and native/requested rate.
+- Once a genuine Spotify-owned SessionTrackPlayer has been observed, maintenance can safely apply the configured rate to that same object and verify it with Spotify's native getter.
+- If Spotify never calls either speed method, the log now says so explicitly and includes setter/getter call counters.
+- `speed_effective` remains at 1x until Spotify's genuine live object reports the requested rate.
+
+The capture and conversion paths are unchanged.
