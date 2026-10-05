@@ -1,46 +1,29 @@
-# Soggfy v3.0.0-rc.24
+# Soggfy v3.0.0-rc.25
 
-RC24 fixes the startup crash that remained in RC23 by moving Spotify-native hook installation out of the loader race entirely.
+RC25 fixes the immediate startup crash introduced by RC24's loader-readiness check.
 
-## What the RC23 crash dump proved
+## RC24 dump diagnosis
 
-The supplied RC23 minidump is definitely running Soggfy 3.0.0.23 with Spotify 1.3.3.264.
+Both supplied RC24 dumps fail identically:
 
-It reproduces the same signature seen in RC22 and the earlier RC13 crashes:
+- exception: `0xc0000005` write access violation
+- faulting instruction: `VERSION.dll+0x217e`
+- destination: `Spotify.dll+0x01953738`
+- that destination is Spotify's `GetCommandLineW` IAT slot
 
-- exception: `0xc0000005` execute access violation
-- attempted address: `0x01f7e69c`
-- immediate return address: `Spotify.dll+0x00052a0c`
+The faulting instruction is:
 
-Disassembly of the exact Spotify 1.3.3.264 DLL shows that `Spotify.dll+0x00052a06` is:
+`lock cmpxchg [rdx], rax`
 
-`call [Spotify.dll+0x01953738]`
+RC24 used `InterlockedCompareExchangePointer(slot, nullptr, nullptr)` as an atomic read of the IAT entry. That API is still a read-modify-write operation, so it faults when the IAT page is read-only.
 
-and that IAT slot is Spotify's normal import for `GetCommandLineW`.
+## RC25 behavior
 
-The value `0x01f7e69c` is not a valid Windows function pointer. It is the raw PE hint/name RVA that exists in the import thunk before the Windows loader resolves that entry.
+- Reads Spotify IAT entries with a plain read-only memory load instead of an interlocked RMW instruction.
+- Keeps RC24's loader-readiness gate:
+  - critical normal imports must already resolve to executable addresses;
+  - raw unresolved import RVAs are rejected;
+  - a further 1500 ms grace period is required before native hooks begin.
+- Keeps RC23's rule that memory-scanned SessionTrackPlayer candidates are diagnostic-only.
 
-So the crash is not caused by the latest SessionTrackPlayer object validation itself. Soggfy was beginning MinHook/IAT work as soon as `Spotify.dll` became visible in the module list, which can happen while Windows is still resolving that DLL's normal imports.
-
-## RC24 behavior
-
-- Does not install any Spotify.dll-native hooks merely because the module is visible.
-- Verifies five normal Spotify imports are already resolved to committed executable addresses:
-  - `GetCommandLineW`
-  - `GetCurrentProcessId`
-  - `GetModuleHandleW`
-  - `GetProcAddress`
-  - `VirtualProtect`
-- Rejects raw unresolved import RVAs before any native hook is installed.
-- Requires a further 1500 ms quiet grace period after those imports become resolved.
-- Only after that gate opens does Soggfy start:
-  - the connectivity IAT hook,
-  - the playback-speed hook,
-  - playback-speed maintenance,
-  - and native audio-history hooks.
-- The log records:
-  `Spotify.dll normal imports resolved; deferred native hooks released after 1500 ms loader grace`
-  when native hook installation is finally allowed.
-- RC23's safer rule remains: memory-scanned SessionTrackPlayer candidates are diagnostic-only and are never called unless Spotify itself exposes the object through the hooked speed methods.
-
-Capture/conversion behavior is otherwise unchanged.
+No playback-speed or capture logic is otherwise changed in this build.

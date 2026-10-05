@@ -277,8 +277,11 @@ static bool ResolvedNormalImport(HMODULE module, DWORD image_size, const char* f
     const auto imports = hooks::FindImportSlots(base, image_size, nullptr, function_name);
     if (imports.malformed || !imports.normal) return false;
 
-    void* value = InterlockedCompareExchangePointer(
-        reinterpret_cast<PVOID volatile*>(imports.normal), nullptr, nullptr);
+    void* value = nullptr;
+    // This must be a read-only load. InterlockedCompareExchangePointer is a
+    // read-modify-write instruction even when both exchange/comparand are
+    // null, and Spotify's IAT is normally mapped read-only once snapped.
+    std::memcpy(&value, imports.normal, sizeof(value));
 
     // Before the Windows loader fixes an x64 IAT entry it still contains the
     // raw hint/name RVA from the PE file (for example 0x01f7e69c for
