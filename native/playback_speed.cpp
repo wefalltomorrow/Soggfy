@@ -50,7 +50,8 @@ static ULONGLONG latest_failure_log_time=0;
 static ULONGLONG latest_scan_log_time=0;
 static ULONGLONG latest_session_scan_time=0;
 static ULONGLONG latest_session_log_time=0;
-static std::vector<std::uintptr_t> session_candidates;
+static std::atomic<unsigned long long> session_setter_calls{0};
+static std::atomic<unsigned long long> session_getter_calls{0};
 
 // Spotify 1.3.3.264 x64. These RVAs were verified against the official
 // SpotifyFullSetupX64.exe payload. RC21 uses SessionTrackPlayer's real
@@ -153,15 +154,32 @@ static void SessionSpeedHook(void* self,double native_speed,unsigned int mode) {
     const auto configured=GetSettings().playback_speed;
     const double speed=std::isfinite(configured)&&configured>1.0&&configured<=50.0?
         configured:native_speed;
+    const auto call=session_setter_calls.fetch_add(1,std::memory_order_relaxed)+1;
     original_session_setter(self,speed,mode);
+
+    if(call<=8) {
+        char line[384];
+        std::snprintf(line,sizeof(line),
+            "speed_session_hook setter call=%llu session=%p native=%.6f requested=%.6f applied=%.6f mode=%u",
+            call,self,native_speed,configured,speed,mode);
+        HistoryLog(line);
+    }
 }
 
 static double SessionGetterHook(void* self) {
     const double speed=original_session_getter(self);
     latest_session.store(reinterpret_cast<std::uintptr_t>(self),std::memory_order_release);
+    const auto call=session_getter_calls.fetch_add(1,std::memory_order_relaxed)+1;
     if(std::isfinite(speed)&&speed>0.0&&speed<100.0) {
         observed_session_speed.store(speed,std::memory_order_release);
         observed_session_time.store(GetTickCount64(),std::memory_order_release);
+    }
+    if(call<=8) {
+        char line[320];
+        std::snprintf(line,sizeof(line),
+            "speed_session_hook getter call=%llu session=%p speed=%.6f",
+            call,self,speed);
+        HistoryLog(line);
     }
     return speed;
 }
@@ -486,14 +504,15 @@ static std::vector<std::uintptr_t> Find133Sessions(bool log_scan) {
                         if(found.size()<16)found.push_back(candidate);
 
                         if(log_scan&&valid_hits<=8) {
-                            double speed=0.0;
-                            if(original_session_getter)
-                                speed=original_session_getter(reinterpret_cast<void*>(candidate));
-                            char line[384];
+                            double cached_speed=0.0;
+                            const bool cached_read=ReadSelf(
+                                reinterpret_cast<const void*>(candidate+k133SessionCachedSpeedOffset),
+                                cached_speed);
+                            char line[448];
                             std::snprintf(line,sizeof(line),
-                                "speed_session_candidate session=%p player=%p automation=%zu speed=%.6f",
+                                "speed_session_candidate session=%p player=%p automation=%zu cached=%.6f cached_read=%d source=memory_scan callable=0",
                                 reinterpret_cast<void*>(candidate),reinterpret_cast<void*>(player),
-                                automation_count,speed);
+                                automation_count,cached_speed,cached_read);
                             HistoryLog(line);
                         }
                     }
@@ -563,33 +582,26 @@ static void Maintain133Session() {
 
     const double requested=GetSettings().playback_speed;
     bool any_verified=false;
-    bool have_valid=false;
+    bool have_observed=false;
 
+    // Only call Spotify methods on a SessionTrackPlayer pointer that Spotify
+    // itself supplied to one of our hooked setter/getter entry points. RC22
+    // invoked methods on memory-scanned candidates during startup and could
+    // execute through a partially-constructed interface object.
     const auto observed=latest_session.load(std::memory_order_acquire);
     if(observed&&SessionLooksValid(observed)) {
-        have_valid=true;
-        if(std::find(session_candidates.begin(),session_candidates.end(),observed)==session_candidates.end())
-            session_candidates.push_back(observed);
+        have_observed=true;
+        if(Apply133Session(observed,requested,true))any_verified=true;
     }
 
-    session_candidates.erase(
-        std::remove_if(session_candidates.begin(),session_candidates.end(),
-            [](std::uintptr_t value){return !SessionLooksValid(value);}),
-        session_candidates.end());
-
-    if(session_candidates.empty()||now-latest_session_scan_time>=3000) {
+    // Memory scans are diagnostic-only. They may identify the exact vtable,
+    // player pointer and cached speed, but never invoke a method on the result.
+    if(now-latest_session_scan_time>=3000) {
         latest_session_scan_time=now;
         const bool log_scan=now-latest_session_log_time>=5000;
         auto scanned=Find133Sessions(log_scan);
+        (void)scanned;
         if(log_scan)latest_session_log_time=now;
-        for(auto value:scanned)
-            if(std::find(session_candidates.begin(),session_candidates.end(),value)==session_candidates.end())
-                session_candidates.push_back(value);
-    }
-
-    for(auto session:session_candidates) {
-        have_valid=true;
-        if(Apply133Session(session,requested,true))any_verified=true;
     }
 
     const auto observed_time=observed_session_time.load(std::memory_order_acquire);
@@ -599,11 +611,14 @@ static void Maintain133Session() {
         any_verified=true;
 
     if(!any_verified)effective_speed.store(1.0,std::memory_order_release);
-    if(!have_valid&&requested>1.0&&now-latest_failure_log_time>=5000) {
+    if(!have_observed&&requested>1.0&&now-latest_failure_log_time>=5000) {
         latest_failure_log_time=now;
-        char line[192];
+        char line[320];
         std::snprintf(line,sizeof(line),
-            "requested=%.3fx effective=1.000x no live SessionTrackPlayer found",requested);
+            "requested=%.3fx effective=1.000x no hook-observed SessionTrackPlayer; scan candidates are diagnostic-only setter_calls=%llu getter_calls=%llu",
+            requested,
+            session_setter_calls.load(std::memory_order_relaxed),
+            session_getter_calls.load(std::memory_order_relaxed));
         HistoryLog(line);
         LogActivity("speed_pending",line);
     }
@@ -879,10 +894,11 @@ static bool Start133SessionBackend(HMODULE module,std::size_t image_size,
     effective_speed.store(1.0,std::memory_order_release);
     latest_module=module;
     latest_image_size=image_size;
-    session_candidates.clear();
     latest_session.store(0,std::memory_order_release);
     observed_session_speed.store(1.0,std::memory_order_release);
     observed_session_time.store(0,std::memory_order_release);
+    session_setter_calls.store(0,std::memory_order_release);
+    session_getter_calls.store(0,std::memory_order_release);
 
     if(!Verify133SessionLayout(module,image_size)) {
         HistoryLog("Spotify 1.3.3 SessionTrackPlayer playback-speed layout verification failed; staying at 1x");
