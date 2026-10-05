@@ -70,6 +70,7 @@ static std::atomic<double> decode_last_requested{1.0};
 // SpotifyFullSetupX64.exe payload. RC28 targets the live Ogg decoder dispatcher
 // that is the x64 equivalent of old Soggfy's DecodeAudioData hook.
 constexpr std::uint32_t k133DecodeAudioRva=0x00d5a240;
+constexpr std::uint32_t k133DecoderNameRva=0x01ae5b18;
 constexpr std::uint32_t k133DecoderVtableRva=0x01ae5b28;
 constexpr std::uint32_t k133DecodeAudioSlotRva=0x01ae5b30;
 constexpr std::uint32_t k133DecoderCtorRva=0x00d59a40;
@@ -301,12 +302,14 @@ static bool Verify133DecodeAudio(HMODULE module,std::size_t image_size) {
     constexpr std::uint8_t count_store[]={
         0x48,0xc1,0xe8,0x02,0x49,0x89,0x04,0x24,0x41,0x8b,0xc5,0x49,0x89,0x06
     };
+    constexpr char decoder_name[]="snd-decoder";
     constexpr std::uint8_t ctor_prefix[]={
         0x48,0x89,0x5c,0x24,0x08,0x57,0x48,0x83,0xec,0x20,0x48,0x89,
         0x51,0x08,0x48,0x8d,0x05,0xd3,0xc0,0xd8,0x00,0x48,0x89,0x01
     };
 
-    if(std::memcmp(base+k133DecodeAudioRva,prefix,sizeof(prefix))||
+    if(std::memcmp(base+k133DecoderNameRva,decoder_name,sizeof(decoder_name))||
+       std::memcmp(base+k133DecodeAudioRva,prefix,sizeof(prefix))||
        std::memcmp(base+k133DecodeAudioRva+0x178,ogg_decode_call,sizeof(ogg_decode_call))||
        std::memcmp(base+k133DecodeAudioRva+0x20b,count_store,sizeof(count_store))||
        std::memcmp(base+k133DecoderCtorRva,ctor_prefix,sizeof(ctor_prefix)))
