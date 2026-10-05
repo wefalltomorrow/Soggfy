@@ -1,41 +1,49 @@
-# Soggfy v3.0.0-rc.27
+# Soggfy v3.0.0-rc.28
 
-RC27 hardens the Classic ad/telemetry filter using the URL-matching strategy from current BlockTheSpot.
+RC28 fixes the playback-speed target again, this time by returning to the exact function old Soggfy actually modified: the decoder dispatcher that owns both the compressed input and decoded PCM output count.
 
-## Why RC26 was still too narrow
+## What the RC27 log proved
 
-RC26 expanded the old Soggfy filter from `spclient.wg.spotify.com` to regional `*-spclient.spotify.com` hosts. That is better than the old fixed-host rule, but it still assumes Spotify will keep using a known hostname pattern.
+RC27/RC26 successfully enabled the experimental PCM filter-chain hook at `Spotify.dll+0x00463954`, but the live log contains no `speed_pcm_hook` callbacks at all while Ogg music is actively decoding and playing.
 
-Current BlockTheSpot avoids that problem entirely: it extracts the request path and matches ad/telemetry endpoints independently of hostname.
+The configured rate changes from 26x to 14x, `speed_effective` remains 1x, and native Ogg capture continues normally. That proves the RC26 target is a real Spotify PCM helper but is not on the active music playback path used by this client.
 
-## RC27 behavior
+## Re-analysis of old Soggfy's real speed method
 
-The CEF request filter now parses the URL path and blocks these prefixes on any host:
+The original x86 Soggfy hooked `DecodeAudioData`. After Spotify decoded a compressed packet, it deliberately changed the decoded-output span so the caller saw only:
 
-- `/ads/`
-- `/ad-logic/`
-- `/gabo-receiver-service/`
-- `/dodo-receiver-service/`
+`decoded_samples / playback_speed`
 
-Queries and fragments are stripped before matching.
+samples, while Spotify had still consumed the full compressed packet.
 
-This means Spotify can move those endpoints between `wg`, regional spclient hosts, or a future hostname without requiring another Soggfy update.
+RC28 re-identified the x64 equivalent in the official Spotify 1.3.3.264 DLL:
 
-The rules remain deliberately path-scoped. Soggfy still allows metadata, audio-CDN, login, update and unrelated requests.
+- decoder dispatcher: `Spotify.dll+0x00d5a240`
+- decoder vtable: `Spotify.dll+0x01ae5b28`
+- dispatcher vtable slot: `Spotify.dll+0x01ae5b30`
+- decoder constructor: `Spotify.dll+0x00d59a40`
 
-Regression coverage now includes:
+The dispatcher is directly connected to the live Ogg path: at offset `+0x180` it calls the Ogg decoder routine that in turn calls the same Ogg page parser already observed by Soggfy's working native capture hook.
 
-- historic wg endpoints;
-- current regional Spotify endpoints;
-- future/unknown hosts using the same ad paths;
-- query/fragment handling;
-- negative cases proving metadata/audio/update traffic remains allowed.
+Its x64 ABI is also visible directly in the function:
 
-## References reviewed
+- R8 = PCM float destination
+- R9 = in/out PCM sample-count pointer
+- stack arg 5 = compressed input pointer
+- stack arg 6 = in/out compressed-byte count
+- stack arg 7 = decode flags
 
-- Nuzair46/BlockTheSpot commit `6191f65aa02908f892cfdba33ac4612499c546d9` — host-independent CEF URL path blocking.
-- SpotX-Official/SpotX commit `3f3fd30a95121a26ad723c963c2c0879cca4d664` — reviewed for UI-side ad state/container suppression ideas.
+At the end of the function Spotify writes the produced PCM sample count back through R9.
 
-No BlockTheSpot or SpotX binary/code is bundled. The Soggfy implementation remains its own small CEF filter.
+## RC28 behavior
 
-Playback-speed behavior is unchanged from RC26.
+- Removes Spotify 1.3.3.264 playback speed from the unused RC26 PCM filter helper.
+- Hooks the exact live decoder dispatcher instead.
+- Lets Spotify decode and consume the complete compressed packet first.
+- Then reduces only the returned PCM sample count by the configured speed, matching old Soggfy's actual strategy.
+- Keeps the compressed Ogg/FLAC capture path untouched.
+- Validates the exact function prologue, live Ogg-decoder call, produced-sample store, constructor vtable assignment, vtable base and dispatcher slot before enabling the hook.
+- Logs `speed_decode_hook` with PCM capacity, produced/kept samples, compressed input counts, requested speed and whether thinning actually occurred.
+- `speed_effective` changes from 1x only after a real live decoder call has actually been thinned.
+
+RC27's host-independent BlockTheSpot-style ad filtering remains unchanged; the RC27 live test confirmed ad blocking is working.
