@@ -19,8 +19,10 @@ Community work reviewed while building this fork:
 - coleaderme/Soggfy / upstream PR #125 — TLS 1.2 installer compatibility
 - MrSykenro/Soggfy / upstream PR #148 — current SpotX script URL
 - upstream PR #102 — quoted/idempotent uninstall-path handling
+- Nuzair46/BlockTheSpot `6191f65aa02908f892cfdba33ac4612499c546d9` — CEF URL path filtering and current Spotify ad endpoint rules
+- SpotX-Official/SpotX `3f3fd30a95121a26ad723c963c2c0879cca4d664` — UI-side ad state/container suppression and current patch catalogue
 
-Not every patch was copied literally. Fixes tied to the obsolete x86 installer/hook architecture were reimplemented only where they still apply to the modern x64 design.
+Not every patch was copied literally. Fixes tied to the obsolete x86 installer/hook architecture were reimplemented only where they still apply to the modern x64 design. BlockTheSpot's host-independent path-matching idea was reimplemented in Soggfy's existing CEF filter; no BlockTheSpot or SpotX binaries are bundled.
 
 Floggfy v1.1.0's optional explicit launcher and episode current-item identity fixes are included. The launcher is packaged separately from automatic `version.dll` mode, matching upstream's one-mode-at-a-time design.
 

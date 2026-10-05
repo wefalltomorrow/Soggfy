@@ -136,7 +136,7 @@ Instead:
 - Native capture remains bounded and memory-only until a complete listen is validated.
 - FFmpeg starts only after native publication.
 - Canvas downloads are bounded and published from a temporary file only after completion.
-- Telemetry/ad blocking is path-scoped to Spotify's wg and regional `*-spclient.spotify.com` ad endpoints plus the existing wg receiver endpoints; metadata, audio CDN, login and client-update traffic are deliberately left alone.
+- Telemetry/ad blocking is host-independent and path-scoped to `/ads/`, `/ad-logic/`, `/gabo-receiver-service/` and `/dodo-receiver-service/`; metadata, audio CDN, login and client-update traffic are deliberately left alone.
 - Playback speed uses separately validated Spotify.dll backends. Spotify 1.3.3.264 validates the exact PCM process function and vtable slot before enabling old Soggfy-style sample thinning, and fails closed if they differ.
 
 ## Build and test

@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.27
+
+- Reworked Classic CEF ad/telemetry matching to follow BlockTheSpot's host-independent URL-path strategy.
+- `/ads/`, `/ad-logic/`, `/gabo-receiver-service/` and `/dodo-receiver-service/` are now blocked regardless of Spotify hostname.
+- URL queries/fragments are stripped before matching.
+- Removed dependence on `spclient.wg.spotify.com` and `*-spclient.spotify.com` hostname patterns.
+- Added regression coverage for unknown/future hosts while keeping metadata, audio CDN, login/update-style and unrelated paths allowed.
+- Reviewed current SpotX ad-state/UI patches for future cosmetic cleanup, but RC27 does not patch Spotify's SPA.
+
 ## 3.0.0-rc.26
 
 - Replaced the non-functional Spotify 1.3.3.264 SessionTrackPlayer/ContextPlayer speed experiments with the original Soggfy-style decoded-PCM thinning strategy.
