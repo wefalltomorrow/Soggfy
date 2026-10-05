@@ -9,7 +9,7 @@ The goal is to keep the interaction model people used in old Soggfy while replac
 - Uses the old Soggfy-style top-bar Downloads button and Soggfy settings modal.
 - Shows per-track status icons for downloading, converting, completed, failed, warning and ignored states.
 - Restores Skip Downloaded Tracks, Skip Ignored Tracks, Ignore/Unignore and Generate M3U.
-- Restores the old 1–50x playback-speed control on explicitly validated Spotify builds. Spotify 1.3.1.234 uses the legacy constructor backend; 1.3.3.264 uses Spotify's exact validated SessionTrackPlayer speed setter/getter and verifies the live rate before reporting success. Unknown builds fail closed at 1x.
+- Restores the old 1–50x playback-speed control on explicitly validated Spotify builds. Spotify 1.3.1.234 uses the legacy constructor backend; 1.3.3.264 restores old Soggfy's decoded-PCM thinning approach on an exact validated x64 PCM processing target. Unknown builds fail closed at 1x.
 - Restores old-style output presets including MP3, M4A/AAC, Opus and custom FFmpeg output.
 - Always captures Spotify's native Ogg or FLAC first, and keeps native FLAC lossless.
 - Embeds artwork, lyrics and rich locally cached metadata when enabled.
@@ -26,7 +26,7 @@ The goal is to keep the interaction model people used in old Soggfy while replac
 
 ## Install
 
-The Floggfy 1.1.0 capture/startup base was live-tested against Windows x64 Spotify 1.3.3.264. Its dynamic audio/connectivity resolver was also validated against signed Spotify DLLs from 1.3.0.277, 1.2.94.583 and 1.2.92.148. Soggfy has separate validated playback-speed backends for Spotify 1.3.1.234 and 1.3.3.264. The 1.3.3.264 backend validates Spotify's SessionTrackPlayer vtable, native speed setter/getter and constructor assignment before enabling it. It follows the live session and applies changes through Spotify's own playback dispatcher, then verifies the actual rate with Spotify's getter. The Classic Soggfy UI still needs normal real-client validation as Spotify UI internals change over time. Microsoft Store installs remain unvalidated.
+The Floggfy 1.1.0 capture/startup base was live-tested against Windows x64 Spotify 1.3.3.264. Its dynamic audio/connectivity resolver was also validated against signed Spotify DLLs from 1.3.0.277, 1.2.94.583 and 1.2.92.148. Soggfy has separate validated playback-speed backends for Spotify 1.3.1.234 and 1.3.3.264. The 1.3.3.264 backend validates the exact PCM filter-chain process function, its return-span instructions and matching vtable slot before enabling old Soggfy-style PCM thinning. The Classic Soggfy UI still needs normal real-client validation as Spotify UI internals change over time. Microsoft Store installs remain unvalidated.
 
 Releases use a single all-in-one Windows x64 ZIP. It contains both startup modes; install **only one**.
 
@@ -45,7 +45,9 @@ The installer backs up a pre-existing `version.dll` instead of silently overwrit
 2. From the same ZIP, copy `Launcher\Soggfy.exe`, `Launcher\Soggfy.dll` and `Launcher\SpotifyHistory.ini` beside `Spotify.exe`.
 3. Start `Soggfy.exe`. It stops Spotify processes from that same installation, starts a fresh Spotify process and explicitly loads the adjacent `Soggfy.dll`.
 
-After either startup mode, use the Soggfy Downloads button in Spotify's top bar, open settings with the sliders button, and play a track from start to finish without seeking or skipping.\n\nDisable Spotify **Automix** under **Edit -> Preferences -> Playback** while using complete-listen capture. Automix trims tracks and can prevent a download from satisfying Soggfy's full-listen validation.
+After either startup mode, use the Soggfy Downloads button in Spotify's top bar, open settings with the sliders button, and play a track from start to finish without seeking or skipping.
+
+Disable Spotify **Automix** under **Edit -> Preferences -> Playback** while using complete-listen capture. Automix trims tracks and can prevent a download from satisfying Soggfy's full-listen validation.
 
 ## Classic Soggfy UI
 
@@ -120,7 +122,7 @@ If the injected UI is unavailable after a Spotify update, capture can still be e
 
 ## Diagnostics
 
-`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages. Spotify 1.3.3.264 speed troubleshooting uses `speed_session_*` records showing discovered SessionTrackPlayer objects, underlying-player presence, native speed and active speed-automation entries. Native Spotify.dll hooks are additionally deferred until critical normal imports are resolved and a 1500 ms loader grace period has elapsed, avoiding startup races with Windows import resolution. Memory-scan results are diagnostic-only; Soggfy calls speed methods only on a SessionTrackPlayer pointer that Spotify itself has exposed through the hooked setter/getter. `speed_session_hook` records show those genuine calls, while `speed_session_raw` records describe scan-only candidates. Older `speed_scan_*` ContextPlayer diagnostics remain only for historical troubleshooting.
+`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages. Spotify 1.3.3.264 playback-speed troubleshooting uses `speed_pcm_hook` records showing the live input block, processed sample count, kept sample count and requested rate. Native Spotify.dll hooks are deferred until critical normal imports are resolved and a 1500 ms loader grace period has elapsed.
 
 Enable **Debug log** in Soggfy settings for the high-volume timeline trace: each media-session sample plus replayed Ogg-page details. This is intended for short troubleshooting runs because the log is capped and rotates by truncation when it reaches its size limit.
 
@@ -134,8 +136,8 @@ Instead:
 - Native capture remains bounded and memory-only until a complete listen is validated.
 - FFmpeg starts only after native publication.
 - Canvas downloads are bounded and published from a temporary file only after completion.
-- Telemetry blocking is limited to the old Soggfy ad/telemetry receiver prefixes; metadata, audio CDN and client-update traffic are deliberately left alone.
-- Playback speed uses separately validated Spotify.dll backends. Spotify 1.3.3.264 validates its SessionTrackPlayer vtable, setter, getter and constructor assignment and fails closed if they differ.
+- Telemetry/ad blocking is path-scoped to Spotify's wg and regional `*-spclient.spotify.com` ad endpoints plus the existing wg receiver endpoints; metadata, audio CDN, login and client-update traffic are deliberately left alone.
+- Playback speed uses separately validated Spotify.dll backends. Spotify 1.3.3.264 validates the exact PCM process function and vtable slot before enabling old Soggfy-style sample thinning, and fails closed if they differ.
 
 ## Build and test
 
