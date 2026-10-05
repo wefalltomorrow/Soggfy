@@ -1,32 +1,36 @@
-# Soggfy v3.0.0-rc.20
+# Soggfy v3.0.0-rc.21
 
-RC20 replaces the ineffective Spotify 1.3.3.264 ContextPlayer speed path with a version-specific hook on the actual track-player creation routine.
+RC21 replaces RC20's unused AudioSessionImpl track-creation hook with the live Spotify 1.3.3.264 SessionTrackPlayer speed path.
 
-## What RC19 proved
+## What RC20 proved
 
-The diagnostic scan covered roughly 250 MiB of writable Spotify process memory on each pass and repeatedly found exactly two objects with the expected AudioSessionImpl vtable. Both remained inactive: their current and prepared TrackPlayer fields stayed null even while a normal music track was actively playing. That means the ContextPlayer objects we were finding are not the live music session used for playback.
+RC20 successfully installed its exact hook at Spotify.dll+0x0057968c, but a live run never entered that routine. The configured rate changed to 13x and later 5x, and multiple new music tracks started, while the verified effective rate stayed at 1x. There was no `Spotify 1.3.3 track-player create` event at all.
 
-## Revalidated 1.3.3.264 path
+That means the function identified in RC20 is a real Spotify track-player creation routine, but it is not the route used by the active music session in this client configuration.
 
-Re-analysis of the official Spotify 1.3.3.264 x64 DLL identified the track-player creation routine at Spotify.dll+0x0057968c.
+## Revalidated live SessionTrackPlayer path
 
-The routine itself provides stronger ABI evidence than the old RC13 pattern match:
+Further analysis of the same official Spotify 1.3.3.264 DLL found the live SessionTrackPlayer implementation:
 
-- its fourth Windows x64 argument is copied directly from XMM3 and later logged by Spotify as `speed: %f`;
-- its remaining stack arguments line up with the existing 13-argument Soggfy track-player hook ABI;
-- two separate Spotify call sites pass their playback-speed double in XMM3;
-- one caller immediately moves the returned TrackPlayer into AudioSessionImpl's prepared-player field;
-- RC20 validates the exact function prologue, XMM3 speed-copy sequence, stack-argument layout and speed-log store before installing the hook.
+- object vtable: Spotify.dll+0x01a07308
+- `setPlaybackSpeed`: Spotify.dll+0x005a8d18, vtable slot +0xc0
+- playback-speed getter: Spotify.dll+0x005a17d8, vtable slot +0xc8
+- constructor vtable assignment: Spotify.dll+0x0059c09b
+- the setter receives the requested rate in XMM1 and dispatches the change through Spotify's own playback worker
+- the getter returns the underlying live player's rate, or the SessionTrackPlayer cached rate before the underlying player exists
 
-RC20 therefore changes only the speed argument as Spotify creates a TrackPlayer. It does not use RC13's fuzzy target discovery and it does not scan for a live ContextPlayer.
+RC21 validates all of those exact relationships before enabling the backend.
 
-## Behavior
+## RC21 behavior
 
-- Spotify 1.3.3.264 uses the exact `0x0057968c` track-player creation backend.
-- Spotify 1.3.1.234 keeps its existing validated constructor backend.
-- Unknown Spotify builds still fail closed at 1x.
-- A speed change applies when Spotify creates the next TrackPlayer. If you change the slider during a song, restart the song or start another track.
-- `speed_effective` stays at the rate actually seen by the new hook rather than claiming a new slider value before a TrackPlayer has been recreated.
-- The log records `Spotify 1.3.3 track-player create` with native, requested and applied rates whenever the exact hook fires.
+- Hooks Spotify's native SessionTrackPlayer setter and getter so Soggfy can identify the live session without guessing from AudioSessionImpl.
+- Overrides Spotify-originated speed setter calls with the configured Soggfy rate while accelerated playback is enabled.
+- If Spotify has not called the setter/getter yet, scans for the exact validated SessionTrackPlayer vtable as a fallback and applies the rate through Spotify's own setter.
+- Keeps known SessionTrackPlayer objects across playback and rescans periodically to catch track/session replacement.
+- Reads Spotify's real SessionTrackPlayer getter and only reports `speed_effective` after the live player actually reports the requested rate.
+- Logs `speed_session_candidate`, `speed_session_scan`, and `speed_verified` / `speed_pending` records so a failed attempt now tells us whether the live object was found, whether it has an underlying player, its native rate, and whether playback-speed automation is active.
+- Speed changes can apply to the current live track; RC21 no longer needs the Classic UI to force a track recreation.
 
-Capture, conversion and the all-in-one release package are otherwise unchanged.
+Spotify has a separate playback-speed automation mechanism. Its own SessionTrackPlayer setter deliberately refuses non-1x manual speed while that automation is active. RC21 reports the number of active automation entries rather than pretending the rate changed. Disable Spotify **Automix** under **Edit -> Preferences -> Playback** while testing/downloading; upstream Floggfy now recommends this as well because Automix trims tracks and breaks complete-listen capture.
+
+Spotify 1.3.1.234 keeps the older validated constructor backend. Unknown Spotify builds still fail closed at 1x.

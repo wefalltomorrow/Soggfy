@@ -27,12 +27,19 @@ using CreateTrackPlayer=std::uint64_t(*)(
 using ContextSpeedSetter=unsigned char(*)(void*,double);
 using TrackSpeedSetter=void(*)(void*,double,unsigned int);
 using TrackSpeedGetter=double(*)(void*);
+using SessionSpeedSetter=void(*)(void*,double,unsigned int);
+using SessionSpeedGetter=double(*)(void*);
 
 static CreateTrackPlayer original=nullptr;
+static SessionSpeedSetter original_session_setter=nullptr;
+static SessionSpeedGetter original_session_getter=nullptr;
 static hooks::InitController speed_init;
 static std::atomic<bool> supported{false};
 static std::atomic<PlaybackSpeedBackend> active_backend{PlaybackSpeedBackend::Unsupported};
 static std::atomic<std::uintptr_t> latest_context{0};
+static std::atomic<std::uintptr_t> latest_session{0};
+static std::atomic<double> observed_session_speed{1.0};
+static std::atomic<ULONGLONG> observed_session_time{0};
 static std::atomic<double> effective_speed{1.0};
 static HMODULE latest_module=nullptr;
 static std::size_t latest_image_size=0;
@@ -41,12 +48,26 @@ static ULONGLONG latest_apply_time=0;
 static double latest_logged_speed=-1.0;
 static ULONGLONG latest_failure_log_time=0;
 static ULONGLONG latest_scan_log_time=0;
+static ULONGLONG latest_session_scan_time=0;
+static ULONGLONG latest_session_log_time=0;
+static std::vector<std::uintptr_t> session_candidates;
 
 // Spotify 1.3.3.264 x64. These RVAs were verified against the official
-// SpotifyFullSetupX64.exe payload. RC20 uses the exact track-player creation
-// target below; the ContextPlayer RVAs are retained only for the older
-// diagnostic/fallback implementation.
+// SpotifyFullSetupX64.exe payload. RC21 uses SessionTrackPlayer's real
+// setPlaybackSpeed/getPlaybackSpeed vtable pair. The older AudioSessionImpl
+// creation/ContextPlayer RVAs are retained only as historical fallback code.
 constexpr std::uint32_t k133TrackCreateRva=0x0057968c;
+constexpr std::uint32_t k133SessionVtableRva=0x01a07308;
+constexpr std::uint32_t k133SessionSetterRva=0x005a8d18;
+constexpr std::uint32_t k133SessionGetterRva=0x005a17d8;
+constexpr std::uint32_t k133SessionVtableAssignRva=0x0059c09b;
+constexpr std::size_t k133SessionSetterSlot=0x0c0;
+constexpr std::size_t k133SessionGetterSlot=0x0c8;
+constexpr std::size_t k133SessionDispatcherOffset=0x02a8;
+constexpr std::size_t k133SessionPlayerOffset=0x0520;
+constexpr std::size_t k133SessionCachedSpeedOffset=0x03f0;
+constexpr std::size_t k133SessionAutomationBeginOffset=0x2018;
+constexpr std::size_t k133SessionAutomationEndOffset=0x2020;
 constexpr std::uint32_t k133VtableRva=0x01a04958;
 constexpr std::uint32_t k133CurrentSetterRva=0x0057e5b8;
 constexpr std::uint32_t k133PreparedSetterRva=0x0057e9a8;
@@ -127,6 +148,24 @@ static std::uint64_t Hook(std::uint64_t a1,std::uint64_t player_meta,void* track
                     a8,a9,start_position_ms,seek_timestamp,a12,a13);
 }
 
+static void SessionSpeedHook(void* self,double native_speed,unsigned int mode) {
+    latest_session.store(reinterpret_cast<std::uintptr_t>(self),std::memory_order_release);
+    const auto configured=GetSettings().playback_speed;
+    const double speed=std::isfinite(configured)&&configured>1.0&&configured<=50.0?
+        configured:native_speed;
+    original_session_setter(self,speed,mode);
+}
+
+static double SessionGetterHook(void* self) {
+    const double speed=original_session_getter(self);
+    latest_session.store(reinterpret_cast<std::uintptr_t>(self),std::memory_order_release);
+    if(std::isfinite(speed)&&speed>0.0&&speed<100.0) {
+        observed_session_speed.store(speed,std::memory_order_release);
+        observed_session_time.store(GetTickCount64(),std::memory_order_release);
+    }
+    return speed;
+}
+
 static bool ImageSize(HMODULE module,std::size_t& size) {
     auto* base=reinterpret_cast<const std::uint8_t*>(module);
     if(!base)return false;
@@ -137,6 +176,41 @@ static bool ImageSize(HMODULE module,std::size_t& size) {
     const auto image_size=nt->OptionalHeader.SizeOfImage;
     if(image_size<0x1000||image_size>0x80000000u)return false;
     size=image_size;return true;
+}
+
+static bool Verify133SessionLayout(HMODULE module,std::size_t image_size) {
+    auto* base=reinterpret_cast<const std::uint8_t*>(module);
+    const std::size_t required=k133SessionVtableRva+k133SessionGetterSlot+sizeof(std::uintptr_t);
+    if(!base||image_size<required)return false;
+
+    constexpr std::uint8_t setter_prefix[]={
+        0x48,0x8b,0xc4,0x48,0x89,0x58,0x20,0x55,0x56,0x57,0x48,0x81,
+        0xec,0xa0,0x00,0x00,0x00,0x0f,0x29,0x70,0xd8
+    };
+    constexpr std::uint8_t setter_state[]={
+        0x41,0x8b,0xe8,0x0f,0x28,0xf1,0x48,0x8b,0xf1,0x48,0x8b,0x81,
+        0x20,0x20,0x00,0x00,0x48,0x39,0x81,0x18,0x20,0x00,0x00
+    };
+    constexpr std::uint8_t getter_body[]={
+        0x48,0x8b,0x91,0x20,0x05,0x00,0x00,0x48,0x85,0xd2,0x74,0x0a,
+        0x48,0x8b,0x02,0x48,0x8b,0xca,0x48,0xff,0x60,0x30,0xf2,0x0f,
+        0x10,0x81,0xf0,0x03,0x00,0x00,0xc3
+    };
+    constexpr std::uint8_t vtable_assignment[]={
+        0x48,0x8d,0x05,0x66,0xb2,0x46,0x01,0x48,0x89,0x06
+    };
+
+    if(std::memcmp(base+k133SessionSetterRva,setter_prefix,sizeof(setter_prefix))||
+       std::memcmp(base+k133SessionSetterRva+0x27,setter_state,sizeof(setter_state))||
+       std::memcmp(base+k133SessionGetterRva,getter_body,sizeof(getter_body))||
+       std::memcmp(base+k133SessionVtableAssignRva,vtable_assignment,sizeof(vtable_assignment)))
+        return false;
+
+    std::uintptr_t setter_slot=0,getter_slot=0;
+    std::memcpy(&setter_slot,base+k133SessionVtableRva+k133SessionSetterSlot,sizeof(setter_slot));
+    std::memcpy(&getter_slot,base+k133SessionVtableRva+k133SessionGetterSlot,sizeof(getter_slot));
+    return setter_slot==reinterpret_cast<std::uintptr_t>(base+k133SessionSetterRva)&&
+           getter_slot==reinterpret_cast<std::uintptr_t>(base+k133SessionGetterRva);
 }
 
 static bool Verify133TrackCreate(HMODULE module,std::size_t image_size) {
@@ -278,6 +352,209 @@ static bool WritablePrivate(const MEMORY_BASIC_INFORMATION& mbi) {
     const DWORD protect=mbi.Protect&0xffu;
     return protect==PAGE_READWRITE||protect==PAGE_WRITECOPY||
            protect==PAGE_EXECUTE_READWRITE||protect==PAGE_EXECUTE_WRITECOPY;
+}
+
+static bool SessionLooksValid(std::uintptr_t candidate,std::uintptr_t* player_out=nullptr,
+                              std::size_t* automation_count_out=nullptr) {
+    const auto module=reinterpret_cast<std::uintptr_t>(latest_module);
+    if(!candidate||!module)return false;
+
+    std::uintptr_t vtable=0,dispatcher=0,player=0,begin=0,end=0;
+    if(!ReadSelf(reinterpret_cast<const void*>(candidate),vtable)||
+       vtable!=module+k133SessionVtableRva||
+       !ReadSelf(reinterpret_cast<const void*>(candidate+k133SessionDispatcherOffset),dispatcher)||
+       !dispatcher||
+       !ReadSelf(reinterpret_cast<const void*>(candidate+k133SessionPlayerOffset),player)||
+       !ReadSelf(reinterpret_cast<const void*>(candidate+k133SessionAutomationBeginOffset),begin)||
+       !ReadSelf(reinterpret_cast<const void*>(candidate+k133SessionAutomationEndOffset),end))
+        return false;
+
+    if((begin==0)!=(end==0)||end<begin||((end-begin)%24u)||(end-begin)>0x100000u)
+        return false;
+
+    std::uintptr_t dispatcher_vtable=0,dispatch_method=0;
+    if(!ReadSelf(reinterpret_cast<const void*>(dispatcher),dispatcher_vtable)||
+       !dispatcher_vtable||
+       !ReadSelf(reinterpret_cast<const void*>(dispatcher_vtable+0x38),dispatch_method)||
+       !ExecutableInSpotify(dispatch_method))
+        return false;
+
+    if(player) {
+        std::uintptr_t player_vtable=0,getter=0;
+        if(!ReadSelf(reinterpret_cast<const void*>(player),player_vtable)||
+           !player_vtable||
+           !ReadSelf(reinterpret_cast<const void*>(player_vtable+0x30),getter)||
+           !ExecutableInSpotify(getter))
+            return false;
+    }
+
+    if(player_out)*player_out=player;
+    if(automation_count_out)*automation_count_out=(end-begin)/24u;
+    return true;
+}
+
+static std::vector<std::uintptr_t> Find133Sessions(bool log_scan) {
+    SYSTEM_INFO info{};
+    GetSystemInfo(&info);
+    const auto wanted=reinterpret_cast<std::uintptr_t>(latest_module)+k133SessionVtableRva;
+    const auto minimum=reinterpret_cast<std::uintptr_t>(info.lpMinimumApplicationAddress);
+    const auto maximum=reinterpret_cast<std::uintptr_t>(info.lpMaximumApplicationAddress);
+    std::vector<std::uint8_t> buffer(256*1024);
+    std::vector<std::uintptr_t> found;
+    std::uint64_t scanned_bytes=0;
+    unsigned raw_hits=0,valid_hits=0,active_hits=0;
+
+    for(std::uintptr_t address=minimum;address<maximum;) {
+        MEMORY_BASIC_INFORMATION mbi{};
+        if(!VirtualQuery(reinterpret_cast<const void*>(address),&mbi,sizeof(mbi)))break;
+        const auto base=reinterpret_cast<std::uintptr_t>(mbi.BaseAddress);
+        const auto next=base+mbi.RegionSize;
+        if(next<=address)break;
+
+        if(WritablePrivate(mbi)&&mbi.RegionSize<=256ull*1024*1024) {
+            for(std::uintptr_t chunk=base;chunk<next;) {
+                const auto wanted_bytes=static_cast<std::size_t>(
+                    (next-chunk)<buffer.size()?(next-chunk):buffer.size());
+                SIZE_T copied=0;
+                if(ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<const void*>(chunk),
+                                     buffer.data(),wanted_bytes,&copied)&&copied>=sizeof(std::uintptr_t)) {
+                    scanned_bytes+=copied;
+                    std::size_t offset=static_cast<std::size_t>((8-(chunk&7u))&7u);
+                    for(;offset+sizeof(std::uintptr_t)<=copied;offset+=sizeof(std::uintptr_t)) {
+                        std::uintptr_t value=0;
+                        std::memcpy(&value,buffer.data()+offset,sizeof(value));
+                        if(value!=wanted)continue;
+                        ++raw_hits;
+                        const auto candidate=chunk+offset;
+                        std::uintptr_t player=0;
+                        std::size_t automation_count=0;
+                        if(!SessionLooksValid(candidate,&player,&automation_count))continue;
+                        ++valid_hits;
+                        if(player)++active_hits;
+                        if(found.size()<16)found.push_back(candidate);
+
+                        if(log_scan&&valid_hits<=8) {
+                            double speed=0.0;
+                            if(original_session_getter)
+                                speed=original_session_getter(reinterpret_cast<void*>(candidate));
+                            char line[384];
+                            std::snprintf(line,sizeof(line),
+                                "speed_session_candidate session=%p player=%p automation=%zu speed=%.6f",
+                                reinterpret_cast<void*>(candidate),reinterpret_cast<void*>(player),
+                                automation_count,speed);
+                            HistoryLog(line);
+                        }
+                    }
+                }
+                if(wanted_bytes==0)break;
+                chunk+=wanted_bytes;
+            }
+        }
+        address=next;
+    }
+
+    if(log_scan) {
+        char line[384];
+        std::snprintf(line,sizeof(line),
+            "speed_session_scan wanted_vtable=%p scanned_mib=%.2f raw_hits=%u valid=%u active=%u cached=%zu",
+            reinterpret_cast<void*>(wanted),static_cast<double>(scanned_bytes)/(1024.0*1024.0),
+            raw_hits,valid_hits,active_hits,found.size());
+        HistoryLog(line);
+    }
+    return found;
+}
+
+static bool Apply133Session(std::uintptr_t session,double speed,bool log_change) {
+    if(!original_session_setter||!original_session_getter)return false;
+    if(!std::isfinite(speed)||speed<1.0||speed>50.0)speed=1.0;
+
+    std::uintptr_t player=0;
+    std::size_t automation_count=0;
+    if(!SessionLooksValid(session,&player,&automation_count))return false;
+
+    double before=original_session_getter(reinterpret_cast<void*>(session));
+    if(!std::isfinite(before)||before<=0.0||before>=100.0)return false;
+
+    const bool before_verified=std::fabs(before-speed)<0.01;
+    if(!before_verified&&!(automation_count&&speed>1.0))
+        original_session_setter(reinterpret_cast<void*>(session),speed,0);
+
+    const double after=original_session_getter(reinterpret_cast<void*>(session));
+    const bool after_valid=std::isfinite(after)&&after>0.0&&after<100.0;
+    const bool verified=after_valid&&std::fabs(after-speed)<0.01;
+
+    if(player&&verified)
+        effective_speed.store(speed,std::memory_order_release);
+
+    const ULONGLONG now=GetTickCount64();
+    const bool changed=std::fabs(speed-latest_logged_speed)>0.0001;
+    const bool periodic=!verified&&now-latest_failure_log_time>=5000;
+    if(log_change&&(changed||periodic)) {
+        char line[512];
+        std::snprintf(line,sizeof(line),
+            "requested=%.3fx effective=%.3fx session=%p player=%p automation=%zu before=%.6f after=%.6f verified=%d",
+            speed,effective_speed.load(std::memory_order_acquire),
+            reinterpret_cast<void*>(session),reinterpret_cast<void*>(player),
+            automation_count,before,after,verified);
+        HistoryLog(line);
+        LogActivity(verified?"speed_verified":"speed_pending",line);
+        if(changed)latest_logged_speed=speed;
+        if(!verified)latest_failure_log_time=now;
+    }
+    return player&&verified;
+}
+
+static void Maintain133Session() {
+    const ULONGLONG now=GetTickCount64();
+    if(now-latest_apply_time<250)return;
+    latest_apply_time=now;
+
+    const double requested=GetSettings().playback_speed;
+    bool any_verified=false;
+    bool have_valid=false;
+
+    const auto observed=latest_session.load(std::memory_order_acquire);
+    if(observed&&SessionLooksValid(observed)) {
+        have_valid=true;
+        if(std::find(session_candidates.begin(),session_candidates.end(),observed)==session_candidates.end())
+            session_candidates.push_back(observed);
+    }
+
+    session_candidates.erase(
+        std::remove_if(session_candidates.begin(),session_candidates.end(),
+            [](std::uintptr_t value){return !SessionLooksValid(value);}),
+        session_candidates.end());
+
+    if(session_candidates.empty()||now-latest_session_scan_time>=3000) {
+        latest_session_scan_time=now;
+        const bool log_scan=now-latest_session_log_time>=5000;
+        auto scanned=Find133Sessions(log_scan);
+        if(log_scan)latest_session_log_time=now;
+        for(auto value:scanned)
+            if(std::find(session_candidates.begin(),session_candidates.end(),value)==session_candidates.end())
+                session_candidates.push_back(value);
+    }
+
+    for(auto session:session_candidates) {
+        have_valid=true;
+        if(Apply133Session(session,requested,true))any_verified=true;
+    }
+
+    const auto observed_time=observed_session_time.load(std::memory_order_acquire);
+    const auto observed_speed=observed_session_speed.load(std::memory_order_acquire);
+    if(now-observed_time<1500&&std::isfinite(observed_speed)&&
+       std::fabs(observed_speed-requested)<0.01)
+        any_verified=true;
+
+    if(!any_verified)effective_speed.store(1.0,std::memory_order_release);
+    if(!have_valid&&requested>1.0&&now-latest_failure_log_time>=5000) {
+        latest_failure_log_time=now;
+        char line[192];
+        std::snprintf(line,sizeof(line),
+            "requested=%.3fx effective=1.000x no live SessionTrackPlayer found",requested);
+        HistoryLog(line);
+        LogActivity("speed_pending",line);
+    }
 }
 
 static void Log133PlayerLikeFields(std::uintptr_t candidate) {
@@ -545,6 +822,74 @@ static bool StartConstructorBackend(HMODULE module,std::size_t image_size,std::u
     return false;
 }
 
+static bool Start133SessionBackend(HMODULE module,std::size_t image_size,
+                                   std::uint64_t now) {
+    effective_speed.store(1.0,std::memory_order_release);
+    latest_module=module;
+    latest_image_size=image_size;
+    session_candidates.clear();
+    latest_session.store(0,std::memory_order_release);
+    observed_session_speed.store(1.0,std::memory_order_release);
+    observed_session_time.store(0,std::memory_order_release);
+
+    if(!Verify133SessionLayout(module,image_size)) {
+        HistoryLog("Spotify 1.3.3 SessionTrackPlayer playback-speed layout verification failed; staying at 1x");
+        speed_init.MarkUnsupported();
+        return false;
+    }
+
+    void* setter_target=reinterpret_cast<std::uint8_t*>(module)+k133SessionSetterRva;
+    void* getter_target=reinterpret_cast<std::uint8_t*>(module)+k133SessionGetterRva;
+    MH_STATUS status=MH_Initialize();
+    if(status==MH_ERROR_ALREADY_INITIALIZED)status=MH_OK;
+    if(status==MH_OK)
+        status=MH_CreateHook(setter_target,reinterpret_cast<void*>(SessionSpeedHook),
+                             reinterpret_cast<void**>(&original_session_setter));
+    if(status==MH_OK)
+        status=MH_CreateHook(getter_target,reinterpret_cast<void*>(SessionGetterHook),
+                             reinterpret_cast<void**>(&original_session_getter));
+    if(status!=MH_OK) {
+        MH_RemoveHook(getter_target);
+        MH_RemoveHook(setter_target);
+        original_session_setter=nullptr;
+        original_session_getter=nullptr;
+    } else {
+        active_backend.store(PlaybackSpeedBackend::SessionPlayer133,std::memory_order_release);
+        status=MH_EnableHook(setter_target);
+        if(status==MH_OK||status==MH_ERROR_ENABLED)status=MH_EnableHook(getter_target);
+        if(status!=MH_OK&&status!=MH_ERROR_ENABLED) {
+            MH_DisableHook(getter_target);
+            MH_DisableHook(setter_target);
+            MH_RemoveHook(getter_target);
+            MH_RemoveHook(setter_target);
+            original_session_setter=nullptr;
+            original_session_getter=nullptr;
+            active_backend.store(PlaybackSpeedBackend::Unsupported,std::memory_order_release);
+        }
+    }
+
+    if(status==MH_OK||status==MH_ERROR_ENABLED) {
+        supported.store(true,std::memory_order_release);
+        speed_init.Activate();
+        char line[384];
+        std::snprintf(line,sizeof(line),
+            "Spotify 1.3.3 SessionTrackPlayer playback-speed backend active setter=Spotify.dll+0x%08x getter=Spotify.dll+0x%08x vtable=Spotify.dll+0x%08x",
+            k133SessionSetterRva,k133SessionGetterRva,k133SessionVtableRva);
+        HistoryLog(line);
+        return true;
+    }
+
+    char line[256];
+    std::snprintf(line,sizeof(line),
+        "Spotify 1.3.3 SessionTrackPlayer playback-speed hook failed: %s",
+        MH_StatusToString(status));
+    HistoryLog(line);
+    if(status==MH_ERROR_NOT_EXECUTABLE||status==MH_ERROR_UNSUPPORTED_FUNCTION)
+        speed_init.MarkUnsupported();
+    else speed_init.Retry(now);
+    return false;
+}
+
 static bool Start133TrackCreateBackend(HMODULE module,std::size_t image_size,
                                        std::uint64_t now) {
     effective_speed.store(1.0,std::memory_order_release);
@@ -627,7 +972,9 @@ bool PlaybackSpeedSupported() {
 }
 
 bool PlaybackSpeedImmediate() {
-    return active_backend.load(std::memory_order_acquire)==PlaybackSpeedBackend::ContextSetter133;
+    const auto backend=active_backend.load(std::memory_order_acquire);
+    return backend==PlaybackSpeedBackend::SessionPlayer133||
+           backend==PlaybackSpeedBackend::ContextSetter133;
 }
 
 double PlaybackSpeedEffective() {
@@ -672,6 +1019,10 @@ void StartPlaybackSpeed(HMODULE module) {
         StartConstructorBackend(module,image_size,now);
         return;
     }
+    if(backend==PlaybackSpeedBackend::SessionPlayer133) {
+        Start133SessionBackend(module,image_size,now);
+        return;
+    }
     if(backend==PlaybackSpeedBackend::TrackCreate133) {
         Start133TrackCreateBackend(module,image_size,now);
         return;
@@ -685,9 +1036,14 @@ void StartPlaybackSpeed(HMODULE module) {
 }
 
 void MaintainPlaybackSpeed(HMODULE module) {
-    if(active_backend.load(std::memory_order_acquire)!=PlaybackSpeedBackend::ContextSetter133||
-       !supported.load(std::memory_order_acquire)||module!=latest_module)
+    const auto backend=active_backend.load(std::memory_order_acquire);
+    if(!supported.load(std::memory_order_acquire)||module!=latest_module)
         return;
+    if(backend==PlaybackSpeedBackend::SessionPlayer133) {
+        Maintain133Session();
+        return;
+    }
+    if(backend!=PlaybackSpeedBackend::ContextSetter133)return;
 
     const ULONGLONG now=GetTickCount64();
     if(now-latest_apply_time<250)return;
@@ -724,8 +1080,13 @@ void MaintainPlaybackSpeed(HMODULE module) {
 }
 
 void ApplyPlaybackSpeedNow() {
-    if(active_backend.load(std::memory_order_acquire)!=PlaybackSpeedBackend::ContextSetter133)
+    const auto backend=active_backend.load(std::memory_order_acquire);
+    if(backend==PlaybackSpeedBackend::SessionPlayer133) {
+        latest_apply_time=0;
+        latest_session_scan_time=0;
         return;
+    }
+    if(backend!=PlaybackSpeedBackend::ContextSetter133)return;
 
     latest_apply_time=0;
     auto context=latest_context.load(std::memory_order_acquire);

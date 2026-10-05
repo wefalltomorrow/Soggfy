@@ -7,7 +7,7 @@ PlaybackSpeedBackend PlaybackSpeedBackendForVersion(std::uint16_t major,std::uin
     if(major==1 && minor==3 && patch==1 && build==234)
         return PlaybackSpeedBackend::ConstructorHook;
     if(major==1 && minor==3 && patch==3 && build==264)
-        return PlaybackSpeedBackend::TrackCreate133;
+        return PlaybackSpeedBackend::SessionPlayer133;
     return PlaybackSpeedBackend::Unsupported;
 }
 

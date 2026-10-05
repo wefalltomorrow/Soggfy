@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.0-rc.21
+
+- Replaced RC20's Spotify 1.3.3.264 AudioSessionImpl track-creation speed hook after live logging proved that exact routine never ran for the active music session, even across new tracks.
+- Identified the live SessionTrackPlayer vtable at RVA `0x01a07308`, native speed setter at `0x005a8d18` (slot `+0xc0`) and native speed getter at `0x005a17d8` (slot `+0xc8`).
+- Added exact validation of the SessionTrackPlayer setter/getter byte sequences, vtable slots and constructor vtable assignment before enabling the backend.
+- Hooks Spotify's own SessionTrackPlayer speed setter/getter and tracks the live object directly.
+- Falls back to a bounded process-memory scan for the exact SessionTrackPlayer vtable when Spotify has not exposed a live object through the hooked methods yet.
+- Applies configured speed through Spotify's own SessionTrackPlayer dispatcher and verifies the result using Spotify's native getter.
+- `speed_effective` is updated only after a live underlying player reports the requested rate.
+- Added `speed_session_candidate` and `speed_session_scan` diagnostics, including live-player presence, native speed and playback-speed automation count.
+- Reports pending rather than success when Spotify's own playback-speed automation blocks a manual non-1x rate.
+- Added the upstream Floggfy recommendation to disable Spotify Automix because trimmed playback breaks complete-listen capture.
+
 ## 3.0.0-rc.20
 
 - Replaced the Spotify 1.3.3.264 ContextPlayer speed backend after RC19 showed that the only matching AudioSessionImpl instances stayed inactive during real music playback.
