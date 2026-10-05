@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0-rc.28
+
+- Replaced RC26/RC27's unused Spotify 1.3.3.264 PCM filter-chain speed hook after live logging proved it never receives callbacks during active Ogg music playback.
+- Re-analysed original Soggfy's x86 `DecodeAudioData` behavior and identified its x64 Spotify 1.3.3.264 equivalent at RVA `0x00d5a240`.
+- Verified the decoder vtable at `0x01ae5b28`, dispatcher slot at `0x01ae5b30` and constructor assignment at `0x00d59a40`.
+- Verified that the dispatcher calls the live Ogg decoder used by Soggfy's working native capture path and writes the produced PCM sample count through its R9 in/out parameter.
+- Playback speed now lets Spotify consume/decode the full compressed packet and then reduces only the returned PCM sample count by the configured factor, matching old Soggfy's actual technique.
+- Added exact byte validation for the decoder prologue, Ogg-decoder call and produced-count store before enabling the hook.
+- Added `speed_decode_hook` diagnostics with PCM capacity, produced/kept samples, compressed input counts and thinning state.
+- Retained RC27's host-independent ad/telemetry filtering.
+
 ## 3.0.0-rc.27
 
 - Reworked Classic CEF ad/telemetry matching to follow BlockTheSpot's host-independent URL-path strategy.
