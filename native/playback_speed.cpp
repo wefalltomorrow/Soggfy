@@ -53,9 +53,9 @@ static ULONGLONG latest_session_log_time=0;
 static std::vector<std::uintptr_t> session_candidates;
 
 // Spotify 1.3.3.264 x64. These RVAs were verified against the official
-// SpotifyFullSetupX64.exe payload. RC20 uses the exact track-player creation
-// target below; the ContextPlayer RVAs are retained only for the older
-// diagnostic/fallback implementation.
+// SpotifyFullSetupX64.exe payload. RC21 uses SessionTrackPlayer's real
+// setPlaybackSpeed/getPlaybackSpeed vtable pair. The older AudioSessionImpl
+// creation/ContextPlayer RVAs are retained only as historical fallback code.
 constexpr std::uint32_t k133TrackCreateRva=0x0057968c;
 constexpr std::uint32_t k133SessionVtableRva=0x01a07308;
 constexpr std::uint32_t k133SessionSetterRva=0x005a8d18;
