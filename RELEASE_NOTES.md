@@ -46,4 +46,4 @@ At the end of the function Spotify writes the produced PCM sample count back thr
 - Logs `speed_decode_hook` with PCM capacity, produced/kept samples, compressed input counts, requested speed and whether thinning actually occurred.
 - `speed_effective` changes from 1x only after a real live decoder call has actually been thinned.
 
-RC27's host-independent BlockTheSpot-style ad filtering remains unchanged.
+RC27's host-independent BlockTheSpot-style ad filtering remains unchanged; the RC27 live test confirmed ad blocking is working.
