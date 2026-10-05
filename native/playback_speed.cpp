@@ -369,7 +369,7 @@ static bool SessionLooksValid(std::uintptr_t candidate,std::uintptr_t* player_ou
        !ReadSelf(reinterpret_cast<const void*>(candidate+k133SessionAutomationEndOffset),end))
         return false;
 
-    if((begin==0)!=(end==0)||end<begin||((end-begin)&7u)||(end-begin)>0x100000u)
+    if((begin==0)!=(end==0)||end<begin||((end-begin)%24u)||(end-begin)>0x100000u)
         return false;
 
     std::uintptr_t dispatcher_vtable=0,dispatch_method=0;
@@ -389,7 +389,7 @@ static bool SessionLooksValid(std::uintptr_t candidate,std::uintptr_t* player_ou
     }
 
     if(player_out)*player_out=player;
-    if(automation_count_out)*automation_count_out=(end-begin)/sizeof(std::uintptr_t);
+    if(automation_count_out)*automation_count_out=(end-begin)/24u;
     return true;
 }
 
