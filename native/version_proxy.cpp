@@ -28,6 +28,9 @@ static HMODULE proxy_module;
 static volatile LONG logged_results;
 static hooks::PendingModule pending_spotify;
 static hooks::InitController connectivity_init;
+static HMODULE loader_ready_module;
+static ULONGLONG loader_ready_since;
+static bool loader_ready_logged;
 
 static void Log(const char* message) {
     history::HistoryLog(message);
@@ -255,6 +258,83 @@ static DWORD MappedImageSize(HMODULE module) {
     return nt->OptionalHeader.SizeOfImage;
 }
 
+static bool ExecutablePointer(void* value) {
+    if (!value) return false;
+    MEMORY_BASIC_INFORMATION memory{};
+    if (!VirtualQuery(value, &memory, sizeof(memory)) ||
+        memory.State != MEM_COMMIT ||
+        (memory.Protect & (PAGE_GUARD | PAGE_NOACCESS)))
+        return false;
+    const DWORD protection = memory.Protect & 0xffu;
+    return protection == PAGE_EXECUTE ||
+           protection == PAGE_EXECUTE_READ ||
+           protection == PAGE_EXECUTE_READWRITE ||
+           protection == PAGE_EXECUTE_WRITECOPY;
+}
+
+static bool ResolvedNormalImport(HMODULE module, DWORD image_size, const char* function_name) {
+    auto* base = reinterpret_cast<std::uint8_t*>(module);
+    const auto imports = hooks::FindImportSlots(base, image_size, nullptr, function_name);
+    if (imports.malformed || !imports.normal) return false;
+
+    void* value = InterlockedCompareExchangePointer(
+        reinterpret_cast<PVOID volatile*>(imports.normal), nullptr, nullptr);
+
+    // Before the Windows loader fixes an x64 IAT entry it still contains the
+    // raw hint/name RVA from the PE file (for example 0x01f7e69c for
+    // GetCommandLineW in Spotify 1.3.3.264). Never install hooks while any of
+    // these loader-critical imports still look unresolved.
+    const auto numeric = reinterpret_cast<std::uintptr_t>(value);
+    if (numeric < image_size) return false;
+    return ExecutablePointer(value);
+}
+
+static bool SpotifyLoaderReady(HMODULE module) {
+    const DWORD image_size = MappedImageSize(module);
+    if (!image_size) return false;
+
+    if (loader_ready_module != module) {
+        loader_ready_module = module;
+        loader_ready_since = 0;
+        loader_ready_logged = false;
+    }
+
+    // These imports are all normal (non-delay) imports in the supported
+    // Spotify x64 build and cover the same IAT region involved in the RC13/
+    // RC22/RC23 startup crash. Requiring executable resolved targets avoids
+    // racing MinHook/IAT work against LdrpSnapModule.
+    static const char* required[] = {
+        "GetCommandLineW",
+        "GetCurrentProcessId",
+        "GetModuleHandleW",
+        "GetProcAddress",
+        "VirtualProtect"
+    };
+    for (const char* function : required) {
+        if (!ResolvedNormalImport(module, image_size, function)) {
+            loader_ready_since = 0;
+            return false;
+        }
+    }
+
+    const ULONGLONG now = GetTickCount64();
+    if (!loader_ready_since) {
+        loader_ready_since = now;
+        return false;
+    }
+
+    // Even after the selected IAT entries are resolved, give the loader a
+    // short quiet period before MinHook suspends/resumes process threads.
+    constexpr ULONGLONG kLoaderGraceMs = 1500;
+    if (now - loader_ready_since < kLoaderGraceMs) return false;
+
+    if (!loader_ready_logged) {
+        loader_ready_logged = true;
+        Log("Spotify.dll normal imports resolved; deferred native hooks released after 1500 ms loader grace");
+    }
+    return true;
+}
+
 static bool WriteImportSlot(void** slot, void* value, void** previous) {
     if (!slot) return true;
     if (*slot == value) {
@@ -386,10 +466,12 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
         }
         HMODULE module;
         if (GetModuleHandleExW(0, L"Spotify.dll", &module)) {
-            StartConnectivityHook(module);
-            history::StartPlaybackSpeed(module);
-            history::MaintainPlaybackSpeed(module);
-            if (i >= 80) StartAudioHistory(module, proxy_module);
+            if (SpotifyLoaderReady(module)) {
+                StartConnectivityHook(module);
+                history::StartPlaybackSpeed(module);
+                history::MaintainPlaybackSpeed(module);
+                StartAudioHistory(module, proxy_module);
+            }
             FreeLibrary(module);
         }
         if(i==0) startup::SignalReady();
