@@ -848,14 +848,22 @@ static bool Start133SessionBackend(HMODULE module,std::size_t image_size,
     if(status==MH_OK)
         status=MH_CreateHook(getter_target,reinterpret_cast<void*>(SessionGetterHook),
                              reinterpret_cast<void**>(&original_session_getter));
-    if(status==MH_OK) {
+    if(status!=MH_OK) {
+        MH_RemoveHook(getter_target);
+        MH_RemoveHook(setter_target);
+        original_session_setter=nullptr;
+        original_session_getter=nullptr;
+    } else {
         active_backend.store(PlaybackSpeedBackend::SessionPlayer133,std::memory_order_release);
         status=MH_EnableHook(setter_target);
         if(status==MH_OK||status==MH_ERROR_ENABLED)status=MH_EnableHook(getter_target);
         if(status!=MH_OK&&status!=MH_ERROR_ENABLED) {
+            MH_DisableHook(getter_target);
             MH_DisableHook(setter_target);
             MH_RemoveHook(getter_target);
             MH_RemoveHook(setter_target);
+            original_session_setter=nullptr;
+            original_session_getter=nullptr;
             active_backend.store(PlaybackSpeedBackend::Unsupported,std::memory_order_release);
         }
     }
