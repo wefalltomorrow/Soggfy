@@ -7,6 +7,7 @@ enum class PlaybackSpeedBackend : unsigned char {
     Unsupported,
     ConstructorHook,
     TrackCreate133,
+    SessionPlayer133,
     ContextSetter133
 };
 
