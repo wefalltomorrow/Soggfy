@@ -1,49 +1,41 @@
-# Soggfy v3.0.0-rc.26
+# Soggfy v3.0.0-rc.27
 
-RC26 fixes the two problems exposed by the first stable RC25 run: current Spotify ad endpoints were escaping the old URL filter, and the experimental native playback-speed setters were not part of the active music path.
+RC27 hardens the Classic ad/telemetry filter using the URL-matching strategy from current BlockTheSpot.
 
-## What the RC25 log proved
+## Why RC26 was still too narrow
 
-RC25 starts safely and releases the deferred Spotify hooks after the loader gate.
+RC26 expanded the old Soggfy filter from `spclient.wg.spotify.com` to regional `*-spclient.spotify.com` hosts. That is better than the old fixed-host rule, but it still assumes Spotify will keep using a known hostname pattern.
 
-The CEF request filter is also alive: the log records blocked classic telemetry requests before and after Spotify startup. That means the ad-block regression is not a dead hook; the URL denylist is simply too narrow for current regional Spotify endpoints.
+Current BlockTheSpot avoids that problem entirely: it extracts the request path and matches ad/telemetry endpoints independently of hostname.
 
-For playback speed, Spotify 1.3.3.264 repeatedly reports:
+## RC27 behavior
 
-- configured rates changing from 11x to 26x;
-- effective rate remaining 1x;
-- zero calls to both hooked SessionTrackPlayer methods;
-- one memory-scan vtable hit whose surrounding fields are clearly not the assumed live player layout.
+The CEF request filter now parses the URL path and blocks these prefixes on any host:
 
-The SessionTrackPlayer/ContextPlayer experiments from RC16-RC25 are therefore retired for 1.3.3.264 rather than loosened again.
+- `/ads/`
+- `/ad-logic/`
+- `/gabo-receiver-service/`
+- `/dodo-receiver-service/`
 
-## Restored classic Soggfy speed method
+Queries and fragments are stripped before matching.
 
-The original Soggfy did not depend on Spotify's internal playback-speed APIs. It accelerated playback after decode by consuming the complete decoded stream while exposing only a fraction of each PCM block to the audio sink.
+This means Spotify can move those endpoints between `wg`, regional spclient hosts, or a future hostname without requiring another Soggfy update.
 
-RC26 ports that behavior to the current x64 client.
+The rules remain deliberately path-scoped. Soggfy still allows metadata, audio-CDN, login, update and unrelated requests.
 
-For the exact supported Spotify 1.3.3.264 DLL, RC26 validates:
+Regression coverage now includes:
 
-- the PCM filter-chain process function at `Spotify.dll+0x00463954`;
-- the exact function prologue;
-- the internal process call;
-- the instructions that return the processed PCM span;
-- the matching vtable slot at `Spotify.dll+0x019c7c68`.
+- historic wg endpoints;
+- current regional Spotify endpoints;
+- future/unknown hosts using the same ad paths;
+- query/fragment handling;
+- negative cases proving metadata/audio/update traffic remains allowed.
 
-Only after all checks pass is the hook installed.
+## References reviewed
 
-When speed is above 1x, the complete PCM block is processed first and Soggfy then reduces the returned sample count by the configured factor, matching the old Soggfy playback-speed strategy. The compressed Ogg/FLAC capture remains untouched.
+- Nuzair46/BlockTheSpot commit `6191f65aa02908f892cfdba33ac4612499c546d9` — host-independent CEF URL path blocking.
+- SpotX-Official/SpotX commit `3f3fd30a95121a26ad723c963c2c0879cca4d664` — reviewed for UI-side ad state/container suppression ideas.
 
-The log now records `speed_pcm_hook` with input, produced and kept sample counts. `speed_effective` changes only after the PCM hook has actually thinned a live block.
+No BlockTheSpot or SpotX binary/code is bundled. The Soggfy implementation remains its own small CEF filter.
 
-## Ad blocking
-
-The Classic CEF filter now blocks both:
-
-- the historical `spclient.wg.spotify.com/ads/` and `/ad-logic/` endpoints;
-- current regional `*-spclient.spotify.com/ads/` and `/ad-logic/` endpoints.
-
-The existing wg `gabo-receiver-service` and `dodo-receiver-service` tracking blocks remain. Metadata, audio-CDN, login and update traffic are still left alone.
-
-RC25's loader-readiness gate and read-only IAT fix remain unchanged.
+Playback-speed behavior is unchanged from RC26.
