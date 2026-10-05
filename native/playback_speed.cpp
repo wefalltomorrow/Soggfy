@@ -273,10 +273,8 @@ static bool Verify133Layout(HMODULE module,std::size_t image_size) {
            prepared_slot==reinterpret_cast<std::uintptr_t>(base+k133PreparedSetterRva);
 }
 
-static bool ExecutableInSpotify(std::uintptr_t address) {
-    if(!latest_module||address<reinterpret_cast<std::uintptr_t>(latest_module)||
-       address>=reinterpret_cast<std::uintptr_t>(latest_module)+latest_image_size)
-        return false;
+static bool ExecutableAddress(std::uintptr_t address) {
+    if(!address)return false;
     MEMORY_BASIC_INFORMATION mbi{};
     if(!VirtualQuery(reinterpret_cast<const void*>(address),&mbi,sizeof(mbi))||
        mbi.State!=MEM_COMMIT||(mbi.Protect&PAGE_GUARD)||(mbi.Protect&PAGE_NOACCESS))
@@ -284,6 +282,13 @@ static bool ExecutableInSpotify(std::uintptr_t address) {
     const DWORD protect=mbi.Protect&0xffu;
     return protect==PAGE_EXECUTE||protect==PAGE_EXECUTE_READ||
            protect==PAGE_EXECUTE_READWRITE||protect==PAGE_EXECUTE_WRITECOPY;
+}
+
+static bool ExecutableInSpotify(std::uintptr_t address) {
+    if(!latest_module||address<reinterpret_cast<std::uintptr_t>(latest_module)||
+       address>=reinterpret_cast<std::uintptr_t>(latest_module)+latest_image_size)
+        return false;
+    return ExecutableAddress(address);
 }
 
 static bool TrackPlayerLooksValid(std::uintptr_t player) {
@@ -372,11 +377,15 @@ static bool SessionLooksValid(std::uintptr_t candidate,std::uintptr_t* player_ou
     if((begin==0)!=(end==0)||end<begin||((end-begin)%24u)||(end-begin)>0x100000u)
         return false;
 
+    // SessionTrackPlayer's dispatcher/player are interface objects. Their
+    // implementations are not guaranteed to live inside Spotify.dll itself.
+    // RC21 incorrectly rejected the exact SessionTrackPlayer object whenever
+    // either virtual method landed in another executable module.
     std::uintptr_t dispatcher_vtable=0,dispatch_method=0;
     if(!ReadSelf(reinterpret_cast<const void*>(dispatcher),dispatcher_vtable)||
        !dispatcher_vtable||
        !ReadSelf(reinterpret_cast<const void*>(dispatcher_vtable+0x38),dispatch_method)||
-       !ExecutableInSpotify(dispatch_method))
+       !ExecutableAddress(dispatch_method))
         return false;
 
     if(player) {
@@ -384,7 +393,7 @@ static bool SessionLooksValid(std::uintptr_t candidate,std::uintptr_t* player_ou
         if(!ReadSelf(reinterpret_cast<const void*>(player),player_vtable)||
            !player_vtable||
            !ReadSelf(reinterpret_cast<const void*>(player_vtable+0x30),getter)||
-           !ExecutableInSpotify(getter))
+           !ExecutableAddress(getter))
             return false;
     }
 
@@ -428,7 +437,50 @@ static std::vector<std::uintptr_t> Find133Sessions(bool log_scan) {
                         const auto candidate=chunk+offset;
                         std::uintptr_t player=0;
                         std::size_t automation_count=0;
-                        if(!SessionLooksValid(candidate,&player,&automation_count))continue;
+                        const bool valid=SessionLooksValid(candidate,&player,&automation_count);
+                        if(!valid) {
+                            if(log_scan&&raw_hits<=8) {
+                                std::uintptr_t dispatcher=0,begin=0,end=0;
+                                std::uintptr_t dispatcher_vtable=0,dispatch_method=0;
+                                std::uintptr_t raw_player=0,player_vtable=0,player_getter=0;
+                                double cached_speed=0.0;
+                                const bool dispatcher_read=ReadSelf(
+                                    reinterpret_cast<const void*>(candidate+k133SessionDispatcherOffset),dispatcher);
+                                const bool player_read=ReadSelf(
+                                    reinterpret_cast<const void*>(candidate+k133SessionPlayerOffset),raw_player);
+                                const bool begin_read=ReadSelf(
+                                    reinterpret_cast<const void*>(candidate+k133SessionAutomationBeginOffset),begin);
+                                const bool end_read=ReadSelf(
+                                    reinterpret_cast<const void*>(candidate+k133SessionAutomationEndOffset),end);
+                                const bool cached_read=ReadSelf(
+                                    reinterpret_cast<const void*>(candidate+k133SessionCachedSpeedOffset),cached_speed);
+                                const bool dispatcher_vtable_read=dispatcher&&ReadSelf(
+                                    reinterpret_cast<const void*>(dispatcher),dispatcher_vtable);
+                                const bool dispatch_method_read=dispatcher_vtable&&ReadSelf(
+                                    reinterpret_cast<const void*>(dispatcher_vtable+0x38),dispatch_method);
+                                const bool player_vtable_read=raw_player&&ReadSelf(
+                                    reinterpret_cast<const void*>(raw_player),player_vtable);
+                                const bool player_getter_read=player_vtable&&ReadSelf(
+                                    reinterpret_cast<const void*>(player_vtable+0x30),player_getter);
+                                const auto vector_bytes=(begin_read&&end_read&&end>=begin)?end-begin:~std::uintptr_t{0};
+
+                                char line[768];
+                                std::snprintf(line,sizeof(line),
+                                    "speed_session_raw session=%p dispatcher=%p dispatcher_read=%d dispatcher_vtable=%p dispatcher_vtable_read=%d dispatch_method=%p dispatch_method_read=%d dispatch_exec=%d player=%p player_read=%d player_vtable=%p player_vtable_read=%d player_getter=%p player_getter_read=%d player_getter_exec=%d automation_begin=%p automation_end=%p vector_bytes=%llu cached=%.6f cached_read=%d",
+                                    reinterpret_cast<void*>(candidate),reinterpret_cast<void*>(dispatcher),dispatcher_read,
+                                    reinterpret_cast<void*>(dispatcher_vtable),dispatcher_vtable_read,
+                                    reinterpret_cast<void*>(dispatch_method),dispatch_method_read,
+                                    ExecutableAddress(dispatch_method),
+                                    reinterpret_cast<void*>(raw_player),player_read,
+                                    reinterpret_cast<void*>(player_vtable),player_vtable_read,
+                                    reinterpret_cast<void*>(player_getter),player_getter_read,
+                                    ExecutableAddress(player_getter),
+                                    reinterpret_cast<void*>(begin),reinterpret_cast<void*>(end),
+                                    static_cast<unsigned long long>(vector_bytes),cached_speed,cached_read);
+                                HistoryLog(line);
+                            }
+                            continue;
+                        }
                         ++valid_hits;
                         if(player)++active_hits;
                         if(found.size()<16)found.push_back(candidate);
@@ -476,7 +528,7 @@ static bool Apply133Session(std::uintptr_t session,double speed,bool log_change)
     if(!std::isfinite(before)||before<=0.0||before>=100.0)return false;
 
     const bool before_verified=std::fabs(before-speed)<0.01;
-    if(!before_verified&&!(automation_count&&speed>1.0))
+    if(!before_verified)
         original_session_setter(reinterpret_cast<void*>(session),speed,0);
 
     const double after=original_session_getter(reinterpret_cast<void*>(session));

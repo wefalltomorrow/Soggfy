@@ -1,36 +1,21 @@
-# Soggfy v3.0.0-rc.21
+# Soggfy v3.0.0-rc.22
 
-RC21 replaces RC20's unused AudioSessionImpl track-creation hook with the live Spotify 1.3.3.264 SessionTrackPlayer speed path.
+RC22 fixes the SessionTrackPlayer discovery mistake exposed by the RC21 live log.
 
-## What RC20 proved
+## What RC21 proved
 
-RC20 successfully installed its exact hook at Spotify.dll+0x0057968c, but a live run never entered that routine. The configured rate changed to 13x and later 5x, and multiple new music tracks started, while the verified effective rate stayed at 1x. There was no `Spotify 1.3.3 track-player create` event at all.
+RC21 successfully enabled the exact Spotify 1.3.3.264 SessionTrackPlayer setter/getter backend, and every scan found exactly one object whose first pointer matched the validated SessionTrackPlayer vtable. However, RC21 reported `raw_hits=1 valid=0` continuously — including while a new track was actively playing — so it rejected the real object before ever calling Spotify's speed setter.
 
-That means the function identified in RC20 is a real Spotify track-player creation routine, but it is not the route used by the active music session in this client configuration.
+The rejection came from an over-strict safety check: RC21 required the SessionTrackPlayer's dispatcher and underlying-player virtual methods to live inside Spotify.dll. Those fields are interface objects and their implementations can live in another executable module even though the SessionTrackPlayer itself is the exact byte-validated Spotify class.
 
-## Revalidated live SessionTrackPlayer path
+## RC22 changes
 
-Further analysis of the same official Spotify 1.3.3.264 DLL found the live SessionTrackPlayer implementation:
+- Keeps the exact Spotify 1.3.3.264 SessionTrackPlayer vtable match at `Spotify.dll+0x01a07308`.
+- Keeps exact byte/vtable validation of Spotify's native speed setter at `+0x005a8d18` and getter at `+0x005a17d8`.
+- Accepts dispatcher/player virtual methods from any committed executable module instead of incorrectly requiring every implementation to reside inside Spotify.dll.
+- Still requires the SessionTrackPlayer's exact vtable, readable object fields, a sane automation vector, a readable dispatcher vtable/method, and a readable underlying-player getter when a player exists.
+- Actually calls Spotify's setter even when playback-speed automation entries are present; Spotify itself can accept or reject the request, and Soggfy then verifies the result with the native getter.
+- Adds a detailed `speed_session_raw` diagnostic for any exact-vtable object that still fails validation. It records dispatcher/player pointers, virtual method executability, automation-vector size and cached speed so another false-negative can be diagnosed from one log.
+- `speed_effective` remains conservative: it changes from 1x only when Spotify's live underlying player reports the requested rate.
 
-- object vtable: Spotify.dll+0x01a07308
-- `setPlaybackSpeed`: Spotify.dll+0x005a8d18, vtable slot +0xc0
-- playback-speed getter: Spotify.dll+0x005a17d8, vtable slot +0xc8
-- constructor vtable assignment: Spotify.dll+0x0059c09b
-- the setter receives the requested rate in XMM1 and dispatches the change through Spotify's own playback worker
-- the getter returns the underlying live player's rate, or the SessionTrackPlayer cached rate before the underlying player exists
-
-RC21 validates all of those exact relationships before enabling the backend.
-
-## RC21 behavior
-
-- Hooks Spotify's native SessionTrackPlayer setter and getter so Soggfy can identify the live session without guessing from AudioSessionImpl.
-- Overrides Spotify-originated speed setter calls with the configured Soggfy rate while accelerated playback is enabled.
-- If Spotify has not called the setter/getter yet, scans for the exact validated SessionTrackPlayer vtable as a fallback and applies the rate through Spotify's own setter.
-- Keeps known SessionTrackPlayer objects across playback and rescans periodically to catch track/session replacement.
-- Reads Spotify's real SessionTrackPlayer getter and only reports `speed_effective` after the live player actually reports the requested rate.
-- Logs `speed_session_candidate`, `speed_session_scan`, and `speed_verified` / `speed_pending` records so a failed attempt now tells us whether the live object was found, whether it has an underlying player, its native rate, and whether playback-speed automation is active.
-- Speed changes can apply to the current live track; RC21 no longer needs the Classic UI to force a track recreation.
-
-Spotify has a separate playback-speed automation mechanism. Its own SessionTrackPlayer setter deliberately refuses non-1x manual speed while that automation is active. RC21 reports the number of active automation entries rather than pretending the rate changed. Disable Spotify **Automix** under **Edit -> Preferences -> Playback** while testing/downloading; upstream Floggfy now recommends this as well because Automix trims tracks and breaks complete-listen capture.
-
-Spotify 1.3.1.234 keeps the older validated constructor backend. Unknown Spotify builds still fail closed at 1x.
+As before, disable Spotify **Automix** under **Edit -> Preferences -> Playback** while testing complete-listen capture.
