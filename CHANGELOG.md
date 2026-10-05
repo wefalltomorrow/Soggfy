@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0-rc.23
+
+- Fixed the RC22 startup crash caused by invoking Spotify methods on a SessionTrackPlayer-shaped object found only by process-memory scanning.
+- Parsed two RC22 minidumps; both show the same `0xc0000005` execute AV at an address outside all loaded modules, with the immediate caller inside Spotify.dll.
+- Memory-scanned SessionTrackPlayer candidates are now diagnostic-only and are never used as callable objects.
+- Spotify 1.3.3.264 speed methods are invoked only after Spotify itself has supplied the exact SessionTrackPlayer `this` pointer through the hooked setter/getter.
+- Added first-call diagnostics for genuine SessionTrackPlayer setter/getter invocations, including native/requested speed and mode.
+- Maintenance may reapply and verify speed only on a hook-observed live SessionTrackPlayer.
+- Added explicit setter/getter call counters when Spotify never exposes a live speed object.
+
 ## 3.0.0-rc.22
 
 - Fixed RC21 rejecting the exact Spotify 1.3.3.264 SessionTrackPlayer object because its dispatcher/player interface methods were required to reside inside Spotify.dll.
