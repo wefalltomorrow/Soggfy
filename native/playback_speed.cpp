@@ -31,21 +31,18 @@ using TrackSpeedGetter=double(*)(void*);
 using SessionSpeedSetter=void(*)(void*,double,unsigned int);
 using SessionSpeedGetter=double(*)(void*);
 
-struct PcmSpan133 {
-    float* data;
-    std::uint64_t size;
+struct DecodeResult133 {
+    std::uint32_t code;
+    std::uint32_t reserved;
+    std::uint64_t detail;
 };
-struct PcmResult133 {
-    float* data;
-    std::uint64_t size;
-    unsigned char state;
-};
-using PcmProcess133=PcmResult133*(*)(void*,PcmResult133*,const PcmSpan133*);
+using DecodeAudio133=DecodeResult133*(*)(void*,DecodeResult133*,float*,std::uint64_t*,
+                                         const unsigned char*,std::uint64_t*,unsigned char);
 
 static CreateTrackPlayer original=nullptr;
 static SessionSpeedSetter original_session_setter=nullptr;
 static SessionSpeedGetter original_session_getter=nullptr;
-static PcmProcess133 original_pcm_process=nullptr;
+static DecodeAudio133 original_decode133=nullptr;
 static hooks::InitController speed_init;
 static std::atomic<bool> supported{false};
 static std::atomic<PlaybackSpeedBackend> active_backend{PlaybackSpeedBackend::Unsupported};
@@ -65,16 +62,17 @@ static ULONGLONG latest_session_scan_time=0;
 static ULONGLONG latest_session_log_time=0;
 static std::atomic<unsigned long long> session_setter_calls{0};
 static std::atomic<unsigned long long> session_getter_calls{0};
-static std::atomic<unsigned long long> pcm_process_calls{0};
-static std::atomic<unsigned long long> pcm_thinned_calls{0};
-static std::atomic<double> pcm_last_requested{1.0};
+static std::atomic<unsigned long long> decode_process_calls{0};
+static std::atomic<unsigned long long> decode_thinned_calls{0};
+static std::atomic<double> decode_last_requested{1.0};
 
 // Spotify 1.3.3.264 x64. These RVAs were verified against the official
-// SpotifyFullSetupX64.exe payload. RC21 uses SessionTrackPlayer's real
-// setPlaybackSpeed/getPlaybackSpeed vtable pair. The older AudioSessionImpl
-// creation/ContextPlayer RVAs are retained only as historical fallback code.
-constexpr std::uint32_t k133PcmProcessRva=0x00463954;
-constexpr std::uint32_t k133PcmProcessVtableSlotRva=0x019c7c68;
+// SpotifyFullSetupX64.exe payload. RC28 targets the live Ogg decoder dispatcher
+// that is the x64 equivalent of old Soggfy's DecodeAudioData hook.
+constexpr std::uint32_t k133DecodeAudioRva=0x00d5a240;
+constexpr std::uint32_t k133DecoderVtableRva=0x01ae5b28;
+constexpr std::uint32_t k133DecodeAudioSlotRva=0x01ae5b30;
+constexpr std::uint32_t k133DecoderCtorRva=0x00d59a40;
 constexpr std::uint32_t k133TrackCreateRva=0x0057968c;
 constexpr std::uint32_t k133SessionVtableRva=0x01a07308;
 constexpr std::uint32_t k133SessionSetterRva=0x005a8d18;
@@ -167,43 +165,59 @@ static std::uint64_t Hook(std::uint64_t a1,std::uint64_t player_meta,void* track
                     a8,a9,start_position_ms,seek_timestamp,a12,a13);
 }
 
-static PcmResult133* PcmProcessHook(void* self,PcmResult133* output,
-                                        const PcmSpan133* input) {
-    PcmResult133* result=original_pcm_process(self,output,input);
-    const auto call=pcm_process_calls.fetch_add(1,std::memory_order_relaxed)+1;
-    if(!result||result!=output||!output||!input)return result;
+static DecodeResult133* DecodeAudioHook(void* self,DecodeResult133* output,
+                                         float* pcm,std::uint64_t* sample_count,
+                                         const unsigned char* encoded,
+                                         std::uint64_t* encoded_count,
+                                         unsigned char flags) {
+    const std::uint64_t capacity=sample_count?*sample_count:0;
+    const std::uint64_t encoded_before=encoded_count?*encoded_count:0;
+    DecodeResult133* result=original_decode133(
+        self,output,pcm,sample_count,encoded,encoded_count,flags);
+
+    const auto call=decode_process_calls.fetch_add(1,std::memory_order_relaxed)+1;
+    if(!sample_count)return result;
 
     const auto configured=GetSettings().playback_speed;
     const double requested=std::isfinite(configured)&&configured>=1.0&&configured<=50.0?
         configured:1.0;
-    const std::uint64_t produced=output->size;
-    const bool sane=output->data&&input->data&&output->data==input->data&&
-        produced>0&&produced<=input->size&&input->size<0x10000000ull;
+    const std::uint64_t produced=*sample_count;
+    const std::uint64_t encoded_after=encoded_count?*encoded_count:0;
+
+    // d5a240 receives the PCM destination in R8 and an in/out sample-count
+    // pointer in R9. It consumes compressed input through stack args 5/6, then
+    // writes the produced float-sample count back through R9. This is the same
+    // contract old Soggfy modified after DecodeAudioData returned.
+    const bool sane=pcm&&capacity>0&&capacity<0x10000000ull&&
+        produced>0&&produced<=capacity;
 
     std::uint64_t kept=produced;
     bool thinned=false;
     if(sane&&requested>1.0&&produced>1) {
         kept=ClassicPcmSamplesToKeep(produced,requested);
         if(kept<produced) {
-            output->size=kept;
+            *sample_count=kept;
             thinned=true;
-            pcm_thinned_calls.fetch_add(1,std::memory_order_relaxed);
+            decode_thinned_calls.fetch_add(1,std::memory_order_relaxed);
             effective_speed.store(requested,std::memory_order_release);
         }
     } else if(sane&&requested<=1.0) {
         effective_speed.store(1.0,std::memory_order_release);
     }
 
-    const double previous=pcm_last_requested.exchange(requested,std::memory_order_relaxed);
-    if(call<=8||std::fabs(previous-requested)>0.0001) {
-        char line[512];
+    const double previous=decode_last_requested.exchange(requested,std::memory_order_relaxed);
+    if(call<=12||std::fabs(previous-requested)>0.0001) {
+        char line[640];
         std::snprintf(line,sizeof(line),
-            "speed_pcm_hook call=%llu input=%llu produced=%llu kept=%llu requested=%.3fx sane=%d thinned=%d state=%u total_thinned=%llu",
-            call,static_cast<unsigned long long>(input->size),
+            "speed_decode_hook call=%llu capacity=%llu produced=%llu kept=%llu encoded_before=%llu encoded_after=%llu requested=%.3fx sane=%d thinned=%d flags=%u result_same=%d total_thinned=%llu",
+            call,
+            static_cast<unsigned long long>(capacity),
             static_cast<unsigned long long>(produced),
-            static_cast<unsigned long long>(kept),requested,sane,thinned,
-            unsigned(output->state),
-            pcm_thinned_calls.load(std::memory_order_relaxed));
+            static_cast<unsigned long long>(kept),
+            static_cast<unsigned long long>(encoded_before),
+            static_cast<unsigned long long>(encoded_after),
+            requested,sane,thinned,unsigned(flags),result==output,
+            decode_thinned_calls.load(std::memory_order_relaxed));
         HistoryLog(line);
         LogActivity(thinned?"speed_applied":"speed_observed",line);
     }
@@ -257,40 +271,52 @@ static bool ImageSize(HMODULE module,std::size_t& size) {
     size=image_size;return true;
 }
 
-static bool Verify133PcmProcess(HMODULE module,std::size_t image_size) {
+static bool Verify133DecodeAudio(HMODULE module,std::size_t image_size) {
     auto* base=reinterpret_cast<const std::uint8_t*>(module);
     const std::size_t required=std::max<std::size_t>(
-        k133PcmProcessRva+0x190,
-        k133PcmProcessVtableSlotRva+sizeof(std::uintptr_t));
+        k133DecodeAudioRva+0x240,
+        k133DecodeAudioSlotRva+sizeof(std::uintptr_t));
     if(!base||image_size<required)return false;
 
-    // Spotify 1.3.3.264's PCM filter-chain process method. This method receives
-    // an input float span in R8, writes the processed span to RDX and returns
-    // RDX. Classic Soggfy accelerated playback by consuming all decoded audio
-    // while exposing only a fraction of the PCM samples to the sink. RC26
-    // restores that behavior here instead of trying to drive unused internal
-    // playback-speed setters.
+    // Exact Spotify 1.3.3.264 decoder dispatcher. Its ABI is:
+    //   RCX decoder object
+    //   RDX 16-byte result storage
+    //   R8  PCM float destination
+    //   R9  in/out PCM sample count
+    //   stack arg 5 compressed input pointer
+    //   stack arg 6 in/out compressed-byte count
+    //   stack arg 7 flags
+    // The function calls the live Ogg decoder at +0x180 and finally writes the
+    // produced sample count through R9 at +0x20f.
     constexpr std::uint8_t prefix[]={
-        0x48,0x8b,0xc4,0x48,0x89,0x58,0x08,0x48,0x89,0x68,0x10,0x48,
-        0x89,0x70,0x18,0x48,0x89,0x78,0x20,0x41,0x54,0x41,0x56,0x41,
-        0x57,0x48,0x83,0xec,0x60,0x0f,0x29,0x70,0xd8
+        0x48,0x8b,0xc4,0x48,0x89,0x58,0x08,0x48,0x89,0x70,0x10,0x48,
+        0x89,0x78,0x20,0x4c,0x89,0x40,0x18,0x55,0x41,0x54,0x41,0x55,
+        0x41,0x56,0x41,0x57,0x48,0x8b,0xec,0x48,0x81,0xec,0x80,0x00,
+        0x00,0x00,0x4d,0x8b,0xe1,0x48,0x8b,0xfa,0x48,0x8b,0xf1,0x4c,
+        0x8b,0x75,0x58
     };
-    constexpr std::uint8_t output_anchor[]={
-        0x49,0x8b,0x04,0x24,0x48,0x89,0x07,0x4c,0x89,0x77,0x08,0x48,
-        0x8d,0x57,0x10
+    constexpr std::uint8_t ogg_decode_call[]={
+        0x48,0x8d,0x55,0xb8,0x48,0x8d,0x4e,0x18,0xe8,0xab,0xf7,0xff,0xff
     };
-    constexpr std::uint8_t inner_call[]={
-        0xe8,0xac,0x00,0x00,0x00
+    constexpr std::uint8_t count_store[]={
+        0x48,0xc1,0xe8,0x02,0x49,0x89,0x04,0x24,0x41,0x8b,0xc5,0x49,0x89,0x06
+    };
+    constexpr std::uint8_t ctor_prefix[]={
+        0x48,0x89,0x5c,0x24,0x08,0x57,0x48,0x83,0xec,0x20,0x48,0x89,
+        0x51,0x08,0x48,0x8d,0x05,0xd3,0xc0,0xd8,0x00,0x48,0x89,0x01
     };
 
-    if(std::memcmp(base+k133PcmProcessRva,prefix,sizeof(prefix))||
-       std::memcmp(base+k133PcmProcessRva+0x168,output_anchor,sizeof(output_anchor))||
-       std::memcmp(base+k133PcmProcessRva+0x123,inner_call,sizeof(inner_call)))
+    if(std::memcmp(base+k133DecodeAudioRva,prefix,sizeof(prefix))||
+       std::memcmp(base+k133DecodeAudioRva+0x178,ogg_decode_call,sizeof(ogg_decode_call))||
+       std::memcmp(base+k133DecodeAudioRva+0x20b,count_store,sizeof(count_store))||
+       std::memcmp(base+k133DecoderCtorRva,ctor_prefix,sizeof(ctor_prefix)))
         return false;
 
-    std::uintptr_t slot=0;
-    std::memcpy(&slot,base+k133PcmProcessVtableSlotRva,sizeof(slot));
-    return slot==reinterpret_cast<std::uintptr_t>(base+k133PcmProcessRva);
+    std::uintptr_t vtable_first=0,slot=0;
+    std::memcpy(&vtable_first,base+k133DecoderVtableRva,sizeof(vtable_first));
+    std::memcpy(&slot,base+k133DecodeAudioSlotRva,sizeof(slot));
+    return vtable_first==reinterpret_cast<std::uintptr_t>(base+0x00d5a20c)&&
+           slot==reinterpret_cast<std::uintptr_t>(base+k133DecodeAudioRva);
 }
 
 static bool Verify133SessionLayout(HMODULE module,std::size_t image_size) {
@@ -991,46 +1017,46 @@ static bool Start133PcmBackend(HMODULE module,std::size_t image_size,
     effective_speed.store(1.0,std::memory_order_release);
     latest_module=module;
     latest_image_size=image_size;
-    pcm_process_calls.store(0,std::memory_order_release);
-    pcm_thinned_calls.store(0,std::memory_order_release);
-    pcm_last_requested.store(GetSettings().playback_speed,std::memory_order_release);
+    decode_process_calls.store(0,std::memory_order_release);
+    decode_thinned_calls.store(0,std::memory_order_release);
+    decode_last_requested.store(GetSettings().playback_speed,std::memory_order_release);
 
-    if(!Verify133PcmProcess(module,image_size)) {
-        HistoryLog("Spotify 1.3.3 classic PCM playback-speed target verification failed; staying at 1x");
+    if(!Verify133DecodeAudio(module,image_size)) {
+        HistoryLog("Spotify 1.3.3 DecodeAudioData-equivalent target verification failed; staying at 1x");
         speed_init.MarkUnsupported();
         return false;
     }
 
-    void* target=reinterpret_cast<std::uint8_t*>(module)+k133PcmProcessRva;
+    void* target=reinterpret_cast<std::uint8_t*>(module)+k133DecodeAudioRva;
     MH_STATUS status=MH_Initialize();
     if(status==MH_ERROR_ALREADY_INITIALIZED)status=MH_OK;
     if(status==MH_OK)
-        status=MH_CreateHook(target,reinterpret_cast<void*>(PcmProcessHook),
-                             reinterpret_cast<void**>(&original_pcm_process));
+        status=MH_CreateHook(target,reinterpret_cast<void*>(DecodeAudioHook),
+                             reinterpret_cast<void**>(&original_decode133));
     if(status==MH_OK) {
         active_backend.store(PlaybackSpeedBackend::PcmThin133,std::memory_order_release);
         status=MH_EnableHook(target);
         if(status!=MH_OK&&status!=MH_ERROR_ENABLED) {
             active_backend.store(PlaybackSpeedBackend::Unsupported,std::memory_order_release);
             MH_RemoveHook(target);
-            original_pcm_process=nullptr;
+            original_decode133=nullptr;
         }
     }
 
     if(status==MH_OK||status==MH_ERROR_ENABLED) {
         supported.store(true,std::memory_order_release);
         speed_init.Activate();
-        char line[384];
+        char line[420];
         std::snprintf(line,sizeof(line),
-            "Spotify 1.3.3 classic PCM playback-speed backend active at Spotify.dll+0x%08x vtable_slot=Spotify.dll+0x%08x",
-            k133PcmProcessRva,k133PcmProcessVtableSlotRva);
+            "Spotify 1.3.3 old-Soggfy DecodeAudioData playback-speed backend active at Spotify.dll+0x%08x vtable=Spotify.dll+0x%08x slot=Spotify.dll+0x%08x",
+            k133DecodeAudioRva,k133DecoderVtableRva,k133DecodeAudioSlotRva);
         HistoryLog(line);
         return true;
     }
 
-    char line[256];
+    char line[280];
     std::snprintf(line,sizeof(line),
-        "Spotify 1.3.3 classic PCM playback-speed hook failed: %s",
+        "Spotify 1.3.3 DecodeAudioData playback-speed hook failed: %s",
         MH_StatusToString(status));
     HistoryLog(line);
     if(status==MH_ERROR_NOT_EXECUTABLE||status==MH_ERROR_UNSUPPORTED_FUNCTION)
