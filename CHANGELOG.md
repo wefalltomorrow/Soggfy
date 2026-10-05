@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0-rc.24
+
+- Fixed the RC23 startup crash by deferring Spotify.dll-native hook installation until the Windows loader has resolved critical normal imports.
+- Parsed the RC23 minidump and confirmed the exact same execute AV signature as RC22/RC13.
+- Identified the failing call as Spotify.dll's normal `GetCommandLineW` IAT call; the crash target `0x01f7e69c` is the raw unresolved PE hint/name RVA for that import.
+- Added a loader-readiness gate checking `GetCommandLineW`, `GetCurrentProcessId`, `GetModuleHandleW`, `GetProcAddress`, and `VirtualProtect` resolve to committed executable targets.
+- Added a 1500 ms quiet grace period after those imports are resolved before MinHook or Spotify IAT patching begins.
+- Connectivity, playback-speed and native audio-history hooks now all wait behind the same Spotify.dll loader gate.
+- Retained RC23's rule that memory-scanned SessionTrackPlayer candidates are diagnostic-only and never invoked directly.
+
 ## 3.0.0-rc.23
 
 - Fixed the RC22 startup crash caused by invoking Spotify methods on a SessionTrackPlayer-shaped object found only by process-memory scanning.
