@@ -3,6 +3,7 @@
 #include "playback_speed.h"
 #include "playback_speed_discovery.h"
 #include "playback_speed_compat.h"
+#include "playback_speed_pcm_core.h"
 #include "history_settings.h"
 #include "async_log.h"
 #include "hook_init_state.h"
@@ -182,8 +183,7 @@ static PcmResult133* PcmProcessHook(void* self,PcmResult133* output,
     std::uint64_t kept=produced;
     bool thinned=false;
     if(sane&&requested>1.0&&produced>1) {
-        kept=static_cast<std::uint64_t>(
-            std::max<double>(1.0,std::floor(static_cast<double>(produced)/requested)));
+        kept=ClassicPcmSamplesToKeep(produced,requested);
         if(kept<produced) {
             output->size=kept;
             thinned=true;
