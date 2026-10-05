@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.0-rc.25
+
+- Fixed RC24 crashing while checking Spotify's loader readiness.
+- Both RC24 minidumps point to the same `lock cmpxchg` write fault in Soggfy at the read-only `GetCommandLineW` IAT slot.
+- Replaced `InterlockedCompareExchangePointer(..., nullptr, nullptr)` with a true read-only IAT load.
+- Retained RC24's resolved-import checks and 1500 ms loader grace period.
+
 ## 3.0.0-rc.24
 
 - Fixed the RC23 startup crash by deferring Spotify.dll-native hook installation until the Windows loader has resolved critical normal imports.
