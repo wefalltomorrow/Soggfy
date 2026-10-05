@@ -43,3 +43,4 @@ bool ShouldBlockClassicTelemetryUrl(std::wstring_view url) {
 
     return false;
 }
+}
