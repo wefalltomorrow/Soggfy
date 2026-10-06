@@ -1,21 +1,26 @@
-# Soggfy v3.0.0-rc.32
+# Soggfy v3.0.0-rc.33
 
-RC32 fixes the remaining accelerated transport problems found in RC31.
+RC33 changes course on accelerated transport after comparing RC32 directly with the preserved original Soggfy source.
 
-## Scrubber fix
+## What original Soggfy actually did
 
-The RC31 virtual clock itself was advancing, but the visible Spotify scrubber was not. Current Spotify stores its progress transform as a CSS transform value such as `translateX(-50%)`. RC31 incorrectly wrote a bare numeric percentage into `--progress-bar-transform`, so Chromium ignored it.
+Original Soggfy did not contain any code that accelerated Spotify's visible scrubber or elapsed-time display. Its native DecodeAudioData hook simply decoded the full packet and then reduced the amount of PCM returned to Spotify according to the configured playback speed.
 
-RC32 writes the correct `translateX(-100%..0%)` value to both relevant progress elements while accelerated playback is active. The elapsed-time text continues to use Soggfy's virtual accelerated clock, and no repeated Spotify seeks are used.
+On the older Spotify client that original Soggfy targeted, reaching decoder EOS naturally caused Spotify to move to the next track. The TypeScript player code only watched for playbackId changes and treated those as track-end events. It did not manually advance after each completed download.
 
-A new diagnostic line reports the detected UI elements and duration for each accelerated playback:
+Original Soggfy also had explicit recovery for Spotify's `playback_stuck` error at very high speeds by resetting the current track.
 
-`FLOGGFY_STATUS:accelerated ui root=1 bar=1 time=1 dur=...`
+## RC33 behavior
 
-## Automatic next-track fix
+Current Spotify 1.3.3.264 no longer behaves exactly like that older client: Soggfy can consume the full compressed stream and prove EOS at 50x while Spotify's public transport remains near the beginning and does not move on.
 
-The RC31 log proved the native accelerated completion event reached the Classic UI, but there was no matching "advanced" record. The RC31 guard required Spotify's playbackId to remain identical between the completion callback and the delayed skip. Spotify can rotate that ID without changing the current track.
+RC33 therefore keeps the original UI behavior but emulates the original end result:
 
-RC32 now guards against the stable track URI instead. It first calls Spotify's `skipToNext()`; if the track URI is still unchanged after a short wait, it falls back to clicking the current Spotify Next button. Each stage is logged so any remaining failure is immediately visible.
+- Spotify's scrubber and elapsed-time display are no longer synthetically overridden.
+- Accelerated native EOS remains the authoritative completion proof for capture/download.
+- The moment that validated EOS is reached, Soggfy immediately clicks Spotify's own visible Next control exactly once.
+- If the visible Next control cannot be found, Soggfy falls back to the internal `skipToNext()` API.
+- There is no playbackId or URI gate that can silently suppress the action.
+- Original Soggfy's `playback_stuck` reset handler is restored.
 
-RC31's startup-race hardening, RC29's accelerated capture/publication logic and RC30's per-track status indicators are otherwise unchanged.
+RC31's startup-race hardening, RC29's accelerated capture/publication logic and RC30's per-track status indicators remain unchanged.
