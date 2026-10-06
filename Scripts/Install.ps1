@@ -2,14 +2,22 @@
 param(
     [string]$SpotifyPath = (Join-Path $env:APPDATA 'Spotify'),
     [switch]$RunSpotX,
+    [switch]$SkipSpotX,
     [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+$PinnedSpotifyVersion = '1.3.1.234'
+$PinnedSpotifyFullVersion = '1.3.1.234.g59d6bf59'
+
 function Fail([string]$Message) {
     throw "Soggfy install: $Message"
+}
+
+if ($RunSpotX -and $SkipSpotX) {
+    Fail 'Use either -RunSpotX or -SkipSpotX, not both.'
 }
 
 $SpotifyPath = [Environment]::ExpandEnvironmentVariables($SpotifyPath)
@@ -18,6 +26,13 @@ if (-not (Test-Path -LiteralPath $SpotifyExe -PathType Leaf)) {
     Fail "Spotify.exe was not found at '$SpotifyPath'. Microsoft Store installs are not currently supported."
 }
 
+$installedVersion = (Get-Item -LiteralPath $SpotifyExe).VersionInfo.FileVersion
+if ([string]::IsNullOrWhiteSpace($installedVersion) -or
+    -not $installedVersion.StartsWith($PinnedSpotifyVersion, [StringComparison]::OrdinalIgnoreCase)) {
+    Fail "RC39 targets Spotify $PinnedSpotifyFullVersion x64. Installed Spotify reports '$installedVersion'. Install the pinned Spotify build first."
+}
+Write-Host "Spotify $installedVersion detected (RC39 baseline)."
+
 $running = Get-Process -Name Spotify -ErrorAction SilentlyContinue
 if ($running) {
     if (-not $Force) {
@@ -25,6 +40,56 @@ if ($running) {
     }
     $running | Stop-Process -Force
     Start-Sleep -Milliseconds 500
+}
+
+$installSpotX = $RunSpotX.IsPresent
+if (-not $RunSpotX -and -not $SkipSpotX) {
+    do {
+        $answer = Read-Host 'Install/update SpotX for ad blocking and Spotify update blocking? [Y/n]'
+        if ([string]::IsNullOrWhiteSpace($answer)) {
+            $installSpotX = $true
+            break
+        }
+        if ($answer -match '^(?i:y|yes)$') {
+            $installSpotX = $true
+            break
+        }
+        if ($answer -match '^(?i:n|no)$') {
+            $installSpotX = $false
+            break
+        }
+        Write-Host 'Please answer Y or N.'
+    } while ($true)
+}
+
+if ($installSpotX) {
+    [Net.ServicePointManager]::SecurityProtocol =
+        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
+    $spotxUrl = 'https://raw.githubusercontent.com/SpotX-Official/SpotX/refs/heads/main/run.ps1'
+    $spotxScript = Join-Path ([IO.Path]::GetTempPath()) 'soggfy-spotx-run.ps1'
+
+    Write-Host "Downloading SpotX..."
+    Invoke-WebRequest -UseBasicParsing -Uri $spotxUrl -OutFile $spotxScript
+
+    try {
+        Write-Host "Running SpotX: ad blocking enabled, Spotify updates blocked, client pinned to $PinnedSpotifyFullVersion..."
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $spotxScript `
+            -version $PinnedSpotifyFullVersion `
+            -SpotifyPath $SpotifyPath `
+            -block_update_on `
+            -no_pause
+
+        if ($LASTEXITCODE -ne 0) {
+            Fail "SpotX exited with code $LASTEXITCODE. Soggfy was not installed."
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $spotxScript -Force -ErrorAction SilentlyContinue
+    }
+}
+else {
+    Write-Warning 'SpotX was skipped. Soggfy RC39 does not block ads or Spotify updates itself; only telemetry blocking remains native.'
 }
 
 $packageRoot = Split-Path -Parent $PSScriptRoot
@@ -61,18 +126,10 @@ if (-not (Test-Path -LiteralPath $targetIni) -and (Test-Path -LiteralPath $sourc
     Write-Host "Created $targetIni"
 }
 
-if ($RunSpotX) {
-    [Net.ServicePointManager]::SecurityProtocol =
-        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-
-    $spotxUrl = 'https://spotx-official.github.io/SpotX/run.ps1'
-    $spotxScript = Join-Path ([IO.Path]::GetTempPath()) 'soggfy-spotx-run.ps1'
-    Invoke-WebRequest -UseBasicParsing -Uri $spotxUrl -OutFile $spotxScript
-    Write-Host 'Running the explicitly requested SpotX installer...'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $spotxScript
-    if ($LASTEXITCODE -ne 0) {
-        Fail "SpotX exited with code $LASTEXITCODE. Soggfy itself is already installed."
-    }
+if ($installSpotX) {
+    Write-Host 'Done. SpotX handles ad/update blocking; Soggfy keeps its separate telemetry blocker.'
 }
-
-Write-Host 'Done. Start Spotify, open To Disk, and enable Downloads.'
+else {
+    Write-Host 'Done. Soggfy installed without SpotX.'
+}
+Write-Host 'Start Spotify and use the Soggfy Downloads button in the top bar.'

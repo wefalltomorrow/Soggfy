@@ -18,7 +18,7 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Refuses incomplete, skipped, seeked or broken captures instead of publishing partial files.
 - Skips equal or better existing files and atomically replaces lower-quality copies.
 - Uses dynamic x64 hook discovery instead of fixed Spotify offsets.
-- Keeps capture, UI, metadata, playback-speed and telemetry integrations independent.
+- Keeps capture, UI, metadata and playback-speed integrations independent. Soggfy handles telemetry privacy filtering; SpotX handles ads and Spotify update blocking.
 - Preserves Floggfy RC5's current Song / Quality / Format / Sample-rate information inside the Classic settings UI.
 - Uses a bounded, short-lived file index for downloaded-track ticks/Skip Downloaded instead of recursively rescanning the library on every UI mutation.
 - Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
@@ -32,12 +32,15 @@ Releases use a single all-in-one Windows x64 ZIP. It contains both startup modes
 
 **Automatic mode** is the normal choice:
 
-1. Quit Spotify.
+1. Install Spotify Windows x64 **1.3.1.234.g59d6bf59** and quit Spotify.
 2. Download `Soggfy-v*-Windows-x64.zip` from Releases and extract it.
-3. Run `Scripts\Install.ps1`, or manually copy the root `version.dll` beside `Spotify.exe` (normally `%APPDATA%\Spotify`).
-4. Start Spotify normally.
+3. Run `Scripts\Install.ps1`.
+4. Accept the default SpotX prompt to enable SpotX ad blocking and Spotify update blocking.
+5. Start Spotify normally.
 
-The installer backs up a pre-existing `version.dll` instead of silently overwriting it. `Scripts\Uninstall.ps1` restores that backup.
+The installer validates the pinned Spotify version, runs official SpotX first with `-block_update_on`, then installs Soggfy. It backs up a pre-existing `version.dll` instead of silently overwriting it. Use `-RunSpotX` to force SpotX for unattended installs or `-SkipSpotX` to explicitly skip it. `Scripts\Uninstall.ps1` removes Soggfy/restores its `version.dll` backup but does not uninstall SpotX.
+
+Manual copying of `version.dll` still works, but manual installs do not automatically gain SpotX's ad/update blocking.
 
 **Launcher mode** is an optional fallback when Windows/Spotify skips the adjacent `version.dll`:
 
@@ -51,7 +54,7 @@ After either startup mode, use the Soggfy Downloads button in Spotify's top bar,
 
 The default interface follows the old Sprinkles workflow rather than Floggfy's To Disk menu.
 
-The settings modal includes playback speed, output format, Skip Downloaded, Skip Ignored, cover-art and lyrics options, Canvas saving, Base/Track/Podcast/Canvas paths, invalid-character replacement, Block telemetry, Move Add to Queue to top, native FLAC/Ogg controls, cached metadata, logging, diagnostics and whether to retain the native original after conversion.
+The settings modal includes playback speed, output format, Skip Downloaded, Skip Ignored, cover-art and lyrics options, Canvas saving, Base/Track/Podcast/Canvas paths, invalid-character replacement, Block telemetry, Move Add to Queue to top, native FLAC/Ogg controls, cached metadata, logging, diagnostics and whether to retain the native original after conversion. The Block telemetry toggle is privacy-only; ad/update blocking belongs to SpotX.
 
 Track rows use the old status model:
 
@@ -134,7 +137,7 @@ Instead:
 - Native capture remains bounded and memory-only until a complete listen is validated.
 - FFmpeg starts only after native publication.
 - Canvas downloads are bounded and published from a temporary file only after completion.
-- Telemetry blocking is limited to the old Soggfy ad/telemetry receiver prefixes; metadata, audio CDN and client-update traffic are deliberately left alone.
+- Soggfy's native request filter is telemetry-only: it blocks the Gabo and Dodo receiver-service endpoints. Ad/ad-logic paths and client-update traffic are deliberately left to SpotX.
 - Playback speed uses a separately validated Spotify.dll player-construction hook and fails closed when the target cannot be uniquely identified.
 
 ## Build and test
@@ -148,7 +151,7 @@ A Debian/Ubuntu/WSL reference build is also supported:
     bash build-native.sh
     python3 package-release.py
 
-CI covers native capture, FLAC/Ogg tagging, cache metadata, path templates, issue #150 path matching, playback-speed target discovery, telemetry URL filtering, JavaScript syntax, Windows x64 compilation, PE metadata and release hashes.
+CI covers native capture, FLAC/Ogg tagging, cache metadata, path templates, issue #150 path matching, playback-speed target discovery, telemetry-only URL filtering, PowerShell/JavaScript syntax, Windows x64 compilation, PE metadata and release hashes.
 
 ## Project history
 
@@ -161,6 +164,7 @@ The active x64 base is synced selectively through Mainkill1/Floggfy v1.1.0. See 
 - Rafiuth/Soggfy — original project, UI model and CC0 source
 - Mainkill1/Floggfy — modern x64 capture, FLAC, dynamic discovery, cache metadata and validation base
 - SuperSecretEyeball/Soggfy-Fixed and MacKinnon7/Soggfy-Fixed — community fixes and build ideas
+- SpotX-Official/SpotX — ad blocking and Spotify update blocking used by the installer
 - AndyBogle1, coleaderme and MrSykenro — installer/TLS/SpotX fixes reviewed while modernizing the fork
 - MinHook, libogg and CEF — see bundled third-party notices
 
