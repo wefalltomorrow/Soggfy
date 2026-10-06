@@ -241,7 +241,6 @@ static void SchedulePoll(){
 }
 static MetadataCache cache;static SRWLOCK cache_lock=SRWLOCK_INIT,message_lock=SRWLOCK_INIT;
 static hooks::InitController metadata_init;
-static hooks::CallbackCounter metadata_callbacks;
 static std::atomic<bool> metadata_running{false},metadata_polling{false};
 struct Message { ULONGLONG time=0; char data[131073];size_t length=0;};
 static std::array<Message,4> messages;static size_t head=0,tail=0,count=0;static HANDLE message_event=nullptr;
@@ -476,7 +475,6 @@ static bool ClassicUiMessage(const String* text) {
  return true;
 }
 static int Console(Display* self,Browser* b,int level,const String* text,const String* source,int line) {
- auto callback=metadata_callbacks.Enter();
  if(ClassicUiMessage(text)){Release(b);return 1;}
  if(CurrentPlayback(text)){Release(b);return 1;}
  if(text&&text->length<100&&text->length>=15&&wmemcmp(text->str,L"FLOGGFY_STATUS:",15)==0){
@@ -533,6 +531,7 @@ static void DiscoverBrowserOnUi(){
   Release(browser);
   if(logged)break;
  }
+}
 }
 void RequestAcceleratedAdvance(const std::string& token) {
  if(token.empty())return;
