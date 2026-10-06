@@ -507,7 +507,15 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
             // compositor and render threads have settled.
             history::StartMetadataCollector(cef);
             StartToDiskMenu(cef);
-            if(CefTelemetryReady(cef)) history::StartCefRequestFilter(cef);
+            // RC35 startup-safe mode: do not install the remaining CEF URL
+            // request MinHook. Block Telemetry remains a persisted setting, but
+            // native request interception is intentionally inactive until it can
+            // be reimplemented without process-wide thread suspension.
+            static bool cef_filter_safe_mode_logged=false;
+            if(!cef_filter_safe_mode_logged){
+                cef_filter_safe_mode_logged=true;
+                Log("CEF request MinHook disabled in startup-safe mode");
+            }
             FreeLibrary(cef);
         }
         HMODULE module;
