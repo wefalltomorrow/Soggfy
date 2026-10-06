@@ -574,7 +574,53 @@ static DWORD WINAPI Worker(LPVOID) {
                             preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,listen.eligible,active.size(),ready.size());
                         Log(line);
                     }
-                    std::string done=listen.Observe(media.Key(),media.position,media.duration,media.playing,Now(),playback_rate);
+                    // The RC28 decoder-speed backend deliberately consumes the full
+                    // compressed stream while returning fewer PCM samples to Spotify.
+                    // SMTC's public timeline does not advance at that accelerated decode
+                    // rate: it periodically publishes a fresh, much smaller raw position.
+                    // Treating those timeline refreshes as seeks makes a genuinely complete
+                    // accelerated capture fail before it can be published.
+                    //
+                    // A complete Ogg/FLAC stream is stronger evidence here. Once a unique
+                    // ready stream of the current media duration reaches EOS *after* this
+                    // listen started, the decoder has consumed the whole track. That is the
+                    // accelerated equivalent of a natural end and is safe to hand to the
+                    // existing duration/start-window association code.
+                    bool accelerated_capture_complete=false;
+                    size_t accelerated_matches=0;
+                    if(playback_rate>1.0001 && was_eligible && media.playing &&
+                       previous==media.Key() && media.duration>0) {
+                        for(const auto& candidate:ready) {
+                            if(std::fabs(candidate->Duration()-media.duration)<=1.0 &&
+                               candidate->born>=previous_start-20 &&
+                               candidate->born<=previous_start+3 &&
+                               candidate->finished>=previous_start) {
+                                ++accelerated_matches;
+                            }
+                        }
+                        accelerated_capture_complete=accelerated_matches==1;
+                    }
+
+                    std::string done;
+                    if(accelerated_capture_complete) {
+                        done=previous;
+                        listen.eligible=false;
+                        listen.pending_start=false;
+                        listen.transient=false;
+                        listen.reject=ListenReject::None;
+                        listen.last_time=Now();
+                        listen.last_position=media.position;
+                        listen.playing=media.playing;
+
+                        char line[1024];snprintf(line,sizeof(line),
+                            "%s - %s capture_eos=1 media_duration=%.3f rate=%.3f ready=%zu matches=%zu",
+                            Utf8(current.artist).c_str(),Utf8(current.title).c_str(),
+                            media.duration,playback_rate,ready.size(),accelerated_matches);
+                        LogActivity("accelerated_complete",line);QueueDiagnostic(line);
+                    } else {
+                        done=listen.Observe(media.Key(),media.position,media.duration,
+                                            media.playing,Now(),playback_rate);
+                    }
                     if(was_eligible && !listen.eligible && done.empty()) {
                         const auto identity=Utf8(current.artist)+" - "+Utf8(current.title);
                         char line[1400]; snprintf(line,sizeof(line),
@@ -592,9 +638,10 @@ static DWORD WINAPI Worker(LPVOID) {
                         } else {
                             heard.push_back({current,previous_start,Now()});
                             char line[1024];snprintf(line,sizeof(line),
-                                "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f elapsed_wall=%.3f rate=%.3f ready=%zu active=%zu",
+                                "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f elapsed_wall=%.3f rate=%.3f ready=%zu active=%zu completion=%s",
                                 Utf8(current.artist).c_str(),Utf8(current.title).c_str(),prior_position,current.raw_position,
-                                current.duration,current.timeline_age,Now()-previous_start,playback_rate,ready.size(),active.size());
+                                current.duration,current.timeline_age,Now()-previous_start,playback_rate,ready.size(),active.size(),
+                                accelerated_capture_complete?"capture_eos":"timeline");
                             LogActivity("listen_complete",line);QueueDiagnostic(line);
                         }
                     }
