@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0-rc.30
+
+- Restored old Soggfy-style per-track status indicators for current Spotify track rows.
+- Normalized outer `role=row` wrappers before placing the indicator in the original final duration/actions cell.
+- Added React-props fallbacks for track URI/title/artist/album when current Spotify omits those values from visible row links.
+- Added a lightweight 1.5-second visible-row refresh so native IN_PROGRESS, CONVERTING, DONE and ERROR transitions appear without requiring a Spotify DOM mutation.
+- Forced the compact status SVG container to remain visible under current Spotify row CSS.
+- Added rate-limited-by-state `FLOGGFY_STATUS:classic rows=... results=... statuses=... rendered=...` diagnostics.
+- Kept RC29 accelerated capture/download behavior unchanged.
+
 ## 3.0.0-rc.29
 
 - Fixed accelerated tracks reaching complete Ogg EOS but never entering publication because Spotify's public SMTC timeline refreshes at a different rate from RC28's decoder-output thinning.
