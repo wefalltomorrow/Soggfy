@@ -122,7 +122,7 @@ If the injected UI is unavailable after a Spotify update, capture can still be e
 
 ## Diagnostics
 
-`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages. Spotify 1.3.3.264 playback-speed troubleshooting uses `speed_decode_hook` records showing the live PCM capacity, produced/kept sample counts, compressed input counts and requested rate. Native Spotify.dll hooks are deferred until critical normal imports are resolved and a 1500 ms loader grace period has elapsed.
+`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages. Spotify 1.3.3.264 playback-speed troubleshooting uses `speed_decode_hook` records showing the live PCM capacity, produced/kept sample counts, compressed input counts and requested rate. Accelerated tracks that complete through the verified native stream path log `accelerated_complete` and `completion=capture_eos`. Native Spotify.dll hooks are deferred until critical normal imports are resolved and a 1500 ms loader grace period has elapsed.
 
 Enable **Debug log** in Soggfy settings for the high-volume timeline trace: each media-session sample plus replayed Ogg-page details. This is intended for short troubleshooting runs because the log is capped and rotates by truncation when it reaches its size limit.
 
@@ -133,7 +133,7 @@ The current UI does not restore the old localhost WebSocket server or old x86 de
 Instead:
 
 - UI controls communicate through the in-process CEF bridge.
-- Native capture remains bounded and memory-only until a complete listen is validated.
+- Native capture remains bounded and memory-only until completion is validated. At 1x this uses the public media timeline; during accelerated playback a unique matching native stream reaching EOS can provide the completion proof because Spotify's public timeline does not track decoder-thinning speed reliably.
 - FFmpeg starts only after native publication.
 - Canvas downloads are bounded and published from a temporary file only after completion.
 - Telemetry/ad blocking is host-independent and path-scoped to `/ads/`, `/ad-logic/`, `/gabo-receiver-service/` and `/dodo-receiver-service/`; metadata, audio CDN, login and client-update traffic are deliberately left alone.
