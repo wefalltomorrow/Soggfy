@@ -1,27 +1,41 @@
-# Soggfy v3.0.0-rc.37
+# Soggfy v3.0.0-rc.38
 
-RC37 is the next black-screen isolation build on top of RC36's concrete crash fix.
+RC38 abandons the Spotify 1.3.3.264 experiment line and returns Soggfy to the last known-good Spotify 1.3.1.234 implementation.
 
-## Why this build exists
+## Baseline
 
-The RC35 dump proved the delayed crash itself was Soggfy's CEF discovery bug: browser-host slot 8 (`has_view()`) was accidentally called as `get_client()`, producing the bogus pointer `0x1`. RC36 fixes that correctly with slot 9 plus ABI/function-pointer validation.
+This release is based directly on the RC14 runtime tree. RC14 explicitly kept the native 1-50x playback-speed hook enabled on Spotify 1.3.1.234 because that player ABI had been runtime-validated.
 
-That crash happened after the monitor had already gone black. RC35/RC36 also have no CEF MinHook detours left, which moves the black-screen investigation to the remaining MinHook activity in Spotify.dll.
+The later RC15-RC37 experiments are not carried forward into this build.
 
-## RC37 startup change
+## What was removed
 
-RC37 leaves the direct connectivity IAT patch early, because that operation only swaps an import pointer and does not suspend all process threads.
+RC38 removes the Spotify 1.3.3-specific work added after RC14, including:
 
-The two MinHook families are now kept well away from startup:
+- ContextPlayer and SessionTrackPlayer speed experiments;
+- exact 1.3.3 track-player creation hooks;
+- PCM-helper and live DecodeAudioData-equivalent speed hooks;
+- accelerated native-EOS publication overrides;
+- synthetic scrubber/progress overrides;
+- forced accelerated next-track handoff;
+- the RC31-RC37 CEF/MinHook startup isolation rewrites;
+- delayed Spotify hook staging and hookless CEF browser discovery.
 
-- playback-speed hooks: 10 seconds after the post-loader stage begins;
-- audio/capture hooks: 11 seconds after the post-loader stage begins.
+## What is restored
 
-The post-loader stage itself still begins only after Spotify.dll's audited imports are resolved and the existing 2.5-second loader grace has elapsed. In normal startup this gives Spotify/Chromium roughly 12-14 seconds before any Spotify.dll MinHook detour is enabled.
+RC38 restores the RC14 behavior:
 
-This should make the result much more useful:
+- Spotify 1.3.1.234 native 1-50x speed hook;
+- RC14 Classic Soggfy UI;
+- Skip Downloaded / Skip Ignored;
+- status states already present in that baseline;
+- native Ogg/FLAC capture and complete-listen validation;
+- FFmpeg output presets and post-processing;
+- metadata, artwork, lyrics and Canvas support;
+- telemetry/ad filtering from the RC14 baseline;
+- optional native To Disk troubleshooting UI;
+- the normal single all-in-one Windows x64 release package.
 
-- if the screen stays normal through startup and only fails when the delayed native hooks activate, the culprit is narrowed to that hook family;
-- if it blacks out before those delayed hooks activate, the cause is outside those MinHook detours.
+Spotify 1.3.1.234 is the intended client for this release. Native playback speed fails closed on other Spotify versions rather than attempting an unvalidated player ABI.
 
-RC35's hookless CEF bridge, RC36's corrected CEF discovery, RC29's accelerated capture/publication, RC30's status indicators and RC33's accelerated EOS-to-Next behavior are otherwise retained.
+This is intentionally a clean rollback. Once the 1.3.1.234 baseline is confirmed working again, any later feature can be reintroduced individually instead of carrying the 1.3.3 debugging stack forward.

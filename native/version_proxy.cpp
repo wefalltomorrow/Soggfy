@@ -28,12 +28,6 @@ static HMODULE proxy_module;
 static volatile LONG logged_results;
 static hooks::PendingModule pending_spotify;
 static hooks::InitController connectivity_init;
-static HMODULE loader_ready_module;
-static ULONGLONG loader_ready_since;
-static bool loader_ready_logged;
-static HMODULE native_stage_module;
-static ULONGLONG native_stage_since;
-static bool native_stage_logged;
 
 static void Log(const char* message) {
     history::HistoryLog(message);
@@ -261,102 +255,6 @@ static DWORD MappedImageSize(HMODULE module) {
     return nt->OptionalHeader.SizeOfImage;
 }
 
-static bool ExecutablePointer(void* value) {
-    if (!value) return false;
-    MEMORY_BASIC_INFORMATION memory{};
-    if (!VirtualQuery(value, &memory, sizeof(memory)) ||
-        memory.State != MEM_COMMIT ||
-        (memory.Protect & (PAGE_GUARD | PAGE_NOACCESS)))
-        return false;
-    const DWORD protection = memory.Protect & 0xffu;
-    return protection == PAGE_EXECUTE ||
-           protection == PAGE_EXECUTE_READ ||
-           protection == PAGE_EXECUTE_READWRITE ||
-           protection == PAGE_EXECUTE_WRITECOPY;
-}
-
-static bool ResolvedNormalImport(HMODULE module, DWORD image_size, const char* function_name) {
-    auto* base = reinterpret_cast<std::uint8_t*>(module);
-    const auto imports = hooks::FindImportSlots(base, image_size, nullptr, function_name);
-    if (imports.malformed || !imports.normal) return false;
-
-    void* value = nullptr;
-    // This must be a read-only load. InterlockedCompareExchangePointer is a
-    // read-modify-write instruction even when both exchange/comparand are
-    // null, and Spotify's IAT is normally mapped read-only once snapped.
-    std::memcpy(&value, imports.normal, sizeof(value));
-
-    // Before the Windows loader fixes an x64 IAT entry it still contains the
-    // raw hint/name RVA from the PE file (for example 0x01f7e69c for
-    // GetCommandLineW in Spotify 1.3.3.264). Never install hooks while any of
-    // these loader-critical imports still look unresolved.
-    const auto numeric = reinterpret_cast<std::uintptr_t>(value);
-    if (numeric < image_size) return false;
-    return ExecutablePointer(value);
-}
-
-static bool SpotifyLoaderReady(HMODULE module) {
-    const DWORD image_size = MappedImageSize(module);
-    if (!image_size) return false;
-
-    if (loader_ready_module != module) {
-        loader_ready_module = module;
-        loader_ready_since = 0;
-        loader_ready_logged = false;
-    }
-
-    // These imports are all normal (non-delay) imports in the supported
-    // Spotify x64 build and cover the same IAT region involved in the RC13/
-    // RC22/RC23 startup crash. Requiring executable resolved targets avoids
-    // racing MinHook/IAT work against LdrpSnapModule.
-    static const char* required[] = {
-        "GetCommandLineW",
-        "GetCurrentProcessId",
-        "GetModuleHandleW",
-        "GetProcAddress",
-        "VirtualProtect"
-    };
-    for (const char* function : required) {
-        if (!ResolvedNormalImport(module, image_size, function)) {
-            loader_ready_since = 0;
-            return false;
-        }
-    }
-
-    const ULONGLONG now = GetTickCount64();
-    if (!loader_ready_since) {
-        loader_ready_since = now;
-        return false;
-    }
-
-    // Even after the selected IAT entries are resolved, give the loader a
-    // short quiet period before MinHook suspends/resumes process threads.
-    constexpr ULONGLONG kLoaderGraceMs = 2500;
-    if (now - loader_ready_since < kLoaderGraceMs) return false;
-
-    if (!loader_ready_logged) {
-        loader_ready_logged = true;
-        Log("Spotify.dll normal imports resolved; deferred native hooks released after 2500 ms loader grace");
-    }
-    return true;
-}
-
-static ULONGLONG NativeHookStageAge(HMODULE module) {
-    const ULONGLONG now = GetTickCount64();
-    if (native_stage_module != module) {
-        native_stage_module = module;
-        native_stage_since = now;
-        native_stage_logged = false;
-        return 0;
-    }
-    const ULONGLONG age = now - native_stage_since;
-    if (age >= 10000 && !native_stage_logged) {
-        native_stage_logged = true;
-        Log("Spotify MinHook families released after 10 s post-loader startup grace");
-    }
-    return age;
-}
-
 static bool WriteImportSlot(void** slot, void* value, void** previous) {
     if (!slot) return true;
     if (*slot == value) {
@@ -481,34 +379,16 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
         (void)spotify_notification;
         HMODULE cef;
         if(GetModuleHandleExW(0,L"libcef.dll",&cef)) {
-            // The Classic UI bridge must attach early enough to observe the browser
-            // client, but the optional URL-request filter can wait until Chromium's
-            // compositor and render threads have settled.
+            history::StartCefRequestFilter(cef);
             history::StartMetadataCollector(cef);
-            // RC35 startup-safe mode: no CEF MinHook detours at all. Both the
-            // URL-request filter and optional native menu remain disabled until
-            // they can be reimplemented without process-wide thread suspension.
-            static bool cef_safe_mode_logged=false;
-            if(!cef_safe_mode_logged){
-                cef_safe_mode_logged=true;
-                Log("CEF MinHook features disabled in startup-safe mode; Classic bridge uses post-start discovery");
-            }
+            StartToDiskMenu(cef);
             FreeLibrary(cef);
         }
         HMODULE module;
         if (GetModuleHandleExW(0, L"Spotify.dll", &module)) {
-            if (SpotifyLoaderReady(module)) {
-                const ULONGLONG stage_age=NativeHookStageAge(module);
-                // Connectivity is a direct IAT pointer patch and does not
-                // suspend the process. Keep it early, but keep every Spotify.dll
-                // MinHook detour out of the Chromium/Spotify startup window.
-                StartConnectivityHook(module);
-                if(stage_age>=10000) {
-                    history::StartPlaybackSpeed(module);
-                    history::MaintainPlaybackSpeed(module);
-                }
-                if(stage_age>=11000) StartAudioHistory(module, proxy_module);
-            }
+            StartConnectivityHook(module);
+            history::StartPlaybackSpeed(module);
+            if (i >= 80) StartAudioHistory(module, proxy_module);
             FreeLibrary(module);
         }
         if(i==0) startup::SignalReady();
