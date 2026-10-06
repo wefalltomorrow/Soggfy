@@ -1,26 +1,33 @@
-# Soggfy v3.0.0-rc.33
+# Soggfy v3.0.0-rc.34
 
-RC33 changes course on accelerated transport after comparing RC32 directly with the preserved original Soggfy source.
+RC34 targets the intermittent startup black-screen failure that still reproduced on RC33.
 
-## What original Soggfy actually did
+## What was still racing
 
-Original Soggfy did not contain any code that accelerated Spotify's visible scrubber or elapsed-time display. Its native DecodeAudioData hook simply decoded the full packet and then reduced the amount of PCM returned to Spotify according to the configured playback speed.
+RC31 combined the three initial CEF browser-creation hooks into one queued MinHook apply and delayed the telemetry hook. That removed some startup churn, but the Classic metadata/UI bridge still installed five additional MinHook detours later from inside CEF callbacks:
 
-On the older Spotify client that original Soggfy targeted, reaching decoder EOS naturally caused Spotify to move to the next track. The TypeScript player code only watched for playbackId changes and treated those as track-end events. It did not manually advance after each completed download.
+- client display getter
+- client load getter
+- console callback
+- loading-state callback
+- load-end callback
 
-Original Soggfy also had explicit recovery for Spotify's `playback_stuck` error at very high speeds by resetting the current track.
+Those installs could happen while Chromium was actively creating Spotify's browser/compositor. MinHook temporarily suspends and resumes process threads while enabling a detour, so doing that from inside browser/client callbacks remained a plausible intermittent compositor deadlock/render failure.
 
-## RC33 behavior
+## RC34 change
 
-Current Spotify 1.3.3.264 no longer behaves exactly like that older client: Soggfy can consume the full compressed stream and prove EOS at 50x while Spotify's public transport remains near the beginning and does not move on.
+Those five callback hooks no longer use MinHook at all.
 
-RC33 therefore keeps the original UI behavior but emulates the original end result:
+RC34 patches only the relevant function-pointer field on the concrete CEF C callback object. The original object is preserved, the original callback pointer is retained for forwarding, and no process-wide thread suspension occurs when those callbacks are attached.
 
-- Spotify's scrubber and elapsed-time display are no longer synthetically overridden.
-- Accelerated native EOS remains the authoritative completion proof for capture/download.
-- The moment that validated EOS is reached, Soggfy immediately clicks Spotify's own visible Next control exactly once.
-- If the visible Next control cannot be found, Soggfy falls back to the internal `skipToNext()` API.
-- There is no playbackId or URI gate that can silently suppress the action.
-- Original Soggfy's `playback_stuck` reset handler is restored.
+The initial three audited browser-creation entry points are still enabled together in one queued MinHook apply so Soggfy can observe Spotify's main browser from its creation. After that, callback attachment is slot-only.
 
-RC31's startup-race hardening, RC29's accelerated capture/publication logic and RC30's per-track status indicators remain unchanged.
+New debug lines look like:
+
+`metadata callback display getter patched by object slot; no MinHook suspend`
+
+`metadata callback load getter patched by object slot; no MinHook suspend`
+
+`metadata callback loading patched by object slot; no MinHook suspend`
+
+RC33's original-style accelerated transport behavior, including validated-EOS Next advancement and playback_stuck recovery, remains unchanged.

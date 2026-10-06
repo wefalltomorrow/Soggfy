@@ -63,31 +63,77 @@ static std::wstring WideUtf8(const std::string& value) {
 }
 // CEF's C++ wrapper has private identity fields before the public C structure.
 // Replacing that structure breaks GetClient() round trips (CEF UnwrapDerived).
-// Intercept callback code instead, preserving every object and its references.
-struct CallbackHook {
+//
+// RC27-RC33 still used MinHook for the callback functions below. Those hooks
+// were created/enabled from inside CEF browser creation/getter callbacks, so
+// MinHook could suspend Chromium compositor/UI threads at the worst possible
+// moment. Patch only the function-pointer slot on the concrete CEF C object
+// instead. This preserves object identity and performs no process-wide thread
+// suspension while a browser is being created.
+struct CallbackPatch {
  SRWLOCK lock=SRWLOCK_INIT;
- std::atomic<void*> target{nullptr},original{nullptr};
- std::atomic<bool> enabled{false};
- bool Install(void* address,void* callback,const char* name) {
-  if(!address)return false;
-  if(enabled.load(std::memory_order_acquire))return target.load()==address;
-  if(!TryAcquireSRWLockExclusive(&lock))return false;
-  auto installed=target.load();MH_STATUS status=MH_OK;
-  if(installed&&installed!=address){ReleaseSRWLockExclusive(&lock);return false;}
-  if(!installed){
-   void* trampoline=nullptr;status=MH_CreateHook(address,callback,&trampoline);
-   if(status==MH_OK){original.store(trampoline,std::memory_order_release);target.store(address,std::memory_order_release);}
+ std::atomic<void*> original{nullptr};
+ std::atomic<unsigned> patched{0};
+ bool Install(void** slot,void* callback,const char* name) {
+  if(!slot||!callback)return false;
+  void* current=nullptr;std::memcpy(&current,slot,sizeof(current));
+  if(current==callback)return true;
+  if(!current)return false;
+
+  AcquireSRWLockExclusive(&lock);
+  void* known=original.load(std::memory_order_acquire);
+  if(!known) {
+   original.store(current,std::memory_order_release);
+   known=current;
   }
-  // MinHook suspends other threads. Never hold a callback lock while enabling.
+  if(known!=current) {
+   ReleaseSRWLockExclusive(&lock);
+   char line[192];snprintf(line,sizeof(line),"metadata callback %s has multiple implementations; unsafe slot left untouched",name);
+   HistoryLog(line);
+   return false;
+  }
+
+  MEMORY_BASIC_INFORMATION memory{};
+  if(!VirtualQuery(slot,&memory,sizeof(memory))) {
+   ReleaseSRWLockExclusive(&lock);
+   HistoryLog("metadata callback slot query failed");
+   return false;
+  }
+  DWORD old_protect=0;
+  const DWORD protection=memory.Protect&0xffu;
+  const bool writable=protection==PAGE_READWRITE||protection==PAGE_WRITECOPY||
+                      protection==PAGE_EXECUTE_READWRITE||protection==PAGE_EXECUTE_WRITECOPY;
+  if(!writable&&!VirtualProtect(slot,sizeof(void*),PAGE_READWRITE,&old_protect)) {
+   ReleaseSRWLockExclusive(&lock);
+   char line[192];snprintf(line,sizeof(line),"metadata callback %s slot protection change failed",name);HistoryLog(line);
+   return false;
+  }
+
+  void* previous=InterlockedExchangePointer(reinterpret_cast<void* volatile*>(slot),callback);
+  const bool ok=previous==current||previous==callback;
+  if(!ok) {
+   // Another writer won the race. Preserve its value instead of clobbering it.
+   InterlockedExchangePointer(reinterpret_cast<void* volatile*>(slot),previous);
+  }
+  if(!writable) {
+   DWORD ignored=0;VirtualProtect(slot,sizeof(void*),old_protect,&ignored);
+  }
+  if(!ok) {
+   ReleaseSRWLockExclusive(&lock);
+   char line[192];snprintf(line,sizeof(line),"metadata callback %s slot changed concurrently; patch skipped",name);HistoryLog(line);
+   return false;
+  }
+  const unsigned added=previous==callback?0u:1u;
+  const unsigned count=patched.fetch_add(added,std::memory_order_relaxed)+added;
   ReleaseSRWLockExclusive(&lock);
-  if(status==MH_OK)status=MH_EnableHook(address);
-  if(status==MH_OK||status==MH_ERROR_ENABLED){enabled.store(true,std::memory_order_release);return true;}
-  char line[180];snprintf(line,sizeof(line),"metadata callback %s unavailable: %s",name,MH_StatusToString(status));HistoryLog(line);
-  return false;
+  if(count==1) {
+   char line[192];snprintf(line,sizeof(line),"metadata callback %s patched by object slot; no MinHook suspend",name);HistoryLog(line);
+  }
+  return true;
  }
  template<class F> F Original()const{return reinterpret_cast<F>(original.load(std::memory_order_acquire));}
 };
-static CallbackHook display_getter,load_getter,console_callback,loading_callback,load_end_callback;
+static CallbackPatch display_getter,load_getter,console_callback,loading_callback,load_end_callback;
 struct Task {Base base;void(*execute)(Task*);};
 struct PollTask {Task task;std::atomic<unsigned> refs{1};};
 static Frame* polling_frame=nullptr;static SRWLOCK frame_lock=SRWLOCK_INIT;
@@ -456,21 +502,21 @@ static void LoadEnd(Load* self,Browser* b,Frame* f,int status){
 }
 static Display* GetDisplay(Client* self){
  auto callback=metadata_callbacks.Enter();auto result=display_getter.Original<Display*(*)(Client*)>()(self);
- if(result&&result->base.size==sizeof(Display))console_callback.Install(result->methods[6],reinterpret_cast<void*>(Console),"console");
+ if(result&&result->base.size==sizeof(Display))console_callback.Install(&result->methods[6],reinterpret_cast<void*>(Console),"console");
  return result;
 }
 static Load* GetLoad(Client* self){
  auto callback=metadata_callbacks.Enter();auto result=load_getter.Original<Load*(*)(Client*)>()(self);
  if(result&&result->base.size==sizeof(Load)){
-  loading_callback.Install(result->methods[0],reinterpret_cast<void*>(Loading),"loading");
-  load_end_callback.Install(result->methods[2],reinterpret_cast<void*>(LoadEnd),"load end");
+  loading_callback.Install(&result->methods[0],reinterpret_cast<void*>(Loading),"loading");
+  load_end_callback.Install(&result->methods[2],reinterpret_cast<void*>(LoadEnd),"load end");
  }
  return result;
 }
 static Client* ObserveClient(Client* client){
  if(!client||client->base.size!=sizeof(Client)){HistoryLog("metadata client ABI unsupported; collector not attached");return client;}
- const bool display=display_getter.Install(client->methods[4],reinterpret_cast<void*>(GetDisplay),"display getter");
- const bool load=load_getter.Install(client->methods[14],reinterpret_cast<void*>(GetLoad),"load getter");
+ const bool display=display_getter.Install(&client->methods[4],reinterpret_cast<void*>(GetDisplay),"display getter");
+ const bool load=load_getter.Install(&client->methods[14],reinterpret_cast<void*>(GetLoad),"load getter");
  HistoryLog(display&&load?"metadata browser callbacks attached; original client preserved":"metadata browser callbacks unavailable; original client preserved");
  return client;
 }
