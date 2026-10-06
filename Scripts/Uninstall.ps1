@@ -44,4 +44,4 @@ if ($RemoveSettings) {
     }
 }
 
-Write-Host 'Soggfy uninstalled.'
+Write-Host 'Soggfy uninstalled. SpotX is managed separately and was not removed.'
