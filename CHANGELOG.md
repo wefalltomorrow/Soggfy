@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.34
+
+- Reworked the Classic CEF callback bridge to remove five callback-time MinHook installs that could suspend Chromium UI/compositor threads while Spotify's browser was being created.
+- CEF client, display and load callback interception now patches only the function-pointer slot on the concrete CEF C object, preserving object identity without process-wide thread suspension.
+- Added race-safe slot replacement and restoration handling plus diagnostics identifying each direct callback patch.
+- Kept the three initial audited CEF browser-creation hooks queued into a single MinHook apply; no additional MinHook enable occurs from inside browser/client callbacks.
+- This specifically targets the intermittent full-primary-monitor black rendered surface that survived RC31-RC33 startup delays.
+- RC33 original-style accelerated transport behavior, RC31 startup staging, RC29 capture/publication and RC30 status indicators are otherwise unchanged.
+
 ## 3.0.0-rc.33
 
 - Rechecked the preserved original Soggfy implementation and restored its transport model: playback speed thins decoded PCM, while Spotify's own scrubber/timeline is left alone.
