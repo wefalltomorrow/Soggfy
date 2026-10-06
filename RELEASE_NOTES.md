@@ -1,49 +1,27 @@
-# Soggfy v3.0.0-rc.28
+# Soggfy v3.0.0-rc.29
 
-RC28 fixes the playback-speed target again, this time by returning to the exact function old Soggfy actually modified: the decoder dispatcher that owns both the compressed input and decoded PCM output count.
+RC29 fixes the follow-on bug exposed once RC28 finally made playback speed work: complete accelerated captures were reaching Ogg EOS, but Soggfy still refused to publish them because Spotify's public media-session timeline does not advance at the same rate as the decoder-thinning speed hack.
 
-## What the RC27 log proved
+## What the RC28 test proved
 
-RC27/RC26 successfully enabled the experimental PCM filter-chain hook at `Spotify.dll+0x00463954`, but the live log contains no `speed_pcm_hook` callbacks at all while Ogg music is actively decoding and playing.
+The new decoder hook is definitely live. The log shows, for example:
 
-The configured rate changes from 26x to 14x, `speed_effective` remains 1x, and native Ogg capture continues normally. That proves the RC26 target is a real Spotify PCM helper but is not on the active music playback path used by this client.
+- 3x: 2048 decoded samples -> 682 returned samples
+- 17x: complete Ogg streams reaching EOS in roughly 1-2 wall-clock seconds
+- 50x: complete long tracks reaching EOS in under 10 wall-clock seconds
 
-## Re-analysis of old Soggfy's real speed method
+So playback acceleration itself is now working correctly.
 
-The original x86 Soggfy hooked `DecodeAudioData`. After Spotify decoded a compressed packet, it deliberately changed the decoded-output span so the caller saw only:
+The download failure happened afterward. Spotify's SMTC timeline periodically refreshes from a much slower raw position. At 17x a track could go from an extrapolated position around 20 seconds back to around 5 seconds even though playback was progressing normally. The complete compressed stream was already in Soggfy's ready queue, but the listener validator interpreted that public-timeline refresh as a seek/rewind and invalidated the listen before publication.
 
-`decoded_samples / playback_speed`
+## RC29 behavior
 
-samples, while Spotify had still consumed the full compressed packet.
+- Keeps RC28's working live `DecodeAudioData`-equivalent speed backend unchanged.
+- Keeps normal 1x complete-listen validation unchanged.
+- During accelerated playback only, a unique complete Ogg/FLAC stream matching the current track's duration can now prove natural completion.
+- The stream must have reached EOS after the current listen began and must still satisfy the existing duration/start-window association rules.
+- Once that exact completed stream is present, Soggfy no longer lets a stale SMTC position refresh turn it into a false `position_rewind` / `clock_discontinuity` failure.
+- The existing publication queue, metadata tagging, duplicate checks, FFmpeg conversion and output path handling are unchanged.
+- Added `accelerated_complete` diagnostics and `completion=capture_eos` to successful accelerated listen-completion records.
 
-RC28 re-identified the x64 equivalent in the official Spotify 1.3.3.264 DLL:
-
-- decoder dispatcher: `Spotify.dll+0x00d5a240`
-- decoder vtable: `Spotify.dll+0x01ae5b28`
-- dispatcher vtable slot: `Spotify.dll+0x01ae5b30`
-- decoder constructor: `Spotify.dll+0x00d59a40`
-
-The dispatcher is directly connected to the live Ogg path: at offset `+0x180` it calls the Ogg decoder routine that in turn calls the same Ogg page parser already observed by Soggfy's working native capture hook.
-
-Its x64 ABI is also visible directly in the function:
-
-- R8 = PCM float destination
-- R9 = in/out PCM sample-count pointer
-- stack arg 5 = compressed input pointer
-- stack arg 6 = in/out compressed-byte count
-- stack arg 7 = decode flags
-
-At the end of the function Spotify writes the produced PCM sample count back through R9.
-
-## RC28 behavior
-
-- Removes Spotify 1.3.3.264 playback speed from the unused RC26 PCM filter helper.
-- Hooks the exact live decoder dispatcher instead.
-- Lets Spotify decode and consume the complete compressed packet first.
-- Then reduces only the returned PCM sample count by the configured speed, matching old Soggfy's actual strategy.
-- Keeps the compressed Ogg/FLAC capture path untouched.
-- Validates the exact function prologue, live Ogg-decoder call, produced-sample store, constructor vtable assignment, vtable base and dispatcher slot before enabling the hook.
-- Logs `speed_decode_hook` with PCM capacity, produced/kept samples, compressed input counts, requested speed and whether thinning actually occurred.
-- `speed_effective` changes from 1x only after a real live decoder call has actually been thinned.
-
-RC27's host-independent BlockTheSpot-style ad filtering remains unchanged; the RC27 live test confirmed ad blocking is working.
+One separate case remains intentionally strict: if capture begins from an already-buffered/mid-track Spotify stream and the native Ogg sequence has a real page gap, Soggfy still rejects that incomplete stream instead of writing a corrupt file.
