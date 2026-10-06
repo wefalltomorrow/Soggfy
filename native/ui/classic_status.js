@@ -120,14 +120,20 @@ function statusCard(info){
   n.__sgfStatus=info.status;return n;
 }
 function mountStatusIndicator(row,node){
+  // Match original Sprinkles/Soggfy placement first: the indicator belongs in
+  // the row's final duration/actions cell, not in an outer role=row wrapper.
+  // canonicalRow() above resolves the wrapper difference in current Spotify.
+  const target=row.lastElementChild;
+  if(target&&target!==row){
+    target.prepend(node);
+    return;
+  }
   const more=row.querySelector('[data-testid="more-button"],.main-trackList-rowMoreButton');
   if(more?.parentElement){
     more.insertAdjacentElement('beforebegin',node);
     return;
   }
-  const cells=[...row.querySelectorAll(':scope > [role="gridcell"],:scope > div')];
-  const target=cells.at(-1)||row.lastElementChild||row;
-  target.prepend(node);
+  row.appendChild(node);
 }
 sgf.renderVisibleStatuses=()=>{
   let rendered=0;
