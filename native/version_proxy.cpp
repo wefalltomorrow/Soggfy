@@ -31,9 +31,6 @@ static hooks::InitController connectivity_init;
 static HMODULE loader_ready_module;
 static ULONGLONG loader_ready_since;
 static bool loader_ready_logged;
-static HMODULE cef_seen_module;
-static ULONGLONG cef_seen_since;
-static bool cef_telemetry_logged;
 static HMODULE native_stage_module;
 static ULONGLONG native_stage_since;
 static bool native_stage_logged;
@@ -340,24 +337,6 @@ static bool SpotifyLoaderReady(HMODULE module) {
     if (!loader_ready_logged) {
         loader_ready_logged = true;
         Log("Spotify.dll normal imports resolved; deferred native hooks released after 2500 ms loader grace");
-    }
-    return true;
-}
-
-static bool CefTelemetryReady(HMODULE cef) {
-    if (!cef) return false;
-    const ULONGLONG now = GetTickCount64();
-    if (cef_seen_module != cef) {
-        cef_seen_module = cef;
-        cef_seen_since = now;
-        cef_telemetry_logged = false;
-        return false;
-    }
-    constexpr ULONGLONG kCefTelemetryGraceMs = 5000;
-    if (now - cef_seen_since < kCefTelemetryGraceMs) return false;
-    if (!cef_telemetry_logged) {
-        cef_telemetry_logged = true;
-        Log("CEF telemetry hook released after 5000 ms startup grace");
     }
     return true;
 }
