@@ -371,9 +371,9 @@ static ULONGLONG NativeHookStageAge(HMODULE module) {
         return 0;
     }
     const ULONGLONG age = now - native_stage_since;
-    if (age >= 500 && !native_stage_logged) {
+    if (age >= 10000 && !native_stage_logged) {
         native_stage_logged = true;
-        Log("Spotify native hook families released in staggered startup phases");
+        Log("Spotify MinHook families released after 10 s post-loader startup grace");
     }
     return age;
 }
@@ -520,12 +520,16 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
         if (GetModuleHandleExW(0, L"Spotify.dll", &module)) {
             if (SpotifyLoaderReady(module)) {
                 const ULONGLONG stage_age=NativeHookStageAge(module);
+                // Connectivity uses a direct IAT slot patch and does not suspend
+                // process threads, so it can remain early. MinHook-based Spotify
+                // detours are held until Chromium/Spotify startup has been stable
+                // for a full additional 10+ seconds.
                 StartConnectivityHook(module);
-                if(stage_age>=250) {
+                if(stage_age>=10000) {
                     history::StartPlaybackSpeed(module);
                     history::MaintainPlaybackSpeed(module);
                 }
-                if(stage_age>=500) StartAudioHistory(module, proxy_module);
+                if(stage_age>=11000) StartAudioHistory(module, proxy_module);
             }
             FreeLibrary(module);
         }
