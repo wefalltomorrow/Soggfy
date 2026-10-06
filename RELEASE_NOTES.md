@@ -1,36 +1,27 @@
-# Soggfy v3.0.0-rc.36
+# Soggfy v3.0.0-rc.37
 
-RC36 fixes a concrete crash introduced by RC35's new hookless CEF browser-discovery path.
+RC37 is the next black-screen isolation build on top of RC36's concrete crash fix.
 
-## Crash-dump result
+## Why this build exists
 
-The supplied dump is a 64-bit Spotify 1.3.3.264 crash with:
+The RC35 dump proved the delayed crash itself was Soggfy's CEF discovery bug: browser-host slot 8 (`has_view()`) was accidentally called as `get_client()`, producing the bogus pointer `0x1`. RC36 fixes that correctly with slot 9 plus ABI/function-pointer validation.
 
-- exception: `0xC0000005` access violation;
-- crashing thread: `CrBrowserMain`;
-- faulting module: Soggfy's `VERSION.dll`;
-- faulting offset: `+0x6D3E2`;
-- invalid read address: `0x1`.
+That crash happened after the monitor had already gone black. RC35/RC36 also have no CEF MinHook detours left, which moves the black-screen investigation to the remaining MinHook activity in Spotify.dll.
 
-Disassembly at the fault shows RC35 called a CEF browser-host method, received `1`, then treated that value as a pointer and dereferenced it.
+## RC37 startup change
 
-CEF 151's browser-host layout places:
+RC37 leaves the direct connectivity IAT patch early, because that operation only swaps an import pointer and does not suspend all process threads.
 
-- slot 8: `has_view()` -> integer;
-- slot 9: `get_client()` -> client pointer.
+The two MinHook families are now kept well away from startup:
 
-RC35 accidentally called slot 8. A normal true return value became the bogus pointer `0x1`.
+- playback-speed hooks: 10 seconds after the post-loader stage begins;
+- audio/capture hooks: 11 seconds after the post-loader stage begins.
 
-## RC36 fix
+The post-loader stage itself still begins only after Spotify.dll's audited imports are resolved and the existing 2.5-second loader grace has elapsed. In normal startup this gives Spotify/Chromium roughly 12-14 seconds before any Spotify.dll MinHook detour is enabled.
 
-RC36:
+This should make the result much more useful:
 
-- calls the correct browser-host `get_client` slot (9);
-- verifies the CEF object is large enough to contain each method before reading the slot;
-- verifies each function pointer points to executable memory before calling it;
-- verifies the returned client ABI before attaching the console bridge;
-- keeps RC35's post-start, hookless CEF discovery model.
+- if the screen stays normal through startup and only fails when the delayed native hooks activate, the culprit is narrowed to that hook family;
+- if it blacks out before those delayed hooks activate, the cause is outside those MinHook detours.
 
-No CEF MinHook detours are reintroduced. Telemetry request interception and the native To Disk menu remain disabled in this startup-safe branch while the black-screen issue is being isolated.
-
-The accelerated-download and end-of-track behavior from RC33 remains unchanged.
+RC35's hookless CEF bridge, RC36's corrected CEF discovery, RC29's accelerated capture/publication, RC30's status indicators and RC33's accelerated EOS-to-Next behavior are otherwise retained.

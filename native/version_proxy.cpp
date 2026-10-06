@@ -31,9 +31,6 @@ static hooks::InitController connectivity_init;
 static HMODULE loader_ready_module;
 static ULONGLONG loader_ready_since;
 static bool loader_ready_logged;
-static HMODULE cef_seen_module;
-static ULONGLONG cef_seen_since;
-static bool cef_telemetry_logged;
 static HMODULE native_stage_module;
 static ULONGLONG native_stage_since;
 static bool native_stage_logged;
@@ -344,24 +341,6 @@ static bool SpotifyLoaderReady(HMODULE module) {
     return true;
 }
 
-static bool CefTelemetryReady(HMODULE cef) {
-    if (!cef) return false;
-    const ULONGLONG now = GetTickCount64();
-    if (cef_seen_module != cef) {
-        cef_seen_module = cef;
-        cef_seen_since = now;
-        cef_telemetry_logged = false;
-        return false;
-    }
-    constexpr ULONGLONG kCefTelemetryGraceMs = 5000;
-    if (now - cef_seen_since < kCefTelemetryGraceMs) return false;
-    if (!cef_telemetry_logged) {
-        cef_telemetry_logged = true;
-        Log("CEF telemetry hook released after 5000 ms startup grace");
-    }
-    return true;
-}
-
 static ULONGLONG NativeHookStageAge(HMODULE module) {
     const ULONGLONG now = GetTickCount64();
     if (native_stage_module != module) {
@@ -371,9 +350,9 @@ static ULONGLONG NativeHookStageAge(HMODULE module) {
         return 0;
     }
     const ULONGLONG age = now - native_stage_since;
-    if (age >= 500 && !native_stage_logged) {
+    if (age >= 10000 && !native_stage_logged) {
         native_stage_logged = true;
-        Log("Spotify native hook families released in staggered startup phases");
+        Log("Spotify MinHook families released after 10 s post-loader startup grace");
     }
     return age;
 }
@@ -520,12 +499,15 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
         if (GetModuleHandleExW(0, L"Spotify.dll", &module)) {
             if (SpotifyLoaderReady(module)) {
                 const ULONGLONG stage_age=NativeHookStageAge(module);
+                // Connectivity is a direct IAT pointer patch and does not
+                // suspend the process. Keep it early, but keep every Spotify.dll
+                // MinHook detour out of the Chromium/Spotify startup window.
                 StartConnectivityHook(module);
-                if(stage_age>=250) {
+                if(stage_age>=10000) {
                     history::StartPlaybackSpeed(module);
                     history::MaintainPlaybackSpeed(module);
                 }
-                if(stage_age>=500) StartAudioHistory(module, proxy_module);
+                if(stage_age>=11000) StartAudioHistory(module, proxy_module);
             }
             FreeLibrary(module);
         }
