@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0-rc.33
+
+- Rechecked the preserved original Soggfy implementation and restored its transport model: playback speed thins decoded PCM, while Spotify's own scrubber/timeline is left alone.
+- Removed the synthetic accelerated scrubber/elapsed-time override added in RC31/RC32.
+- Current Spotify does not reliably auto-advance when the accelerated decoder reaches EOS, unlike the older Spotify build original Soggfy targeted.
+- When the native capture path proves accelerated EOS, Soggfy now immediately presses Spotify's real Next control exactly once.
+- Falls back to the internal `skipToNext()` API only if the visible Next control is unavailable.
+- Removed the fragile playbackId/URI gating that could prevent the completion action from running.
+- Restored original Soggfy's `playback_stuck` recovery behavior for very high playback speeds.
+- Kept RC31 startup hardening, RC29 accelerated capture/publication and RC30 track-status indicators unchanged.
+
 ## 3.0.0-rc.32
 
 - Fixed RC31's accelerated scrubber override using the wrong CSS custom-property format.

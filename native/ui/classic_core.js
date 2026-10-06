@@ -142,189 +142,34 @@ sgf.currentState = () => {
   try{return sgf.player?.getState?.()||window.Spicetify?.Player?.data||null;}catch{return null;}
 };
 
-sgf.acceleratedProgress = sgf.acceleratedProgress || {
-  id:'', uri:'', anchorWall:0, anchorPos:0, duration:0, speed:1, paused:false,
-  overriding:false, timer:0, diagId:''
-};
-
-sgf.playbackDurationMs = state => {
-  const item=state?.item||{};
-  const candidates=[
-    item?.duration?.milliseconds,
-    item?.durationMs,
-    item?.metadata?.duration,
-    state?.duration
-  ];
-  for(const value of candidates){
-    const n=Number(value);
-    if(Number.isFinite(n)&&n>0)return n;
-  }
-  return 0;
-};
-
-sgf.rawPlaybackPositionMs = state => {
-  const base=Number(state?.positionAsOfTimestamp ?? state?.position ?? 0);
-  if(!Number.isFinite(base))return 0;
-  const stamp=Number(state?.timestamp);
-  const nativeSpeed=Number(state?.speed);
-  const elapsed=Number.isFinite(stamp)?Math.max(0,Date.now()-stamp):0;
-  return Math.max(0,base+elapsed*(Number.isFinite(nativeSpeed)&&nativeSpeed>0?nativeSpeed:1));
-};
-
-sgf.virtualPlaybackPositionMs = now => {
-  const v=sgf.acceleratedProgress;
-  if(!v.id)return 0;
-  const elapsed=v.paused?0:Math.max(0,(now??Date.now())-v.anchorWall);
-  const value=v.anchorPos+elapsed*Math.max(1,Number(v.speed)||1);
-  return v.duration>0?Math.min(v.duration,value):value;
-};
-
-sgf.reanchorAcceleratedProgress = (state=sgf.currentState(),force=false) => {
-  const v=sgf.acceleratedProgress;
-  const id=String(state?.playbackId||state?.item?.uri||'');
-  const uri=String(state?.item?.uri||'');
-  if(!id)return v;
-  const duration=sgf.playbackDurationMs(state);
-  const paused=state?.isPaused===true||state?.paused===true||state?.is_paused===true;
-  if(force||v.id!==id){
-    v.id=id;v.uri=uri;v.anchorWall=Date.now();v.anchorPos=sgf.rawPlaybackPositionMs(state);
-    v.duration=duration;v.speed=Math.max(1,Number(sgf.state.playbackSpeed)||1);v.paused=paused;
-  }else{
-    if(duration>0)v.duration=duration;
-    if(v.paused!==paused){
-      v.anchorPos=sgf.virtualPlaybackPositionMs(Date.now());
-      v.anchorWall=Date.now();
-      v.paused=paused;
-    }
-    const configured=Math.max(1,Number(sgf.state.playbackSpeed)||1);
-    if(Math.abs(configured-v.speed)>0.0001){
-      v.anchorPos=sgf.virtualPlaybackPositionMs(Date.now());
-      v.anchorWall=Date.now();
-      v.speed=configured;
-    }
-  }
-  return v;
-};
-
-sgf.setAcceleratedProgressSpeed = speed => {
-  const v=sgf.reanchorAcceleratedProgress();
-  if(v.id){
-    v.anchorPos=sgf.virtualPlaybackPositionMs(Date.now());
-    v.anchorWall=Date.now();
-    v.speed=Math.max(1,Number(speed)||1);
-  }
-};
-
-sgf.formatPlaybackTime = ms => {
-  let seconds=Math.max(0,Math.floor((Number(ms)||0)/1000));
-  const hours=Math.floor(seconds/3600);seconds-=hours*3600;
-  const minutes=Math.floor(seconds/60),secs=seconds%60;
-  return hours?hours+':'+String(minutes).padStart(2,'0')+':'+String(secs).padStart(2,'0')
-    :minutes+':'+String(secs).padStart(2,'0');
-};
-
-sgf.renderAcceleratedProgress = () => {
-  const speed=Math.max(1,Number(sgf.state.playbackSpeed)||1);
-  const root=document.querySelector('[data-testid="playback-progressbar"]');
-  const progress=root?.querySelector?.('[data-testid="progress-bar"]')||null;
-  const position=document.querySelector('[data-testid="playback-position"]');
-  if(speed<=1||!sgf.state.speedSupported||!sgf.player){
-    if(sgf.acceleratedProgress.overriding){
-      root?.style?.removeProperty('--progress-bar-transform');
-      progress?.style?.removeProperty('--progress-bar-transform');
-      sgf.acceleratedProgress.overriding=false;
-    }
-    return;
-  }
-  const state=sgf.currentState();
-  const v=sgf.reanchorAcceleratedProgress(state);
-  if(!v.id||!(v.duration>0))return;
-  const virtual=sgf.virtualPlaybackPositionMs(Date.now());
-  const pct=Math.max(0,Math.min(100,virtual/v.duration*100));
-  if(position)position.textContent=sgf.formatPlaybackTime(virtual);
-
-  // Current Spotify expresses progress as translateX(-100%..0%), not a bare
-  // numeric percentage. RC31 wrote "12.5" into this variable, which CSS
-  // ignored, leaving the native 1x scrubber untouched.
-  const transform='translateX('+(pct-100).toFixed(4)+'%)';
-  root?.style?.setProperty('--progress-bar-transform',transform,'important');
-  progress?.style?.setProperty('--progress-bar-transform',transform,'important');
-
-  if(v.diagId!==v.id){
-    v.diagId=v.id;
-    console.info('FLOGGFY_STATUS:accelerated ui root='+Number(!!root)+' bar='+Number(!!progress)+
-      ' time='+Number(!!position)+' dur='+Math.round(v.duration));
-  }
-  v.overriding=true;
-};
-
-sgf.startAcceleratedProgressUi = () => {
-  const v=sgf.acceleratedProgress;
-  if(v.timer)return;
-  v.timer=setInterval(sgf.renderAcceleratedProgress,50);
-  document.addEventListener('pointerup',event=>{
-    if(!event.target?.closest?.('[data-testid="playback-progressbar"]'))return;
-    setTimeout(()=>sgf.reanchorAcceleratedProgress(sgf.currentState(),true),120);
-  },true);
-};
-
-sgf.observePlaybackState = state => {
-  sgf.reanchorAcceleratedProgress(state);
-};
-
 let lastAcceleratedAdvanceToken='';
-window.__soggfyAcceleratedComplete = token => {
+window.__soggfyAcceleratedComplete = async token => {
   token=String(token||'');
   if(!token||token===lastAcceleratedAdvanceToken)return;
   lastAcceleratedAdvanceToken=token;
-  const before=sgf.currentState();
-  const uri=String(before?.item?.uri||'');
+
+  // Original Soggfy did not synthesize a 50x transport clock in the UI. It
+  // thinned decoded PCM and relied on Spotify to move when the decoder reached
+  // the end. Current Spotify no longer advances reliably from that condition,
+  // so emulate the old end-of-track result by pressing Spotify's own Next
+  // control exactly once when native capture proves EOS.
   console.info('FLOGGFY_STATUS:accelerated next queued');
-  setTimeout(async()=>{
-    const currentUri=()=>String(sgf.currentState()?.item?.uri||'');
-    try{
-      if(!uri){
-        console.info('FLOGGFY_STATUS:accelerated next skipped no_uri');
-        return;
-      }
-      if(currentUri()!==uri){
-        console.info('FLOGGFY_STATUS:accelerated next skipped uri_changed');
-        return;
-      }
-
-      let attempted=false;
-      if(typeof sgf.player?.skipToNext==='function'){
-        attempted=true;
-        console.info('FLOGGFY_STATUS:accelerated next api');
-        try{await sgf.player.skipToNext();}catch{}
-        await new Promise(resolve=>setTimeout(resolve,250));
-        if(currentUri()!==uri){
-          sgf.acceleratedProgress.id='';
-          console.info('FLOGGFY_STATUS:accelerated next advanced api');
-          return;
-        }
-      }
-
-      const button=document.querySelector('[data-testid="control-button-skip-forward"]');
-      if(button){
-        attempted=true;
-        console.info('FLOGGFY_STATUS:accelerated next click');
-        button.click();
-        await new Promise(resolve=>setTimeout(resolve,250));
-        if(currentUri()!==uri){
-          sgf.acceleratedProgress.id='';
-          console.info('FLOGGFY_STATUS:accelerated next advanced click');
-          return;
-        }
-      }
-
-      console.info(attempted
-        ?'FLOGGFY_STATUS:accelerated next failed still_same'
-        :'FLOGGFY_STATUS:accelerated next failed no_control');
-    }catch(error){
-      console.info('FLOGGFY_STATUS:accelerated next failed exception');
+  try{
+    const button=document.querySelector('[data-testid="control-button-skip-forward"]');
+    if(button&&!button.disabled){
+      console.info('FLOGGFY_STATUS:accelerated next click');
+      button.click();
+      return;
     }
-  },60);
+    if(typeof sgf.player?.skipToNext==='function'){
+      console.info('FLOGGFY_STATUS:accelerated next api');
+      await sgf.player.skipToNext();
+      return;
+    }
+    console.info('FLOGGFY_STATUS:accelerated next failed no_control');
+  }catch{
+    console.info('FLOGGFY_STATUS:accelerated next failed exception');
+  }
 };
 
 sgf.resetCurrentTrack = async preserve => {
@@ -347,7 +192,6 @@ sgf.resetCurrentTrack = async preserve => {
 
 sgf.setPlaybackSpeed = async speed => {
   speed=Math.max(1,Math.min(50,Number(speed)||1));
-  sgf.setAcceleratedProgressSpeed?.(speed);
   sgf.state.playbackSpeed=speed;
   sgf.send('playbackSpeed',String(speed));
   if(!sgf.state.speedSupported){
@@ -438,8 +282,20 @@ sgf.initPlayer = async () => {
   sgf.platform=await sgf.getPlatform();
   if(!sgf.platform)return;
   try{sgf.player=sgf.platform.getPlayerAPI();}catch{}
-  sgf.observePlaybackState?.(sgf.currentState());
-  sgf.startAcceleratedProgressUi?.();
+  try{
+    const events=sgf.player?.getEvents?.();
+    if(events?._client?.getError&&!sgf._stuckRecoveryInstalled){
+      sgf._stuckRecoveryInstalled=true;
+      events._client.getError({},err=>{
+        try{
+          if(err?.message==='playback_stuck'&&err?.data?.playback_id===sgf.currentState()?.playbackId){
+            console.info('FLOGGFY_STATUS:playback_stuck reset');
+            sgf.resetCurrentTrack(false);
+          }
+        }catch{}
+      });
+    }
+  }catch{}
   try{
     const settings=sgf.platform.getSettingsAPI?.();
     settings?.quality?.streamingQuality?.setValue?.(4);
