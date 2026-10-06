@@ -110,18 +110,21 @@ struct CallbackPatch {
   }
 
   void* previous=InterlockedExchangePointer(reinterpret_cast<void* volatile*>(slot),callback);
-  if(!writable) {
-   DWORD ignored=0;VirtualProtect(slot,sizeof(void*),old_protect,&ignored);
-  }
   const bool ok=previous==current||previous==callback;
   if(!ok) {
    // Another writer won the race. Preserve its value instead of clobbering it.
-   if(writable)InterlockedExchangePointer(reinterpret_cast<void* volatile*>(slot),previous);
+   InterlockedExchangePointer(reinterpret_cast<void* volatile*>(slot),previous);
+  }
+  if(!writable) {
+   DWORD ignored=0;VirtualProtect(slot,sizeof(void*),old_protect,&ignored);
+  }
+  if(!ok) {
    ReleaseSRWLockExclusive(&lock);
    char line[192];snprintf(line,sizeof(line),"metadata callback %s slot changed concurrently; patch skipped",name);HistoryLog(line);
    return false;
   }
-  const unsigned count=patched.fetch_add(previous==callback?0u:1u,std::memory_order_relaxed)+(previous==callback?0u:1u);
+  const unsigned added=previous==callback?0u:1u;
+  const unsigned count=patched.fetch_add(added,std::memory_order_relaxed)+added;
   ReleaseSRWLockExclusive(&lock);
   if(count==1) {
    char line[192];snprintf(line,sizeof(line),"metadata callback %s patched by object slot; no MinHook suspend",name);HistoryLog(line);
