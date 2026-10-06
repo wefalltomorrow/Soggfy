@@ -1,31 +1,32 @@
-# Soggfy v3.0.0-rc.35
+# Soggfy v3.0.0-rc.36
 
-RC35 is a startup-stability isolation build for the intermittent full-primary-monitor black screen that still reproduced on RC34.
+RC36 fixes the crash introduced by RC35 and pushes the remaining invasive Spotify.dll hooks well past application startup.
 
-## CEF bridge redesign
+## RC35 crash root cause
 
-RC34 removed the five callback-time MinHook installs, but three initial CEF browser-creation entry hooks still remained. The CEF URL-request filter was also still a MinHook detour.
+The RC35 crash dump is definitive:
 
-RC35 removes those remaining CEF MinHook operations completely.
+- Exception: `0xC0000005` access violation.
+- Faulting module: Soggfy `VERSION.dll`.
+- Fault offset: `VERSION.dll+0x6D3E2`.
+- Faulting access: read from address `0x1`.
 
-Instead of intercepting browser creation, the Classic bridge now:
+The faulting instruction was the CEF client-size check. RC35's new hookless browser discovery obtained the browser host and then called browser-host method slot 8 as though it were `get_client`.
 
-1. Initializes only lightweight state when `libcef.dll` appears.
-2. Waits 8 seconds so Spotify/Chromium can finish creating its compositor and main browser.
-3. Posts a task onto CEF's UI thread.
-4. Discovers the already-created Spotify browser using `cef_browser_host_get_browser_by_identifier`.
-5. Gets the browser's client/display handler and patches only the concrete console callback pointer.
-6. Gets the existing main frame and injects the normal Soggfy metadata/Classic UI scripts directly.
+On CEF 151.3.18, browser-host slot 8 is actually `has_view()`; `get_client()` is slot 9. A normal windowed Spotify browser returned `1` from `has_view()`, and RC35 then treated that integer as a client pointer.
 
-There is no MinHook enable/apply anywhere in this CEF bridge path.
+RC36 uses the correct slot 9 and validates that the browser-host object exposes the required prefix before calling it.
 
-## Startup-safe feature tradeoff
+## Black-screen isolation
 
-To make this test decisive, RC35 also does not install:
+The black screen occurred before RC35's delayed browser-discovery crash, so the crash itself does not explain the initial display failure.
 
-- the CEF URL-request/telemetry MinHook;
-- the optional native To Disk menu MinHooks.
+RC35 already removed every CEF MinHook detour. RC36 therefore targets the remaining startup-time MinHook activity in Spotify.dll:
 
-The Block Telemetry preference is still saved and shown, but native CEF request blocking is temporarily inactive in this build. Classic UI, downloads, metadata, capture, conversion, playback speed, status indicators and RC33's accelerated-end Next behavior remain present.
+- connectivity repair remains early because it is a direct IAT pointer patch;
+- playback-speed MinHook installation is delayed until 10 seconds after the post-loader stage begins;
+- audio/capture MinHook installation is delayed until 11 seconds after that stage begins.
 
-If RC35 still black-screens, the remaining likely source is no longer the CEF integration and the next isolation target is the Spotify.dll MinHook family itself.
+Combined with the existing 2.5-second loader grace, Spotify and Chromium should have roughly 12-14 seconds to finish normal startup before any Spotify.dll MinHook detour is enabled.
+
+RC35's hookless CEF bridge and RC33's validated accelerated-EOS Next-track behavior remain present.
