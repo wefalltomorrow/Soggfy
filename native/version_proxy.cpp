@@ -506,8 +506,14 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
             // client, but the optional URL-request filter can wait until Chromium's
             // compositor and render threads have settled.
             history::StartMetadataCollector(cef);
-            StartToDiskMenu(cef);
-            if(CefTelemetryReady(cef)) history::StartCefRequestFilter(cef);
+            // RC35 startup-safe mode: no CEF MinHook detours at all. Both the
+            // URL-request filter and optional native menu remain disabled until
+            // they can be reimplemented without process-wide thread suspension.
+            static bool cef_safe_mode_logged=false;
+            if(!cef_safe_mode_logged){
+                cef_safe_mode_logged=true;
+                Log("CEF MinHook features disabled in startup-safe mode; Classic bridge uses post-start discovery");
+            }
             FreeLibrary(cef);
         }
         HMODULE module;
