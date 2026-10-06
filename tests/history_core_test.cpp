@@ -89,31 +89,42 @@ int main() {
     Listen fast;
     fast.Observe("fast",0,200,true,0,50);
     for(int i=1;i<=7;i++)
-        check(fast.Observe("fast",i*25,200,true,i*0.5,50).empty(),
-              "50x playback advances without false seek rejection");
-    check(fast.Observe("next",0,180,true,4.0,50)=="fast",
-          "50x natural transition completes between media polls");
+        check(fast.Observe("fast",i*25,200,true,i*0.5,50).empty() && fast.eligible,
+              "50x playback remains eligible while native capture proves integrity");
+    check(fast.Observe("next",0,180,true,4.0,50).empty() &&
+          fast.identity=="next" && fast.eligible,
+          "accelerated title transition arms next track without timeline-only completion");
 
     Listen fast_reset;
     fast_reset.Observe("fast",0,200,true,0,50);
     for(int i=1;i<=7;i++) fast_reset.Observe("fast",i*25,200,true,i*0.5,50);
-    check(fast_reset.Observe("fast",0.2,180,true,4.0,50).empty() && fast_reset.transient,
-          "50x timeline reset before title is retained as transient");
-    check(fast_reset.Observe("next",20,180,true,4.4,50)=="fast",
-          "50x delayed title transition completes previous listen");
+    check(fast_reset.Observe("fast",0.2,200,true,4.0,50).empty() &&
+          fast_reset.eligible && !fast_reset.transient &&
+          fast_reset.reject==ListenReject::None,
+          "50x SMTC timeline reset is not mistaken for a seek");
+    check(fast_reset.Observe("next",20,180,true,4.4,50).empty() &&
+          fast_reset.identity=="next" && fast_reset.eligible,
+          "50x delayed title transition leaves completion to native EOS");
 
     Listen fast_seek;
     fast_seek.Observe("fast",0,200,true,0,50);
     fast_seek.Observe("fast",100,200,true,0.5,50);
-    check(!fast_seek.eligible && fast_seek.reject==ListenReject::PositionAhead,
-          "50x forward seek exposes position-ahead diagnostic");
+    check(fast_seek.eligible && fast_seek.reject==ListenReject::None,
+          "accelerated SMTC position jumps are left to native stream validation");
+
+    Listen fast_clock_gap;
+    fast_clock_gap.Observe("fast",0,200,true,0,50);
+    fast_clock_gap.Observe("fast",5,200,true,5,50);
+    check(fast_clock_gap.eligible && fast_clock_gap.reject==ListenReject::None,
+          "accelerated SMTC polling gaps do not invalidate a native capture");
 
     Listen rewind;
-    rewind.Observe("one",0,100,true,0,10);
-    rewind.Observe("one",10,100,true,1,10);
-    rewind.Observe("one",0,100,true,2,10);
+    rewind.Observe("one",0,100,true,0,1);
+    rewind.Observe("one",2,100,true,2,1);
+    rewind.Observe("one",4,100,true,4,1);
+    rewind.Observe("one",0,100,true,5,1);
     check(!rewind.eligible && rewind.reject==ListenReject::PositionRewind,
-          "backward seek exposes rewind diagnostic");
+          "1x backward seek still exposes rewind diagnostic");
 
     Listen duration_change;
     duration_change.Observe("one",0,20,true,0);
