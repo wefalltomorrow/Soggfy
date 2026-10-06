@@ -163,6 +163,7 @@ static void SyncClassicUi(Frame* preferred=nullptr) {
  if(f){ExecuteFrameCode(f,UiConfigCode(),L"soggfy-config.js");Release(f);}
 }
 static void FlushClassicStatusResponse(Frame* frame);
+static void FlushAcceleratedAdvance(Frame* frame);
 static std::atomic<bool> poll_pending{false};static int(*post_task)(int,Task*)=nullptr;
 static void PollAdd(Base* b){++reinterpret_cast<PollTask*>(b)->refs;}
 static int PollDrop(Base* b){auto t=reinterpret_cast<PollTask*>(b);if(--t->refs)return 0;delete t;return 1;}
@@ -175,6 +176,7 @@ static void PollExecute(Task*){
   String code={const_cast<wchar_t*>(code_text),wcslen(code_text),nullptr};const wchar_t name[]=L"floggfy-metadata.js";String source={const_cast<wchar_t*>(name),wcslen(name),nullptr};
   reinterpret_cast<void(*)(Frame*,const String*,const String*,int)>(f->methods[14])(f,&code,&source,1);
   FlushClassicStatusResponse(f);
+  FlushAcceleratedAdvance(f);
  }
  Release(f);poll_pending=false;
 }
@@ -192,6 +194,8 @@ struct Message { ULONGLONG time=0; char data[131073];size_t length=0;};
 static std::array<Message,4> messages;static size_t head=0,tail=0,count=0;static HANDLE message_event=nullptr;
 static SRWLOCK ui_status_lock=SRWLOCK_INIT;
 static std::string ui_status_request,ui_status_response;
+static SRWLOCK accelerated_advance_lock=SRWLOCK_INIT;
+static std::string accelerated_advance_token;
 
 static std::vector<ClassicTrackQuery> ParseClassicStatusBatch(const std::string& data) {
  std::vector<ClassicTrackQuery> out;
@@ -246,6 +250,15 @@ static void FlushClassicStatusResponse(Frame* frame) {
  std::wstring wide(encoded.begin(),encoded.end());
  std::wstring code=L"if(window.__soggfyReceiveStatuses)window.__soggfyReceiveStatuses(decodeURIComponent(\""+wide+L"\"));";
  ExecuteFrameCode(frame,code,L"soggfy-status.js");
+}
+static void FlushAcceleratedAdvance(Frame* frame) {
+ std::string token;
+ AcquireSRWLockExclusive(&accelerated_advance_lock);token.swap(accelerated_advance_token);ReleaseSRWLockExclusive(&accelerated_advance_lock);
+ if(token.empty())return;
+ auto encoded=PercentEncode(token);
+ std::wstring wide(encoded.begin(),encoded.end());
+ std::wstring code=L"if(window.__soggfyAcceleratedComplete)window.__soggfyAcceleratedComplete(decodeURIComponent(\""+wide+L"\"));";
+ ExecuteFrameCode(frame,code,L"soggfy-accelerated-transport.js");
 }
 static bool Enqueue(const String* value) {
  constexpr wchar_t prefix[]=L"FLOGGFY_METADATA_V1:";constexpr size_t n=sizeof(prefix)/sizeof(*prefix)-1;
@@ -469,6 +482,14 @@ static int CreateHook(const void* win,Client* client,const String* url,const voi
 static Browser* SyncHook(const void* win,Client* client,const String* url,const void* settings,void* extra,void* context){auto callback=metadata_callbacks.Enter();return original_sync(win,ObserveClient(client),url,settings,extra,context);}
 static void* ViewHook(Client* client,const String* url,const void* settings,void* extra,void* context,void* delegate){auto callback=metadata_callbacks.Enter();return original_view(ObserveClient(client),url,settings,extra,context,delegate);}
 }
+void RequestAcceleratedAdvance(const std::string& token) {
+ if(token.empty())return;
+ AcquireSRWLockExclusive(&accelerated_advance_lock);
+ accelerated_advance_token=token;
+ ReleaseSRWLockExclusive(&accelerated_advance_lock);
+ SchedulePoll();
+ HistoryLog("accelerated transport advance queued");
+}
 std::string ReadClientPlaybackQuality(const Media& media) {
  if(!GetSettings().metadata)return {};
  const auto now=GetTickCount64();
@@ -566,14 +587,23 @@ void StartMetadataCollector(HMODULE cef) {
  void* callbacks[]={reinterpret_cast<void*>(CreateHook),reinterpret_cast<void*>(SyncHook),reinterpret_cast<void*>(ViewHook)};
  void** originals[]={reinterpret_cast<void**>(&original_create),reinterpret_cast<void**>(&original_sync),reinterpret_cast<void**>(&original_view)};
  void* created_targets[3]={};unsigned created_count=0;hooks::InstallCounts counts;
+ bool queued_any=false;
  for(unsigned i=0;i<3;i++){
   auto target=reinterpret_cast<void*>(GetProcAddress(cef,names[i]));if(!target)continue;
   counts.Found();status=MH_CreateHook(target,callbacks[i],originals[i]);counts.Created(status==MH_OK);
   if(status!=MH_OK){char line[200];snprintf(line,sizeof(line),"metadata hook %s create failed: %s",names[i],MH_StatusToString(status));HistoryLog(line);continue;}
-  created_targets[created_count]=target;
-  status=MH_EnableHook(target);counts.Enabled(status==MH_OK);
-  ++created_count;
-  if(status!=MH_OK){char line[200];snprintf(line,sizeof(line),"metadata hook %s enable failed: %s",names[i],MH_StatusToString(status));HistoryLog(line);continue;}
+  created_targets[created_count++]=target;
+  status=MH_QueueEnableHook(target);
+  counts.Enabled(status==MH_OK);
+  if(status==MH_OK)queued_any=true;
+  else {char line[200];snprintf(line,sizeof(line),"metadata hook %s queue failed: %s",names[i],MH_StatusToString(status));HistoryLog(line);}
+ }
+ if(counts.Usable()&&queued_any){
+  status=MH_ApplyQueued();
+  if(status!=MH_OK){
+   char line[200];snprintf(line,sizeof(line),"metadata queued hook apply failed: %s",MH_StatusToString(status));HistoryLog(line);
+   counts.enabled=0;
+  } else HistoryLog("metadata browser hooks enabled in one queued MinHook apply");
  }
  if(!counts.Usable()){
   char line[180];snprintf(line,sizeof(line),"metadata collector unavailable: found=%u created=%u enabled=%u; retry scheduled",counts.found,counts.created,counts.enabled);HistoryLog(line);

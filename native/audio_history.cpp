@@ -623,6 +623,8 @@ static DWORD WINAPI Worker(LPVOID) {
                             current.duration,playback_rate,ready.size(),accelerated_matches,
                             previous!=listen.identity);
                         LogActivity("accelerated_complete",line);QueueDiagnostic(line);
+                        RequestAcceleratedAdvance(
+                            previous+"#"+std::to_string(static_cast<unsigned long long>(previous_start*1000.0)));
                     }
                     if(was_eligible && !listen.eligible && done.empty()) {
                         const auto identity=Utf8(current.artist)+" - "+Utf8(current.title);

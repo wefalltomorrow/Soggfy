@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.0.0-rc.31
+
+- Hardened intermittent Spotify startup rendering/blank-screen behavior by reducing hook churn during Chromium startup.
+- The three initial Classic CEF browser hooks are now queued and enabled with one MinHook apply instead of three separate thread-suspension cycles.
+- Deferred the optional CEF telemetry/ad request hook for 5 seconds after libcef loads so the Chromium compositor can settle first.
+- Increased the Spotify.dll loader grace from 1.5 to 2.5 seconds and staggered playback-speed and capture hook families instead of enabling them back-to-back.
+- Added startup-phase diagnostics for the CEF telemetry release and staggered Spotify native hook release.
+- Added an accelerated-playback virtual transport clock so Spotify's visible elapsed time and scrubber follow Soggfy's effective 1-50x rate without seeking the real stream.
+- Accelerated native EOS now sends a one-shot transport event to the Classic UI; if Spotify is still on that same playback, Soggfy advances to the next track automatically.
+- The next-track handoff is identity-guarded so a delayed completion cannot accidentally skip a track Spotify already changed to.
+- Preserved RC29's verified accelerated capture/publication path and RC30's per-track status indicators.
+
 ## 3.0.0-rc.30
 
 - Restored old Soggfy-style per-track status indicators for current Spotify track rows.

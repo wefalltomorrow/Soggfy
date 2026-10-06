@@ -142,6 +142,145 @@ sgf.currentState = () => {
   try{return sgf.player?.getState?.()||window.Spicetify?.Player?.data||null;}catch{return null;}
 };
 
+sgf.acceleratedProgress = sgf.acceleratedProgress || {
+  id:'', uri:'', anchorWall:0, anchorPos:0, duration:0, speed:1, paused:false, overriding:false, timer:0
+};
+
+sgf.playbackDurationMs = state => {
+  const item=state?.item||{};
+  const candidates=[
+    item?.duration?.milliseconds,
+    item?.durationMs,
+    item?.metadata?.duration,
+    state?.duration
+  ];
+  for(const value of candidates){
+    const n=Number(value);
+    if(Number.isFinite(n)&&n>0)return n;
+  }
+  return 0;
+};
+
+sgf.rawPlaybackPositionMs = state => {
+  const base=Number(state?.positionAsOfTimestamp ?? state?.position ?? 0);
+  if(!Number.isFinite(base))return 0;
+  const stamp=Number(state?.timestamp);
+  const nativeSpeed=Number(state?.speed);
+  const elapsed=Number.isFinite(stamp)?Math.max(0,Date.now()-stamp):0;
+  return Math.max(0,base+elapsed*(Number.isFinite(nativeSpeed)&&nativeSpeed>0?nativeSpeed:1));
+};
+
+sgf.virtualPlaybackPositionMs = now => {
+  const v=sgf.acceleratedProgress;
+  if(!v.id)return 0;
+  const elapsed=v.paused?0:Math.max(0,(now??Date.now())-v.anchorWall);
+  const value=v.anchorPos+elapsed*Math.max(1,Number(v.speed)||1);
+  return v.duration>0?Math.min(v.duration,value):value;
+};
+
+sgf.reanchorAcceleratedProgress = (state=sgf.currentState(),force=false) => {
+  const v=sgf.acceleratedProgress;
+  const id=String(state?.playbackId||state?.item?.uri||'');
+  const uri=String(state?.item?.uri||'');
+  if(!id)return v;
+  const duration=sgf.playbackDurationMs(state);
+  const paused=state?.isPaused===true||state?.paused===true||state?.is_paused===true;
+  if(force||v.id!==id){
+    v.id=id;v.uri=uri;v.anchorWall=Date.now();v.anchorPos=sgf.rawPlaybackPositionMs(state);
+    v.duration=duration;v.speed=Math.max(1,Number(sgf.state.playbackSpeed)||1);v.paused=paused;
+  }else{
+    if(duration>0)v.duration=duration;
+    if(v.paused!==paused){
+      v.anchorPos=sgf.virtualPlaybackPositionMs(Date.now());
+      v.anchorWall=Date.now();
+      v.paused=paused;
+    }
+    const configured=Math.max(1,Number(sgf.state.playbackSpeed)||1);
+    if(Math.abs(configured-v.speed)>0.0001){
+      v.anchorPos=sgf.virtualPlaybackPositionMs(Date.now());
+      v.anchorWall=Date.now();
+      v.speed=configured;
+    }
+  }
+  return v;
+};
+
+sgf.setAcceleratedProgressSpeed = speed => {
+  const v=sgf.reanchorAcceleratedProgress();
+  if(v.id){
+    v.anchorPos=sgf.virtualPlaybackPositionMs(Date.now());
+    v.anchorWall=Date.now();
+    v.speed=Math.max(1,Number(speed)||1);
+  }
+};
+
+sgf.formatPlaybackTime = ms => {
+  let seconds=Math.max(0,Math.floor((Number(ms)||0)/1000));
+  const hours=Math.floor(seconds/3600);seconds-=hours*3600;
+  const minutes=Math.floor(seconds/60),secs=seconds%60;
+  return hours?hours+':'+String(minutes).padStart(2,'0')+':'+String(secs).padStart(2,'0')
+    :minutes+':'+String(secs).padStart(2,'0');
+};
+
+sgf.renderAcceleratedProgress = () => {
+  const speed=Math.max(1,Number(sgf.state.playbackSpeed)||1);
+  const progress=document.querySelector('[data-testid="playback-progressbar"] [data-testid="progress-bar"]');
+  const position=document.querySelector('[data-testid="playback-position"]');
+  if(speed<=1||!sgf.state.speedSupported||!sgf.player){
+    if(sgf.acceleratedProgress.overriding){
+      progress?.style?.removeProperty('--progress-bar-transform');
+      sgf.acceleratedProgress.overriding=false;
+    }
+    return;
+  }
+  const state=sgf.currentState();
+  const v=sgf.reanchorAcceleratedProgress(state);
+  if(!v.id||!(v.duration>0))return;
+  const virtual=sgf.virtualPlaybackPositionMs(Date.now());
+  const pct=Math.max(0,Math.min(100,virtual/v.duration*100));
+  if(position)position.textContent=sgf.formatPlaybackTime(virtual);
+  if(progress)progress.style.setProperty('--progress-bar-transform',String(pct));
+  v.overriding=true;
+};
+
+sgf.startAcceleratedProgressUi = () => {
+  const v=sgf.acceleratedProgress;
+  if(v.timer)return;
+  v.timer=setInterval(sgf.renderAcceleratedProgress,50);
+  document.addEventListener('pointerup',event=>{
+    if(!event.target?.closest?.('[data-testid="playback-progressbar"]'))return;
+    setTimeout(()=>sgf.reanchorAcceleratedProgress(sgf.currentState(),true),120);
+  },true);
+};
+
+sgf.observePlaybackState = state => {
+  sgf.reanchorAcceleratedProgress(state);
+};
+
+let lastAcceleratedAdvanceToken='';
+window.__soggfyAcceleratedComplete = token => {
+  token=String(token||'');
+  if(!token||token===lastAcceleratedAdvanceToken)return;
+  lastAcceleratedAdvanceToken=token;
+  const before=sgf.currentState();
+  const playbackId=String(before?.playbackId||before?.item?.uri||'');
+  const uri=String(before?.item?.uri||'');
+  console.info('FLOGGFY_STATUS:accelerated next queued');
+  setTimeout(async()=>{
+    try{
+      const current=sgf.currentState();
+      const currentId=String(current?.playbackId||current?.item?.uri||'');
+      const currentUri=String(current?.item?.uri||'');
+      if(!sgf.player?.skipToNext||!playbackId||currentId!==playbackId||currentUri!==uri)return;
+      await sgf.player.skipToNext();
+      sgf.acceleratedProgress.id='';
+      console.info('FLOGGFY_STATUS:accelerated next advanced');
+    }catch(error){
+      console.warn('Soggfy accelerated next-track advance failed',error);
+    }
+  },60);
+};
+
 sgf.resetCurrentTrack = async preserve => {
   try{
     const st=sgf.currentState();
@@ -162,6 +301,7 @@ sgf.resetCurrentTrack = async preserve => {
 
 sgf.setPlaybackSpeed = async speed => {
   speed=Math.max(1,Math.min(50,Number(speed)||1));
+  sgf.setAcceleratedProgressSpeed?.(speed);
   sgf.state.playbackSpeed=speed;
   sgf.send('playbackSpeed',String(speed));
   if(!sgf.state.speedSupported){
@@ -252,6 +392,8 @@ sgf.initPlayer = async () => {
   sgf.platform=await sgf.getPlatform();
   if(!sgf.platform)return;
   try{sgf.player=sgf.platform.getPlayerAPI();}catch{}
+  sgf.observePlaybackState?.(sgf.currentState());
+  sgf.startAcceleratedProgressUi?.();
   try{
     const settings=sgf.platform.getSettingsAPI?.();
     settings?.quality?.streamingQuality?.setValue?.(4);
