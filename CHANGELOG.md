@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.0.0-rc.36
+
+- Fixed the RC35 delayed startup crash identified from the user crash dump.
+- RC35 called CEF 151 browser-host method slot 8 as `get_client`; slot 8 is actually `has_view`, so it returned integer 1 and RC35 dereferenced address 0x1 as a client object.
+- Corrected CEF 151 browser-host `get_client` to method slot 9 and added a prefix-size check before calling it.
+- The dump fault was `0xC0000005` at `VERSION.dll+0x6D3E2`, reading address `0x1`; RC36 directly removes that path.
+- Kept RC35's hookless CEF bridge and 8-second post-start browser discovery.
+- Moved MinHook-based Spotify.dll playback-speed installation to 10 seconds after the post-loader stage begins, and audio/capture installation to 11 seconds.
+- Connectivity IAT patching remains early because it does not suspend process threads.
+- This makes RC36 a cleaner black-screen isolation build: no CEF MinHook detours and no Spotify MinHook detours during the first ~12-14 seconds of Spotify startup.
+- RC33 original-style accelerated EOS-to-Next behavior remains unchanged.
+
 ## 3.0.0-rc.35
 
 - Removed the remaining CEF MinHook entry detours from the Classic metadata/UI bridge.
