@@ -55,12 +55,12 @@ The default interface follows the old Sprinkles workflow rather than Floggfy's T
 
 The settings modal includes playback speed, output format, Skip Downloaded, Skip Ignored, cover-art and lyrics options, Canvas saving, Base/Track/Podcast/Canvas paths, invalid-character replacement, Block telemetry, Move Add to Queue to top, native FLAC/Ogg controls, cached metadata, logging, diagnostics and whether to retain the native original after conversion.
 
-Track rows use the old status model:
+Track rows use the old status model and show the original-style inline indicator in the final duration/actions cell:
 
 - downloading / in progress
 - converting
-- completed
-- failed
+- completed (green check)
+- failed (red cross)
 - warning
 - ignored
 
@@ -122,7 +122,7 @@ If the injected UI is unavailable after a Spotify update, capture can still be e
 
 ## Diagnostics
 
-`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages. Spotify 1.3.3.264 playback-speed troubleshooting uses `speed_decode_hook` records showing the live PCM capacity, produced/kept sample counts, compressed input counts and requested rate. Accelerated tracks that complete through the verified native stream path log `accelerated_complete` and `completion=capture_eos`. Native Spotify.dll hooks are deferred until critical normal imports are resolved and a 1500 ms loader grace period has elapsed.
+`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages. Spotify 1.3.3.264 playback-speed troubleshooting uses `speed_decode_hook` records showing the live PCM capacity, produced/kept sample counts, compressed input counts and requested rate. Accelerated tracks that complete through the verified native stream path log `accelerated_complete` and `completion=capture_eos`. Native Spotify.dll hooks are deferred until critical normal imports are resolved and a 1500 ms loader grace period has elapsed. Classic row-status diagnostics use `FLOGGFY_STATUS:classic rows=... results=... statuses=... rendered=...` when the visible status state changes.
 
 Enable **Debug log** in Soggfy settings for the high-volume timeline trace: each media-session sample plus replayed Ogg-page details. This is intended for short troubleshooting runs because the log is capped and rotates by truncation when it reaches its size limit.
 
