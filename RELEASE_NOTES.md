@@ -1,33 +1,31 @@
-# Soggfy v3.0.0-rc.34
+# Soggfy v3.0.0-rc.35
 
-RC34 targets the intermittent startup black-screen failure that still reproduced on RC33.
+RC35 is a startup-stability isolation build for the intermittent full-primary-monitor black screen that still reproduced on RC34.
 
-## What was still racing
+## CEF bridge redesign
 
-RC31 combined the three initial CEF browser-creation hooks into one queued MinHook apply and delayed the telemetry hook. That removed some startup churn, but the Classic metadata/UI bridge still installed five additional MinHook detours later from inside CEF callbacks:
+RC34 removed the five callback-time MinHook installs, but three initial CEF browser-creation entry hooks still remained. The CEF URL-request filter was also still a MinHook detour.
 
-- client display getter
-- client load getter
-- console callback
-- loading-state callback
-- load-end callback
+RC35 removes those remaining CEF MinHook operations completely.
 
-Those installs could happen while Chromium was actively creating Spotify's browser/compositor. MinHook temporarily suspends and resumes process threads while enabling a detour, so doing that from inside browser/client callbacks remained a plausible intermittent compositor deadlock/render failure.
+Instead of intercepting browser creation, the Classic bridge now:
 
-## RC34 change
+1. Initializes only lightweight state when `libcef.dll` appears.
+2. Waits 8 seconds so Spotify/Chromium can finish creating its compositor and main browser.
+3. Posts a task onto CEF's UI thread.
+4. Discovers the already-created Spotify browser using `cef_browser_host_get_browser_by_identifier`.
+5. Gets the browser's client/display handler and patches only the concrete console callback pointer.
+6. Gets the existing main frame and injects the normal Soggfy metadata/Classic UI scripts directly.
 
-Those five callback hooks no longer use MinHook at all.
+There is no MinHook enable/apply anywhere in this CEF bridge path.
 
-RC34 patches only the relevant function-pointer field on the concrete CEF C callback object. The original object is preserved, the original callback pointer is retained for forwarding, and no process-wide thread suspension occurs when those callbacks are attached.
+## Startup-safe feature tradeoff
 
-The initial three audited browser-creation entry points are still enabled together in one queued MinHook apply so Soggfy can observe Spotify's main browser from its creation. After that, callback attachment is slot-only.
+To make this test decisive, RC35 also does not install:
 
-New debug lines look like:
+- the CEF URL-request/telemetry MinHook;
+- the optional native To Disk menu MinHooks.
 
-`metadata callback display getter patched by object slot; no MinHook suspend`
+The Block Telemetry preference is still saved and shown, but native CEF request blocking is temporarily inactive in this build. Classic UI, downloads, metadata, capture, conversion, playback speed, status indicators and RC33's accelerated-end Next behavior remain present.
 
-`metadata callback load getter patched by object slot; no MinHook suspend`
-
-`metadata callback loading patched by object slot; no MinHook suspend`
-
-RC33's original-style accelerated transport behavior, including validated-EOS Next advancement and playback_stuck recovery, remains unchanged.
+If RC35 still black-screens, the remaining likely source is no longer the CEF integration and the next isolation target is the Spotify.dll MinHook family itself.
