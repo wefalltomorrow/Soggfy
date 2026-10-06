@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.0-rc.39
+
+- Removed Soggfy's own ad-request blocking; the native CEF filter now blocks telemetry only.
+- The native `Block Telemetry` option now targets only the Gabo and Dodo receiver-service endpoints.
+- Ad paths such as `/ads/` and `/ad-logic/` are deliberately left to SpotX.
+- Spotify client-update traffic remains untouched by Soggfy and is delegated to SpotX as well.
+- The installer now offers SpotX by default, matching the original Soggfy workflow.
+- SpotX is launched against the pinned Spotify 1.3.1.234.g59d6bf59 baseline with normal ad blocking and `-block_update_on`.
+- Added `-SkipSpotX` for users who explicitly do not want SpotX and retained `-RunSpotX` for unattended installs.
+- The installer validates Spotify 1.3.1.234 before patching so SpotX is not accidentally applied to the wrong client build.
+- SpotX runs before Soggfy is copied into the Spotify directory, matching the safer original install order.
+- RC38's clean Spotify 1.3.1.234 runtime rollback is otherwise unchanged.
+
 ## 3.0.0-rc.38
 
 - Reverted the active runtime to the last known-good Spotify 1.3.1.234 codebase from RC14.
