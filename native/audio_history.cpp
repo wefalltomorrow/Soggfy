@@ -577,21 +577,19 @@ static DWORD WINAPI Worker(LPVOID) {
                     // The RC28 decoder-speed backend deliberately consumes the full
                     // compressed stream while returning fewer PCM samples to Spotify.
                     // SMTC's public timeline does not advance at that accelerated decode
-                    // rate: it periodically publishes a fresh, much smaller raw position.
-                    // Treating those timeline refreshes as seeks makes a genuinely complete
-                    // accelerated capture fail before it can be published.
+                    // rate, so a complete native stream is the authoritative completion
+                    // signal above 1x.
                     //
-                    // A complete Ogg/FLAC stream is stronger evidence here. Once a unique
-                    // ready stream of the current media duration reaches EOS *after* this
-                    // listen started, the decoder has consumed the whole track. That is the
-                    // accelerated equivalent of a natural end and is safe to hand to the
-                    // existing duration/start-window association code.
+                    // Match against 'current' (the media identity that was eligible before
+                    // this sample), not only the newly-read media. This also catches a very
+                    // fast track whose Ogg/FLAC EOS and title transition both happen between
+                    // two 500 ms media polls.
                     bool accelerated_capture_complete=false;
                     size_t accelerated_matches=0;
-                    if(playback_rate>1.0001 && was_eligible && media.playing &&
-                       previous==media.Key() && media.duration>0) {
+                    if(playback_rate>1.0001 && was_eligible && !previous.empty() &&
+                       current.Key()==previous && current.duration>0) {
                         for(const auto& candidate:ready) {
-                            if(std::fabs(candidate->Duration()-media.duration)<=1.0 &&
+                            if(std::fabs(candidate->Duration()-current.duration)<=1.0 &&
                                candidate->born>=previous_start-20 &&
                                candidate->born<=previous_start+3 &&
                                candidate->finished>=previous_start) {
@@ -601,25 +599,30 @@ static DWORD WINAPI Worker(LPVOID) {
                         accelerated_capture_complete=accelerated_matches==1;
                     }
 
-                    std::string done;
+                    // Always observe the new media sample so a title transition can arm the
+                    // next track immediately. At accelerated rates Listen deliberately
+                    // ignores SMTC position/clock discontinuities; capture integrity/EOS is
+                    // what proves completion or rejects a seek.
+                    std::string done=listen.Observe(media.Key(),media.position,media.duration,
+                                                    media.playing,Now(),playback_rate);
                     if(accelerated_capture_complete) {
                         done=previous;
-                        listen.eligible=false;
-                        listen.pending_start=false;
+                        // If Spotify still exposes the old title, prevent a second completion
+                        // for the same stream. If the title already changed, Observe has
+                        // already armed the new identity and it must remain eligible.
+                        if(listen.identity==previous) {
+                            listen.eligible=false;
+                            listen.pending_start=false;
+                        }
                         listen.transient=false;
                         listen.reject=ListenReject::None;
-                        listen.last_time=Now();
-                        listen.last_position=media.position;
-                        listen.playing=media.playing;
 
                         char line[1024];snprintf(line,sizeof(line),
-                            "%s - %s capture_eos=1 media_duration=%.3f rate=%.3f ready=%zu matches=%zu",
+                            "%s - %s capture_eos=1 media_duration=%.3f rate=%.3f ready=%zu matches=%zu key_changed=%d",
                             Utf8(current.artist).c_str(),Utf8(current.title).c_str(),
-                            media.duration,playback_rate,ready.size(),accelerated_matches);
+                            current.duration,playback_rate,ready.size(),accelerated_matches,
+                            previous!=listen.identity);
                         LogActivity("accelerated_complete",line);QueueDiagnostic(line);
-                    } else {
-                        done=listen.Observe(media.Key(),media.position,media.duration,
-                                            media.playing,Now(),playback_rate);
                     }
                     if(was_eligible && !listen.eligible && done.empty()) {
                         const auto identity=Utf8(current.artist)+" - "+Utf8(current.title);
