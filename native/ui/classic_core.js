@@ -143,7 +143,8 @@ sgf.currentState = () => {
 };
 
 sgf.acceleratedProgress = sgf.acceleratedProgress || {
-  id:'', uri:'', anchorWall:0, anchorPos:0, duration:0, speed:1, paused:false, overriding:false, timer:0
+  id:'', uri:'', anchorWall:0, anchorPos:0, duration:0, speed:1, paused:false,
+  overriding:false, timer:0, diagId:''
 };
 
 sgf.playbackDurationMs = state => {
@@ -224,10 +225,12 @@ sgf.formatPlaybackTime = ms => {
 
 sgf.renderAcceleratedProgress = () => {
   const speed=Math.max(1,Number(sgf.state.playbackSpeed)||1);
-  const progress=document.querySelector('[data-testid="playback-progressbar"] [data-testid="progress-bar"]');
+  const root=document.querySelector('[data-testid="playback-progressbar"]');
+  const progress=root?.querySelector?.('[data-testid="progress-bar"]')||null;
   const position=document.querySelector('[data-testid="playback-position"]');
   if(speed<=1||!sgf.state.speedSupported||!sgf.player){
     if(sgf.acceleratedProgress.overriding){
+      root?.style?.removeProperty('--progress-bar-transform');
       progress?.style?.removeProperty('--progress-bar-transform');
       sgf.acceleratedProgress.overriding=false;
     }
@@ -239,7 +242,19 @@ sgf.renderAcceleratedProgress = () => {
   const virtual=sgf.virtualPlaybackPositionMs(Date.now());
   const pct=Math.max(0,Math.min(100,virtual/v.duration*100));
   if(position)position.textContent=sgf.formatPlaybackTime(virtual);
-  if(progress)progress.style.setProperty('--progress-bar-transform',String(pct));
+
+  // Current Spotify expresses progress as translateX(-100%..0%), not a bare
+  // numeric percentage. RC31 wrote "12.5" into this variable, which CSS
+  // ignored, leaving the native 1x scrubber untouched.
+  const transform='translateX('+(pct-100).toFixed(4)+'%)';
+  root?.style?.setProperty('--progress-bar-transform',transform,'important');
+  progress?.style?.setProperty('--progress-bar-transform',transform,'important');
+
+  if(v.diagId!==v.id){
+    v.diagId=v.id;
+    console.info('FLOGGFY_STATUS:accelerated ui root='+Number(!!root)+' bar='+Number(!!progress)+
+      ' time='+Number(!!position)+' dur='+Math.round(v.duration));
+  }
   v.overriding=true;
 };
 
@@ -263,20 +278,51 @@ window.__soggfyAcceleratedComplete = token => {
   if(!token||token===lastAcceleratedAdvanceToken)return;
   lastAcceleratedAdvanceToken=token;
   const before=sgf.currentState();
-  const playbackId=String(before?.playbackId||before?.item?.uri||'');
   const uri=String(before?.item?.uri||'');
   console.info('FLOGGFY_STATUS:accelerated next queued');
   setTimeout(async()=>{
+    const currentUri=()=>String(sgf.currentState()?.item?.uri||'');
     try{
-      const current=sgf.currentState();
-      const currentId=String(current?.playbackId||current?.item?.uri||'');
-      const currentUri=String(current?.item?.uri||'');
-      if(!sgf.player?.skipToNext||!playbackId||currentId!==playbackId||currentUri!==uri)return;
-      await sgf.player.skipToNext();
-      sgf.acceleratedProgress.id='';
-      console.info('FLOGGFY_STATUS:accelerated next advanced');
+      if(!uri){
+        console.info('FLOGGFY_STATUS:accelerated next skipped no_uri');
+        return;
+      }
+      if(currentUri()!==uri){
+        console.info('FLOGGFY_STATUS:accelerated next skipped uri_changed');
+        return;
+      }
+
+      let attempted=false;
+      if(typeof sgf.player?.skipToNext==='function'){
+        attempted=true;
+        console.info('FLOGGFY_STATUS:accelerated next api');
+        try{await sgf.player.skipToNext();}catch{}
+        await new Promise(resolve=>setTimeout(resolve,250));
+        if(currentUri()!==uri){
+          sgf.acceleratedProgress.id='';
+          console.info('FLOGGFY_STATUS:accelerated next advanced api');
+          return;
+        }
+      }
+
+      const button=document.querySelector('[data-testid="control-button-skip-forward"]');
+      if(button){
+        attempted=true;
+        console.info('FLOGGFY_STATUS:accelerated next click');
+        button.click();
+        await new Promise(resolve=>setTimeout(resolve,250));
+        if(currentUri()!==uri){
+          sgf.acceleratedProgress.id='';
+          console.info('FLOGGFY_STATUS:accelerated next advanced click');
+          return;
+        }
+      }
+
+      console.info(attempted
+        ?'FLOGGFY_STATUS:accelerated next failed still_same'
+        :'FLOGGFY_STATUS:accelerated next failed no_control');
     }catch(error){
-      console.warn('Soggfy accelerated next-track advance failed',error);
+      console.info('FLOGGFY_STATUS:accelerated next failed exception');
     }
   },60);
 };

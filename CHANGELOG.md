@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0-rc.32
+
+- Fixed RC31's accelerated scrubber override using the wrong CSS custom-property format.
+- Current Spotify expects `--progress-bar-transform` to contain a full `translateX(...%)` transform; RC31 wrote a bare number, so the browser ignored it and left the visible scrubber on Spotify's raw 1x timeline.
+- Apply the corrected transform to both the playback-progress root and progress-bar node for current Spotify layouts.
+- Added per-playback accelerated UI diagnostics showing whether the root, bar and elapsed-time elements were found and the detected duration.
+- Relaxed the accelerated next-track guard from volatile playbackId matching to the stable track URI.
+- Added a guarded DOM Next-button fallback if `skipToNext()` returns without changing tracks.
+- Added explicit accelerated handoff diagnostics for API attempt, DOM fallback, success and failure reasons.
+- Kept RC31 startup hardening, RC29 accelerated capture/publication and RC30 track-status indicators unchanged.
+
 ## 3.0.0-rc.31
 
 - Hardened intermittent Spotify startup rendering/blank-screen behavior by reducing hook churn during Chromium startup.
