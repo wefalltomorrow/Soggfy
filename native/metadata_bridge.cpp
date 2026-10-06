@@ -22,6 +22,18 @@ struct String {wchar_t* str;size_t length;void(*dtor)(wchar_t*);};
 template<size_t N> struct Object {Base base;void* methods[N];};
 using Client=Object<19>;using Display=Object<13>;using Browser=Object<21>;using BrowserHost=Object<10>;using Frame=Object<26>;
 static void Release(void* p) {if(p)static_cast<Base*>(p)->release(static_cast<Base*>(p));}
+static bool Executable(const void* address) {
+ if(!address)return false;
+ MEMORY_BASIC_INFORMATION memory{};
+ if(!VirtualQuery(address,&memory,sizeof(memory))||memory.State!=MEM_COMMIT||
+    (memory.Protect&(PAGE_GUARD|PAGE_NOACCESS)))return false;
+ const DWORD protection=memory.Protect&0xffu;
+ return protection==PAGE_EXECUTE||protection==PAGE_EXECUTE_READ||
+        protection==PAGE_EXECUTE_READWRITE||protection==PAGE_EXECUTE_WRITECOPY;
+}
+static bool HasMethod(const Base* base,size_t index) {
+ return base&&base->size>=sizeof(Base)+(index+1)*sizeof(void*);
+}
 static int HexDigit(wchar_t c) {
  if(c>=L'0'&&c<=L'9')return int(c-L'0');
  if(c>=L'a'&&c<=L'f')return int(c-L'a')+10;
@@ -511,16 +523,28 @@ static void DiscoverBrowserOnUi(){
  for(int id=1;id<=64;++id){
   Browser* browser=get_browser_by_id(id);
   if(!browser)continue;
-  if(browser->base.size==sizeof(Browser)){
-   auto get_host=reinterpret_cast<BrowserHost*(*)(Browser*)>(browser->methods[1]);
+  if(HasMethod(&browser->base,14)){
+   // CEF 151 cef_browser_t: methods[0]=is_valid, [1]=get_host,
+   // [14]=get_main_frame. Validate callable pointers before invoking them.
+   auto host_slot=browser->methods[1];
+   auto get_host=Executable(host_slot)?reinterpret_cast<BrowserHost*(*)(Browser*)>(host_slot):nullptr;
    BrowserHost* host=get_host?get_host(browser):nullptr;
    if(host){
-    auto get_client=reinterpret_cast<Client*(*)(BrowserHost*)>(host->methods[8]);
-    Client* client=get_client?get_client(host):nullptr;
-    AttachConsoleBridge(client);
-    Release(client);Release(host);
+    // CEF 151 cef_browser_host_t: methods[8]=has_view (returns int),
+    // methods[9]=get_client. RC35 accidentally called [8] and interpreted
+    // the returned 1 as a Client*, causing VERSION.dll+0x6D3E2.
+    if(HasMethod(&host->base,9)){
+     auto client_slot=host->methods[9];
+     auto get_client=Executable(client_slot)?reinterpret_cast<Client*(*)(BrowserHost*)>(client_slot):nullptr;
+     Client* client=get_client?get_client(host):nullptr;
+     if(client&&client->base.size==sizeof(Client))AttachConsoleBridge(client);
+     else if(client)HistoryLog("CEF discovery client ABI unsupported; console bridge skipped");
+     Release(client);
+    } else HistoryLog("CEF discovery host ABI too small for get_client; console bridge skipped");
+    Release(host);
    }
-   auto get_main_frame=reinterpret_cast<Frame*(*)(Browser*)>(browser->methods[14]);
+   auto frame_slot=browser->methods[14];
+   auto get_main_frame=Executable(frame_slot)?reinterpret_cast<Frame*(*)(Browser*)>(frame_slot):nullptr;
    Frame* frame=get_main_frame?get_main_frame(browser):nullptr;
    if(frame){
     Inject(frame);
