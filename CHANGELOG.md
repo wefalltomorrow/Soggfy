@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0-rc.37
+
+- Keep all MinHook-based Spotify.dll detours out of the Spotify/Chromium startup window.
+- Playback-speed MinHook activation now waits 10 seconds after the post-loader stage begins.
+- Audio/capture MinHook activation now waits 11 seconds after that stage begins.
+- The existing 2.5-second import/loader grace remains in front of those delays, so Spotify normally gets roughly 12-14 seconds of undisturbed startup before any Spotify.dll MinHook detour is enabled.
+- Connectivity repair remains early because it is a direct IAT pointer patch and does not suspend process threads.
+- Removed obsolete CEF telemetry-grace state left behind after RC35 disabled the CEF request hook.
+- Built on RC36's crash-dump fix for CEF 151 browser-host get_client slot 9.
+- RC35's hookless CEF bridge and RC33 accelerated EOS-to-Next behavior remain unchanged.
+
 ## 3.0.0-rc.36
 
 - Fixed the RC35 crash in post-start CEF browser discovery.
