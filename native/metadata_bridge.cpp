@@ -515,8 +515,18 @@ static void DiscoverBrowserOnUi(){
    auto get_host=reinterpret_cast<BrowserHost*(*)(Browser*)>(browser->methods[1]);
    BrowserHost* host=get_host?get_host(browser):nullptr;
    if(host){
-    auto get_client=reinterpret_cast<Client*(*)(BrowserHost*)>(host->methods[8]);
-    Client* client=get_client?get_client(host):nullptr;
+    // CEF 151 browser_host layout:
+    // 0 get_browser, 1 close_browser, 2 try_close_browser,
+    // 3 is_ready_to_be_closed, 4 set_focus, 5 get_window_handle,
+    // 6 get_opener_window_handle, 7 get_opener_identifier,
+    // 8 has_view, 9 get_client.
+    // RC35 accidentally called slot 8 as get_client; has_view() returned 1,
+    // which was then dereferenced as a Client* and crashed at VERSION.dll+0x6D3E2.
+    Client* client=nullptr;
+    if(host->base.size>=sizeof(BrowserHost)&&host->methods[9]){
+     auto get_client=reinterpret_cast<Client*(*)(BrowserHost*)>(host->methods[9]);
+     client=get_client(host);
+    }
     AttachConsoleBridge(client);
     Release(client);Release(host);
    }
