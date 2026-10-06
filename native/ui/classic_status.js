@@ -108,26 +108,36 @@ function reactTrackData(row,preferredUri=''){
 function rowInfo(inputRow){
   const row=canonicalRow(inputRow);
   if(!row)return null;
+
   const trackLink=row.querySelector('a[href*="/track/"],a[href*="/episode/"],[data-testid="internal-track-link"]');
   const hrefUri=uriFromHref(trackLink?.getAttribute?.('href')||'');
-  const react=reactTrackData(row,hrefUri);
-  const uri=hrefUri||react?.uri||'';
-  if(!uri)return null;
-
-  const title=(trackLink?.textContent||react?.title||
-    row.querySelector('[data-testid="internal-track-link"],[dir="auto"]')?.textContent||'').trim();
-  if(!title)return null;
+  const domTitle=(trackLink?.textContent||'').trim();
 
   const artistLinks=[...row.querySelectorAll('a[href*="/artist/"]')];
   let artists=artistLinks.map(a=>(a.textContent||'').trim()).filter(Boolean);
-  if(!artists.length&&react?.artists?.length)artists=react.artists;
   let artistUris=artistLinks.map(a=>uriFromHref(a.getAttribute('href')||'')).filter(x=>x.startsWith('spotify:artist:'));
-  if(!artistUris.length&&react?.artistUris?.length)artistUris=react.artistUris;
 
   const albumLink=row.querySelector('a[href*="/album/"]');
-  let album=(albumLink?.textContent||react?.album||'').trim();
+  let album=(albumLink?.textContent||'').trim();
   const albumHref=albumLink?.getAttribute?.('href')||'';
   const albumMatch=albumHref.match(/\/album\/([A-Za-z0-9]+)/);
+
+  // Current Spotify usually exposes everything we need in ordinary links.
+  // React traversal is intentionally only a fallback because visible status
+  // polling runs regularly and should stay cheap.
+  const needReact=!hrefUri||!domTitle||!artists.length||!album;
+  const react=needReact?reactTrackData(row,hrefUri):null;
+
+  const uri=hrefUri||react?.uri||'';
+  if(!uri)return null;
+  const title=(domTitle||react?.title||
+    row.querySelector('[data-testid="internal-track-link"],[dir="auto"]')?.textContent||'').trim();
+  if(!title)return null;
+
+  if(!artists.length&&react?.artists?.length)artists=react.artists;
+  if(!artistUris.length&&react?.artistUris?.length)artistUris=react.artistUris;
+  if(!album&&react?.album)album=react.album.trim();
+
   const albumUri=albumMatch?'spotify:album:'+albumMatch[1]:
     (react?.albumUri?.startsWith?.('spotify:album:')?react.albumUri:'');
 
