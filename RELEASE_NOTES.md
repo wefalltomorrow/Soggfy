@@ -1,41 +1,46 @@
-# Soggfy v3.0.0-rc.38
+# Soggfy v3.0.0-rc.39
 
-RC38 abandons the Spotify 1.3.3.264 experiment line and returns Soggfy to the last known-good Spotify 1.3.1.234 implementation.
+RC39 keeps the clean Spotify 1.3.1.234 rollback from RC38 and restores the original Soggfy separation of responsibilities around SpotX.
 
-## Baseline
+## Soggfy now blocks telemetry only
 
-This release is based directly on the RC14 runtime tree. RC14 explicitly kept the native 1-50x playback-speed hook enabled on Spotify 1.3.1.234 because that player ABI had been runtime-validated.
+Soggfy's native CEF request filter no longer tries to be an ad blocker.
 
-The later RC15-RC37 experiments are not carried forward into this build.
+The built-in `Block Telemetry` option now blocks only:
 
-## What was removed
+- `gabo-receiver-service`
+- `dodo-receiver-service`
 
-RC38 removes the Spotify 1.3.3-specific work added after RC14, including:
+Requests under Spotify's `/ads/` and `/ad-logic/` paths are deliberately allowed through Soggfy. Spotify client-update traffic is also left alone by the native Soggfy filter.
 
-- ContextPlayer and SessionTrackPlayer speed experiments;
-- exact 1.3.3 track-player creation hooks;
-- PCM-helper and live DecodeAudioData-equivalent speed hooks;
-- accelerated native-EOS publication overrides;
-- synthetic scrubber/progress overrides;
-- forced accelerated next-track handoff;
-- the RC31-RC37 CEF/MinHook startup isolation rewrites;
-- delayed Spotify hook staging and hookless CEF browser discovery.
+## SpotX handles ads and updates
 
-## What is restored
+The installer now offers SpotX by default, similar to original Soggfy.
 
-RC38 restores the RC14 behavior:
+When enabled, RC39 runs the current official SpotX installer with:
 
-- Spotify 1.3.1.234 native 1-50x speed hook;
-- RC14 Classic Soggfy UI;
-- Skip Downloaded / Skip Ignored;
-- status states already present in that baseline;
-- native Ogg/FLAC capture and complete-listen validation;
-- FFmpeg output presets and post-processing;
-- metadata, artwork, lyrics and Canvas support;
-- telemetry/ad filtering from the RC14 baseline;
-- optional native To Disk troubleshooting UI;
-- the normal single all-in-one Windows x64 release package.
+- Spotify version pinned to `1.3.1.234.g59d6bf59`
+- SpotX's normal ad blocking enabled
+- `-block_update_on` forced so Spotify does not replace the Soggfy-compatible client
+- the actual Spotify install path passed explicitly
 
-Spotify 1.3.1.234 is the intended client for this release. Native playback speed fails closed on other Spotify versions rather than attempting an unvalidated player ABI.
+The installer runs SpotX before copying Soggfy's `version.dll`, avoiding SpotX touching an already-installed Soggfy proxy.
 
-This is intentionally a clean rollback. Once the 1.3.1.234 baseline is confirmed working again, any later feature can be reintroduced individually instead of carrying the 1.3.3 debugging stack forward.
+Interactive installs ask:
+
+`Install/update SpotX for ad blocking and Spotify update blocking? [Y/n]`
+
+Pressing Enter selects Yes.
+
+For unattended installs:
+
+- `-RunSpotX` forces SpotX on
+- `-SkipSpotX` explicitly skips it
+
+If SpotX is skipped, Soggfy still provides telemetry blocking, but it does not block ads or Spotify updates itself.
+
+## Spotify baseline
+
+RC39 still targets Spotify Windows x64 `1.3.1.234.g59d6bf59`. The installer checks the installed client version before applying SpotX/Soggfy so an unsupported Spotify build is not silently patched.
+
+All RC15-RC37 Spotify 1.3.3 experimentation remains removed.
