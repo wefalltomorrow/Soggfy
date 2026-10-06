@@ -31,6 +31,12 @@ static hooks::InitController connectivity_init;
 static HMODULE loader_ready_module;
 static ULONGLONG loader_ready_since;
 static bool loader_ready_logged;
+static HMODULE cef_seen_module;
+static ULONGLONG cef_seen_since;
+static bool cef_telemetry_logged;
+static HMODULE native_stage_module;
+static ULONGLONG native_stage_since;
+static bool native_stage_logged;
 
 static void Log(const char* message) {
     history::HistoryLog(message);
@@ -328,14 +334,48 @@ static bool SpotifyLoaderReady(HMODULE module) {
 
     // Even after the selected IAT entries are resolved, give the loader a
     // short quiet period before MinHook suspends/resumes process threads.
-    constexpr ULONGLONG kLoaderGraceMs = 1500;
+    constexpr ULONGLONG kLoaderGraceMs = 2500;
     if (now - loader_ready_since < kLoaderGraceMs) return false;
 
     if (!loader_ready_logged) {
         loader_ready_logged = true;
-        Log("Spotify.dll normal imports resolved; deferred native hooks released after 1500 ms loader grace");
+        Log("Spotify.dll normal imports resolved; deferred native hooks released after 2500 ms loader grace");
     }
     return true;
+}
+
+static bool CefTelemetryReady(HMODULE cef) {
+    if (!cef) return false;
+    const ULONGLONG now = GetTickCount64();
+    if (cef_seen_module != cef) {
+        cef_seen_module = cef;
+        cef_seen_since = now;
+        cef_telemetry_logged = false;
+        return false;
+    }
+    constexpr ULONGLONG kCefTelemetryGraceMs = 5000;
+    if (now - cef_seen_since < kCefTelemetryGraceMs) return false;
+    if (!cef_telemetry_logged) {
+        cef_telemetry_logged = true;
+        Log("CEF telemetry hook released after 5000 ms startup grace");
+    }
+    return true;
+}
+
+static ULONGLONG NativeHookStageAge(HMODULE module) {
+    const ULONGLONG now = GetTickCount64();
+    if (native_stage_module != module) {
+        native_stage_module = module;
+        native_stage_since = now;
+        native_stage_logged = false;
+        return 0;
+    }
+    const ULONGLONG age = now - native_stage_since;
+    if (age >= 500 && !native_stage_logged) {
+        native_stage_logged = true;
+        Log("Spotify native hook families released in staggered startup phases");
+    }
+    return age;
 }
 
 static bool WriteImportSlot(void** slot, void* value, void** previous) {
@@ -462,18 +502,24 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
         (void)spotify_notification;
         HMODULE cef;
         if(GetModuleHandleExW(0,L"libcef.dll",&cef)) {
-            history::StartCefRequestFilter(cef);
+            // The Classic UI bridge must attach early enough to observe the browser
+            // client, but the optional URL-request filter can wait until Chromium's
+            // compositor and render threads have settled.
             history::StartMetadataCollector(cef);
             StartToDiskMenu(cef);
+            if(CefTelemetryReady(cef)) history::StartCefRequestFilter(cef);
             FreeLibrary(cef);
         }
         HMODULE module;
         if (GetModuleHandleExW(0, L"Spotify.dll", &module)) {
             if (SpotifyLoaderReady(module)) {
+                const ULONGLONG stage_age=NativeHookStageAge(module);
                 StartConnectivityHook(module);
-                history::StartPlaybackSpeed(module);
-                history::MaintainPlaybackSpeed(module);
-                StartAudioHistory(module, proxy_module);
+                if(stage_age>=250) {
+                    history::StartPlaybackSpeed(module);
+                    history::MaintainPlaybackSpeed(module);
+                }
+                if(stage_age>=500) StartAudioHistory(module, proxy_module);
             }
             FreeLibrary(module);
         }
