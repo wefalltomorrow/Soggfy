@@ -285,7 +285,6 @@ sgf.installPlayerListeners=()=>{
   try{
     const events=sgf.player?.getEvents?.()||sgf.player?._events;
     events?.addListener?.('update',({data}={})=>{
-      sgf.observePlaybackState?.(data||sgf.currentState());
       const item=data?.item||sgf.currentState()?.item;
       if(item?.uri){
         sgf.send('ignore_current',sgf.isTrackIgnored(item)?'1':'0');
