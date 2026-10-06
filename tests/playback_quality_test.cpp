@@ -61,13 +61,10 @@ int main() {
   tracker.Ogg(1, first.data(), first.size(), 100);
   auto q = tracker.Snapshot();
   assert(q.format == PlaybackFormat::Unknown); // BOS alone has no duration/identity evidence.
-  assert(q.detected_format == PlaybackFormat::Ogg && q.detected_rate == 44100 &&
-         q.association == PlaybackAssociation::Detected);
   auto end = OggPage(1, 4, 8820000);
   tracker.Ogg(1, end.data(), end.size(), 101);
   q = tracker.Snapshot();
   assert(q.level == PlaybackLevel::VeryHigh && std::fabs(q.bitrate - 4.64) < 0.0001);
-  assert(q.format == PlaybackFormat::Ogg && q.association == PlaybackAssociation::Complete);
   auto next_end = OggPage(1, 4, 7938000);
   tracker.Ogg(3, first.data(), first.size(), 110);
   tracker.Ogg(3, next_end.data(), next_end.size(), 111);
@@ -112,10 +109,8 @@ int main() {
   midtrack.Media("a", L"Current", 50, 200, 100);
   midtrack.Ogg(8, first.data(), first.size(), 101);
   assert(midtrack.Snapshot().format == PlaybackFormat::Unknown);
-  assert(midtrack.Snapshot().detected_format == PlaybackFormat::Unknown);
   midtrack.Ogg(8, next_end.data(), next_end.size(), 102);
   assert(midtrack.Snapshot().format == PlaybackFormat::Unknown);
-  assert(midtrack.Snapshot().association == PlaybackAssociation::Unavailable);
   // Same-key replay must exclude the previous codec even before the new decoder arrives.
   PlaybackQualityTracker replay;
   replay.Media("a", L"Current", 0, 200, 100);
@@ -164,16 +159,6 @@ int main() {
   q = {};
   const auto unknown = PlaybackQualityLabels(q);
   assert(unknown[3].find(L"Unavailable") != std::wstring::npos);
-  assert(PlaybackAssociationLabel(q) == L"Unavailable");
-  q.detected_format = PlaybackFormat::Ogg;
-  q.detected_rate = 44100;
-  q.association = PlaybackAssociation::Detected;
-  auto detected_labels = PlaybackQualityLabels(q);
-  assert(detected_labels[2].find(L"Ogg/Vorbis") != std::wstring::npos &&
-         detected_labels[2].find(L"detected") != std::wstring::npos);
-  assert(detected_labels[3].find(L"44,100 Hz") != std::wstring::npos &&
-         detected_labels[3].find(L"detected") != std::wstring::npos);
-  assert(PlaybackAssociationLabel(q).find(L"Pending") != std::wstring::npos);
   q.format = PlaybackFormat::Ogg;
   q.rate = 44100;
   q.bitrate = 320000;
@@ -184,8 +169,7 @@ int main() {
          labels[0].find(L'\n') == std::wstring::npos);
   assert(labels.size() == 4);
   for (const auto& row : labels) assert(row.find(L"Bitrate:") == std::wstring::npos);
-  assert(labels[2].find(L"Ogg/Vorbis") != std::wstring::npos &&
-         labels[3].find(L"44,100 Hz") != std::wstring::npos &&
+  assert(labels[3].find(L"44,100 Hz") != std::wstring::npos &&
          labels[1].find(L"Very high") != std::wstring::npos);
 
   std::cout << "PASS: current-source association, ambiguity rejection, Ogg duration corroboration/actual rates, "

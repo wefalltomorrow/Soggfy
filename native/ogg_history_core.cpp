@@ -84,7 +84,6 @@ std::string Listen::Observe(const std::string& key, double pos, double length,
     reject=ListenReject::None;
     if(!std::isfinite(playback_rate) || playback_rate<0.25 || playback_rate>100.0)
         playback_rate=1.0;
-    const bool accelerated=playback_rate>1.0001;
     const double elapsed=time-last_time;
     const double media_elapsed=(playing && elapsed>=0) ? elapsed*playback_rate : 0.0;
     const double expected=last_position+media_elapsed;
@@ -102,7 +101,7 @@ std::string Listen::Observe(const std::string& key, double pos, double length,
         // At accelerated playback the last sampled position can be many media
         // seconds from the end. Accept a natural transition when wall-clock
         // elapsed time at the active playback rate reaches the track end.
-        if(!accelerated && eligible && playing && duration>0 && elapsed>=0 && elapsed<=3 &&
+        if(eligible && playing && duration>0 && elapsed>=0 && elapsed<=3 &&
            expected>=duration-0.1) done=identity;
         identity=key;
         start_time=time-(pos/playback_rate);
@@ -114,7 +113,7 @@ std::string Listen::Observe(const std::string& key, double pos, double length,
         // SMTC title and timeline are separate snapshots. At a natural end,
         // the next timeline can arrive before its title. Account for accelerated
         // playback so a legitimate end/reset is not mistaken for a seek.
-        if(!accelerated && eligible && playing && pos<=start_window &&
+        if(eligible && playing && pos<=start_window &&
            elapsed>=0 && elapsed<=3 && expected>=duration-0.1) {
             transient=true; return {};
         }
@@ -125,31 +124,17 @@ std::string Listen::Observe(const std::string& key, double pos, double length,
             last_time=time; last_position=pos; playing=is_playing; return {};
         }
         if(eligible) {
-            if(accelerated) {
-                // RC28-style decoder thinning changes audible/decode progress without
-                // teaching Windows SMTC about that rate. A fresh public timeline
-                // snapshot can therefore jump far backward/forward or arrive after a
-                // long apparent gap even during perfectly continuous playback.
-                //
-                // Do not use SMTC position/clock discontinuities as seek evidence above
-                // 1x. The capture layer still enforces Ogg sequence/granule integrity
-                // (or FLAC frame coverage) and only publishes after a complete EOS.
-                if(std::fabs(length-duration)>1.0) {
-                    eligible=false;reject=ListenReject::DurationChanged;
-                }
-            } else {
-                if(elapsed<0 || elapsed>3) {
-                    eligible=false;reject=ListenReject::ClockDiscontinuity;
-                } else if(pos<last_position-tolerance) {
-                    eligible=false;reject=ListenReject::PositionRewind;
-                } else if(pos>expected+tolerance) {
-                    eligible=false;reject=ListenReject::PositionAhead;
-                } else if(std::fabs(length-duration)>1.0) {
-                    eligible=false;reject=ListenReject::DurationChanged;
-                }
+            if(elapsed<0 || elapsed>3) {
+                eligible=false;reject=ListenReject::ClockDiscontinuity;
+            } else if(pos<last_position-tolerance) {
+                eligible=false;reject=ListenReject::PositionRewind;
+            } else if(pos>expected+tolerance) {
+                eligible=false;reject=ListenReject::PositionAhead;
+            } else if(std::fabs(length-duration)>1.0) {
+                eligible=false;reject=ListenReject::DurationChanged;
             }
         }
-        if(!accelerated && eligible && playing && !is_playing &&
+        if(eligible && playing && !is_playing &&
            pos>=duration-tolerance && expected>=duration-0.1) {
             done=identity; eligible=false; pending_start=false;
         }

@@ -2,14 +2,14 @@
 
 A maintained Windows x64 continuation of Soggfy with the old Soggfy Spotify UI on top of the modern Floggfy capture engine.
 
-The goal is to keep the interaction model people used in old Soggfy while replacing the obsolete x86 hooks, localhost control server and pinned 2024 Spotify build with the current x64 backend.
+The goal is to keep the interaction model people used in old Soggfy on the modern x64 capture backend. RC38 deliberately uses Spotify 1.3.1.234 as the supported playback-speed baseline after abandoning the unstable 1.3.3.264 experiment line.
 
 ## What it does
 
 - Uses the old Soggfy-style top-bar Downloads button and Soggfy settings modal.
 - Shows per-track status icons for downloading, converting, completed, failed, warning and ignored states.
 - Restores Skip Downloaded Tracks, Skip Ignored Tracks, Ignore/Unignore and Generate M3U.
-- Restores the old 1–50x playback-speed control on explicitly validated Spotify builds. Spotify 1.3.1.234 uses the legacy constructor backend; 1.3.3.264 hooks the exact x64 equivalent of old Soggfy's DecodeAudioData dispatcher and reduces only the returned decoded-sample count after the full compressed packet has been consumed. Like original Soggfy, accelerated playback leaves Spotify's visible elapsed-time/scrubber on Spotify's own transport timeline. On current Spotify builds, validated accelerated EOS explicitly advances via Spotify's real Next control because the client no longer always moves automatically when decoder EOS arrives early. Unknown builds fail closed at 1x.
+- Restores the old 1–50x playback-speed control only on explicitly runtime-validated Spotify player ABIs. Unsupported or newer builds fail closed at 1x instead of risking startup.
 - Restores old-style output presets including MP3, M4A/AAC, Opus and custom FFmpeg output.
 - Always captures Spotify's native Ogg or FLAC first, and keeps native FLAC lossless.
 - Embeds artwork, lyrics and rich locally cached metadata when enabled.
@@ -26,7 +26,7 @@ The goal is to keep the interaction model people used in old Soggfy while replac
 
 ## Install
 
-The Floggfy 1.1.0 capture/startup base was live-tested against Windows x64 Spotify 1.3.3.264. Its dynamic audio/connectivity resolver was also validated against signed Spotify DLLs from 1.3.0.277, 1.2.94.583 and 1.2.92.148. Soggfy has separate validated playback-speed backends for Spotify 1.3.1.234 and 1.3.3.264. The 1.3.3.264 backend validates the exact decoder dispatcher, its live Ogg-decoder call, produced-sample store, constructor assignment and vtable slot before enabling old Soggfy-style decoded-output thinning. The Classic Soggfy UI still needs normal real-client validation as Spotify UI internals change over time. Microsoft Store installs remain unvalidated.
+**RC38 targets Spotify Windows x64 1.3.1.234.** That is the runtime-validated baseline for Soggfy's native 1-50x playback-speed hook. The Spotify 1.3.3.264 experiment line has been rolled back rather than carried into this build. Other Spotify versions fail closed for native playback speed. Microsoft Store installs remain unvalidated.
 
 Releases use a single all-in-one Windows x64 ZIP. It contains both startup modes; install **only one**.
 
@@ -47,20 +47,18 @@ The installer backs up a pre-existing `version.dll` instead of silently overwrit
 
 After either startup mode, use the Soggfy Downloads button in Spotify's top bar, open settings with the sliders button, and play a track from start to finish without seeking or skipping.
 
-Disable Spotify **Automix** under **Edit -> Preferences -> Playback** while using complete-listen capture. Automix trims tracks and can prevent a download from satisfying Soggfy's full-listen validation.
-
 ## Classic Soggfy UI
 
 The default interface follows the old Sprinkles workflow rather than Floggfy's To Disk menu.
 
 The settings modal includes playback speed, output format, Skip Downloaded, Skip Ignored, cover-art and lyrics options, Canvas saving, Base/Track/Podcast/Canvas paths, invalid-character replacement, Block telemetry, Move Add to Queue to top, native FLAC/Ogg controls, cached metadata, logging, diagnostics and whether to retain the native original after conversion.
 
-Track rows use the old status model and show the original-style inline indicator in the final duration/actions cell:
+Track rows use the old status model:
 
 - downloading / in progress
 - converting
-- completed (green check)
-- failed (red cross)
+- completed
+- failed
 - warning
 - ignored
 
@@ -122,7 +120,7 @@ If the injected UI is unavailable after a Spotify update, capture can still be e
 
 ## Diagnostics
 
-`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages. Spotify 1.3.3.264 playback-speed troubleshooting uses `speed_decode_hook` records showing the live PCM capacity, produced/kept sample counts, compressed input counts and requested rate. Accelerated tracks that complete through the verified native stream path log `accelerated_complete` and `completion=capture_eos`. Native Spotify.dll hooks are deferred until critical normal imports are resolved and a 2500 ms loader grace period has elapsed. RC37 then holds the MinHook-based playback-speed and audio/capture families for an additional 10 and 11 seconds respectively, keeping thread-suspending detours out of Spotify/Chromium's startup window. In RC35+ the CEF side uses no MinHook detours at all: after an 8-second Chromium startup grace it discovers the existing browser on the CEF UI thread, validates the CEF 151 browser/host/client ABI before following method pointers, patches only the concrete console callback slot, and injects the Classic UI/metadata scripts into the existing main frame. The CEF telemetry request filter and optional native To Disk menu are temporarily disabled in this startup-safe build. Classic row-status diagnostics use `FLOGGFY_STATUS:classic rows=... results=... statuses=... rendered=...`; accelerated handoff logs `FLOGGFY_STATUS:accelerated next queued/click/api`.
+`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages.
 
 Enable **Debug log** in Soggfy settings for the high-volume timeline trace: each media-session sample plus replayed Ogg-page details. This is intended for short troubleshooting runs because the log is capped and rotates by truncation when it reaches its size limit.
 
@@ -133,11 +131,11 @@ The current UI does not restore the old localhost WebSocket server or old x86 de
 Instead:
 
 - UI controls communicate through the in-process CEF bridge.
-- Native capture remains bounded and memory-only until completion is validated. At 1x this uses the public media timeline; during accelerated playback a unique matching native stream reaching EOS can provide the completion proof because Spotify's public timeline does not track decoder-thinning speed reliably.
+- Native capture remains bounded and memory-only until a complete listen is validated.
 - FFmpeg starts only after native publication.
 - Canvas downloads are bounded and published from a temporary file only after completion.
-- Telemetry/ad blocking is host-independent and path-scoped to `/ads/`, `/ad-logic/`, `/gabo-receiver-service/` and `/dodo-receiver-service/`; metadata, audio CDN, login and client-update traffic are deliberately left alone.
-- Playback speed uses separately validated Spotify.dll backends. Spotify 1.3.3.264 validates the exact DecodeAudioData-equivalent dispatcher, its live Ogg call and decoder vtable slot before enabling old Soggfy-style output thinning, and fails closed if they differ.
+- Telemetry blocking is limited to the old Soggfy ad/telemetry receiver prefixes; metadata, audio CDN and client-update traffic are deliberately left alone.
+- Playback speed uses a separately validated Spotify.dll player-construction hook and fails closed when the target cannot be uniquely identified.
 
 ## Build and test
 

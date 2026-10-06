@@ -14,8 +14,8 @@ sgf.state = Object.assign({
   downloads:false, ogg:true, flac:true, metadata:true, log:true, debug:false, normalize:true,
   skipDownloaded:false, skipIgnored:false, embedCover:true, saveCover:true, embedLyrics:true,
   saveLyrics:true, saveCanvas:false, blockTelemetry:true, liftQueue:false, keepNative:true,
-  playbackSpeed:1, speedSupported:false, speedImmediate:false,
-  qualitySong:'Unavailable', qualityLevel:'Unavailable', qualityFormat:'Unavailable', qualitySample:'Unavailable', qualityAssociation:'Unavailable',
+  playbackSpeed:1, speedSupported:false,
+  qualitySong:'Unavailable', qualityLevel:'Unavailable', qualityFormat:'Unavailable', qualitySample:'Unavailable',
   root:'', template:'', podcastTemplate:'', canvasTemplate:'',
   invalidChars:'unicode', outputPreset:'Native', outputExt:'', outputArgs:'', ffmpegPath:''
 }, sgf.state || {});
@@ -51,7 +51,7 @@ const css = [
 '.sgf-settings-overlay{display:flex;align-items:center;justify-content:center;background-color:rgba(0,0,0,.7);position:fixed;width:100%;height:100%;inset:0;overflow:hidden;z-index:2147483000;pointer-events:auto;user-select:none}.sgf-settings-modal{width:40rem;height:90%;display:block}.sgf-settings-container{background-color:#333;border-radius:10px;box-shadow:0 0 8px 4px rgb(0 0 0 / 15%);height:inherit;max-height:45rem;display:flex;flex-direction:column;position:relative;top:50%;transform:translateY(-50%)}',
 '.sgf-settings-header{display:flex;align-items:baseline;border-bottom:1px solid rgba(255,255,255,.1);justify-content:space-between;padding:32px 32px 12px}.sgf-header-title{font-size:32px;font-weight:700;letter-spacing:-.04em;line-height:36px;text-transform:none}.sgf-settings-closeBtn{background-color:transparent;border:0;padding:8px;color:var(--sgf-text);cursor:pointer}.sgf-settings-closeBtn:hover{transform:scale(1.1)}.sgf-settings-elements{overflow:auto;padding:16px 32px}',
 '.sgf-setting-row{display:flex;align-items:center;flex-direction:row;margin:4px 0;min-height:37px}.sgf-setting-row .col.description{float:left;padding-right:15px;cursor:default;flex:1}.sgf-setting-row .col.action{float:right;text-align:right;min-width:180px}.sgf-setting-rows{display:flex;flex-direction:column;margin:4px 0}.sgf-setting-cols{display:flex;flex-direction:row;align-items:center;gap:4px}.sgf-setting-section{margin:12px 0 22px}.sgf-setting-section h2{margin:0 0 8px}.sgf-subsection{margin-left:20px}',
-'.sgf-status-indicator{background:transparent!important;border:0!important;display:inline-flex!important;align-items:center;justify-content:center;position:relative;flex:0 0 20px;min-width:20px;width:20px;height:24px;margin-right:8px;opacity:1!important;visibility:visible!important;overflow:visible!important;z-index:2}.sgf-status-indicator>svg{display:block!important;opacity:1!important;visibility:visible!important;flex:none}.sgf-status-indicator-card{display:flex;flex-direction:column;position:absolute;background:#222;border-radius:4px;top:-18px;padding:4px;transform:translateX(calc(-50% + 8px));box-shadow:2px 2px 6px 4px rgb(0 0 0 / 25%);opacity:0;transition:opacity .1s ease-out .5s;z-index:999;max-width:260px;width:max-content}.sgf-status-indicator:hover .sgf-status-indicator-card{opacity:1}.sgf-status-browse-button{background:transparent;border:0;height:24px;display:flex;cursor:pointer;align-items:center}',
+'.sgf-status-indicator{background:transparent;border:0;display:flex;position:relative}.sgf-status-indicator-card{display:flex;flex-direction:column;position:absolute;background:#222;border-radius:4px;top:-18px;padding:4px;transform:translateX(calc(-50% + 8px));box-shadow:2px 2px 6px 4px rgb(0 0 0 / 25%);opacity:0;transition:opacity .1s ease-out .5s;z-index:999;max-width:260px;width:max-content}.sgf-status-indicator:hover .sgf-status-indicator-card{opacity:1}.sgf-status-browse-button{background:transparent;border:0;height:24px;display:flex;cursor:pointer;align-items:center}',
 '.sgf-notification-bubble{display:flex;position:fixed;z-index:2147483647;background:#222;padding:6px 10px;border-radius:4px;pointer-events:none;box-shadow:1px 1px 4px rgb(0 0 0 / 30%);left:50%;bottom:105px;transform:translateX(-50%);animation:sgf-fade-out .2s ease var(--delay,2.5s) forwards}.sgf-notification-wrapper{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500}@keyframes sgf-fade-out{from{opacity:1}to{opacity:0}}',
 '.sgf-modern-note{font-size:11px;color:#bbb;line-height:16px;margin:4px 0 10px}',`.sgf-readonly-value{font-size:12px;color:var(--sgf-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;display:inline-block;vertical-align:middle}`
 ].join('');
@@ -102,11 +102,10 @@ sgf.applyConfig = payload => {
     const bools=['downloads','ogg','flac','metadata','log','debug','normalize','skipDownloaded','skipIgnored','embedCover','saveCover','embedLyrics','saveLyrics','saveCanvas','blockTelemetry','liftQueue','keepNative'];
     for(const key of bools)sgf.state[key]=sgf.flag(p,key,sgf.state[key]);
     const strings=['root','template','podcastTemplate','canvasTemplate','invalidChars','outputPreset','outputExt','outputArgs','ffmpegPath',
-      'qualitySong','qualityLevel','qualityFormat','qualitySample','qualityAssociation'];
+      'qualitySong','qualityLevel','qualityFormat','qualitySample'];
     for(const key of strings)if(p.has(key))sgf.state[key]=p.get(key)||'';
     if(p.has('playbackSpeed'))sgf.state.playbackSpeed=Math.max(1,Math.min(50,Number(p.get('playbackSpeed'))||1));
     if(p.has('speedSupported'))sgf.state.speedSupported=sgf.flag(p,'speedSupported',sgf.state.speedSupported);
-    if(p.has('speedImmediate'))sgf.state.speedImmediate=sgf.flag(p,'speedImmediate',sgf.state.speedImmediate);
     if(sgf.refreshControls)sgf.refreshControls();
   } catch {}
 };
@@ -142,36 +141,6 @@ sgf.currentState = () => {
   try{return sgf.player?.getState?.()||window.Spicetify?.Player?.data||null;}catch{return null;}
 };
 
-let lastAcceleratedAdvanceToken='';
-window.__soggfyAcceleratedComplete = async token => {
-  token=String(token||'');
-  if(!token||token===lastAcceleratedAdvanceToken)return;
-  lastAcceleratedAdvanceToken=token;
-
-  // Original Soggfy did not synthesize a 50x transport clock in the UI. It
-  // thinned decoded PCM and relied on Spotify to move when the decoder reached
-  // the end. Current Spotify no longer advances reliably from that condition,
-  // so emulate the old end-of-track result by pressing Spotify's own Next
-  // control exactly once when native capture proves EOS.
-  console.info('FLOGGFY_STATUS:accelerated next queued');
-  try{
-    const button=document.querySelector('[data-testid="control-button-skip-forward"]');
-    if(button&&!button.disabled){
-      console.info('FLOGGFY_STATUS:accelerated next click');
-      button.click();
-      return;
-    }
-    if(typeof sgf.player?.skipToNext==='function'){
-      console.info('FLOGGFY_STATUS:accelerated next api');
-      await sgf.player.skipToNext();
-      return;
-    }
-    console.info('FLOGGFY_STATUS:accelerated next failed no_control');
-  }catch{
-    console.info('FLOGGFY_STATUS:accelerated next failed exception');
-  }
-};
-
 sgf.resetCurrentTrack = async preserve => {
   try{
     const st=sgf.currentState();
@@ -194,17 +163,15 @@ sgf.setPlaybackSpeed = async speed => {
   speed=Math.max(1,Math.min(50,Number(speed)||1));
   sgf.state.playbackSpeed=speed;
   sgf.send('playbackSpeed',String(speed));
-  if(!sgf.state.speedSupported){
-    sgf.notify('Accelerated playback is unavailable on this Spotify build',sgf.Icons.Warning);
-    return false;
+  if(speed===1||sgf.state.speedSupported){
+    // The native x64 hook reads Playback Speed when Spotify constructs the
+    // track player. Re-create the current track so a change applies now.
+    const reset=await sgf.resetCurrentTrack(!sgf.state.downloads);
+    if(!reset&&speed!==1)sgf.notify('Playback speed will apply on the next local track',sgf.Icons.Warning);
+    return true;
   }
-  if(sgf.state.speedImmediate)return true;
-
-  // Older validated builds apply speed while constructing a track player.
-  // Re-create the current track so a change applies now.
-  const reset=await sgf.resetCurrentTrack(!sgf.state.downloads);
-  if(!reset&&speed!==1)sgf.notify('Playback speed will apply on the next local track',sgf.Icons.Warning);
-  return true;
+  sgf.notify('Accelerated playback is unavailable on this Spotify build',sgf.Icons.Warning);
+  return false;
 };
 
 sgf.findTopbarHost = () => {
@@ -282,20 +249,6 @@ sgf.initPlayer = async () => {
   sgf.platform=await sgf.getPlatform();
   if(!sgf.platform)return;
   try{sgf.player=sgf.platform.getPlayerAPI();}catch{}
-  try{
-    const events=sgf.player?.getEvents?.();
-    if(events?._client?.getError&&!sgf._stuckRecoveryInstalled){
-      sgf._stuckRecoveryInstalled=true;
-      events._client.getError({},err=>{
-        try{
-          if(err?.message==='playback_stuck'&&err?.data?.playback_id===sgf.currentState()?.playbackId){
-            console.info('FLOGGFY_STATUS:playback_stuck reset');
-            sgf.resetCurrentTrack(false);
-          }
-        }catch{}
-      });
-    }
-  }catch{}
   try{
     const settings=sgf.platform.getSettingsAPI?.();
     settings?.quality?.streamingQuality?.setValue?.(4);
