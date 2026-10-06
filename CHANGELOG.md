@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.29
+
+- Fixed accelerated tracks reaching complete Ogg EOS but never entering publication because Spotify's public SMTC timeline refreshes at a different rate from RC28's decoder-output thinning.
+- During playback above 1x, a unique completed native stream that matches the current media duration and existing start-window association can now complete the listen directly from capture EOS.
+- The completed stream must finish after the current listen begins; prefetched/ambiguous streams still do not qualify.
+- Normal 1x seek/rewind/complete-listen validation is unchanged.
+- Added `accelerated_complete` diagnostics and marks accelerated completions as `completion=capture_eos`.
+- Kept strict Ogg sequence validation: real page gaps are still rejected rather than publishing incomplete audio.
+
 ## 3.0.0-rc.28
 
 - Replaced RC26/RC27's unused Spotify 1.3.3.264 PCM filter-chain speed hook after live logging proved it never receives callbacks during active Ogg music playback.
