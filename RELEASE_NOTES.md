@@ -1,31 +1,36 @@
-# Soggfy v3.0.0-rc.35
+# Soggfy v3.0.0-rc.36
 
-RC35 is a startup-stability isolation build for the intermittent full-primary-monitor black screen that still reproduced on RC34.
+RC36 fixes a concrete crash introduced by RC35's new hookless CEF browser-discovery path.
 
-## CEF bridge redesign
+## Crash-dump result
 
-RC34 removed the five callback-time MinHook installs, but three initial CEF browser-creation entry hooks still remained. The CEF URL-request filter was also still a MinHook detour.
+The supplied dump is a 64-bit Spotify 1.3.3.264 crash with:
 
-RC35 removes those remaining CEF MinHook operations completely.
+- exception: `0xC0000005` access violation;
+- crashing thread: `CrBrowserMain`;
+- faulting module: Soggfy's `VERSION.dll`;
+- faulting offset: `+0x6D3E2`;
+- invalid read address: `0x1`.
 
-Instead of intercepting browser creation, the Classic bridge now:
+Disassembly at the fault shows RC35 called a CEF browser-host method, received `1`, then treated that value as a pointer and dereferenced it.
 
-1. Initializes only lightweight state when `libcef.dll` appears.
-2. Waits 8 seconds so Spotify/Chromium can finish creating its compositor and main browser.
-3. Posts a task onto CEF's UI thread.
-4. Discovers the already-created Spotify browser using `cef_browser_host_get_browser_by_identifier`.
-5. Gets the browser's client/display handler and patches only the concrete console callback pointer.
-6. Gets the existing main frame and injects the normal Soggfy metadata/Classic UI scripts directly.
+CEF 151's browser-host layout places:
 
-There is no MinHook enable/apply anywhere in this CEF bridge path.
+- slot 8: `has_view()` -> integer;
+- slot 9: `get_client()` -> client pointer.
 
-## Startup-safe feature tradeoff
+RC35 accidentally called slot 8. A normal true return value became the bogus pointer `0x1`.
 
-To make this test decisive, RC35 also does not install:
+## RC36 fix
 
-- the CEF URL-request/telemetry MinHook;
-- the optional native To Disk menu MinHooks.
+RC36:
 
-The Block Telemetry preference is still saved and shown, but native CEF request blocking is temporarily inactive in this build. Classic UI, downloads, metadata, capture, conversion, playback speed, status indicators and RC33's accelerated-end Next behavior remain present.
+- calls the correct browser-host `get_client` slot (9);
+- verifies the CEF object is large enough to contain each method before reading the slot;
+- verifies each function pointer points to executable memory before calling it;
+- verifies the returned client ABI before attaching the console bridge;
+- keeps RC35's post-start, hookless CEF discovery model.
 
-If RC35 still black-screens, the remaining likely source is no longer the CEF integration and the next isolation target is the Spotify.dll MinHook family itself.
+No CEF MinHook detours are reintroduced. Telemetry request interception and the native To Disk menu remain disabled in this startup-safe branch while the black-screen issue is being isolated.
+
+The accelerated-download and end-of-track behavior from RC33 remains unchanged.
