@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0-rc.35
+
+- Removed the remaining CEF MinHook entry detours from the Classic metadata/UI bridge.
+- The Classic bridge now waits 8 seconds after CEF initialization, then discovers Spotify's existing browser on the CEF UI thread with `cef_browser_host_get_browser_by_identifier`.
+- After discovery it obtains the main frame and injects the existing Soggfy scripts directly; no browser-creation hook is needed.
+- The console bridge is attached by patching only the concrete display-handler callback slot, with no process-wide thread suspension.
+- Disabled the CEF URL-request MinHook and optional native To Disk menu MinHooks in this startup-safe build so RC35 performs no CEF MinHook operations at all.
+- Block Telemetry remains configurable/persisted, but native CEF request interception is temporarily inactive in RC35.
+- Kept RC33 original-style accelerated completion/Next behavior and all Spotify.dll capture/playback-speed hooks unchanged.
+- Added startup diagnostics identifying hookless CEF discovery mode.
+
 ## 3.0.0-rc.34
 
 - Reworked the Classic CEF callback bridge to remove five callback-time MinHook installs that could suspend Chromium UI/compositor threads while Spotify's browser was being created.
