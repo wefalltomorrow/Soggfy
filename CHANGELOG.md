@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0-rc.36
+
+- Fixed the RC35 crash in post-start CEF browser discovery.
+- The crash dump shows an access violation in Soggfy VERSION.dll at +0x6D3E2 on the CrBrowserMain thread while reading address 0x1.
+- RC35 incorrectly used CEF 151 browser-host method slot 8 as get_client; slot 8 is has_view and returns an integer, so a true result (1) was misinterpreted as a Client pointer.
+- Use the correct CEF 151 get_client slot (9).
+- Added runtime structure-size checks and executable-pointer validation before calling browser host/client/frame methods.
+- Keep RC35's hookless CEF startup mode intact so this build still performs no CEF MinHook operations.
+- RC33 accelerated native-EOS Next behavior, RC29 capture/publication and RC30 status indicators remain unchanged.
+
 ## 3.0.0-rc.35
 
 - Removed the remaining CEF MinHook entry detours from the Classic metadata/UI bridge.
