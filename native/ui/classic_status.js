@@ -57,8 +57,103 @@ function reactRoots(row){
   const nodes=[row,...row.querySelectorAll('[data-testid="more-button"],.main-trackList-rowMoreButton,button')];
   for(const e of nodes){
     for(const key of Object.keys(e)){
-      if(key.startsWith('__reactProps
+      if(key.startsWith('__reactProps$')||key.startsWith('__reactFiber$'))roots.push(e[key]);
+    }
+  }
+  return roots;
+}
+function artistNames(value){
+  if(!Array.isArray(value))return [];
+  return value.map(a=>typeof a==='string'?a:(a?.name||a?.title||''))
+    .map(x=>String(x||'').trim()).filter(Boolean);
+}
+function reactTrackData(row,preferredUri=''){
+  let best=null,bestScore=-1;
+  for(const root of reactRoots(row)){
+    const stack=[root],seen=new Set();let budget=1200;
+    while(stack.length&&budget-->0){
+      const v=stack.pop();
+      if(!v||typeof v!=='object'||seen.has(v))continue;
+      seen.add(v);
 
+      const directUri=typeof v.uri==='string'?v.uri:
+        (typeof v.contextTrack?.uri==='string'?v.contextTrack.uri:'');
+      if(/^spotify:(track|episode):/.test(directUri)){
+        const metadata=v.metadata||v.contextTrack?.metadata||{};
+        const title=String(v.name||v.title||metadata.title||metadata.name||
+          v.contextTrack?.name||v.contextTrack?.title||'').trim();
+        let artists=artistNames(v.artists);
+        if(!artists.length)artists=artistNames(v.album?.artists);
+        if(!artists.length)artists=artistNames(v.contextTrack?.artists);
+        if(!artists.length&&metadata.artist_name)artists=[String(metadata.artist_name).trim()].filter(Boolean);
+        const album=String(v.album?.name||v.album?.title||metadata.album_title||
+          metadata.album_name||v.contextTrack?.album?.name||'').trim();
+        const albumUri=String(v.album?.uri||metadata.album_uri||v.contextTrack?.album?.uri||'');
+        const artistUris=(Array.isArray(v.artists)?v.artists:
+          (Array.isArray(v.album?.artists)?v.album.artists:[]))
+          .map(a=>a?.uri).filter(x=>typeof x==='string'&&x.startsWith('spotify:artist:'));
+        const score=(directUri===preferredUri?100:0)+20+(title?8:0)+(artists.length?6:0)+(album?4:0);
+        if(score>bestScore){
+          best={uri:directUri,title,artists,album,albumUri,artistUris};
+          bestScore=score;
+        }
+      }
+      for(const x of Object.values(v)){
+        if(x&&typeof x==='object'&&!seen.has(x))stack.push(x);
+      }
+    }
+  }
+  return best;
+}
+function rowInfo(inputRow){
+  const row=canonicalRow(inputRow);
+  if(!row)return null;
+  const trackLink=row.querySelector('a[href*="/track/"],a[href*="/episode/"],[data-testid="internal-track-link"]');
+  const hrefUri=uriFromHref(trackLink?.getAttribute?.('href')||'');
+  const react=reactTrackData(row,hrefUri);
+  const uri=hrefUri||react?.uri||'';
+  if(!uri)return null;
+
+  const title=(trackLink?.textContent||react?.title||
+    row.querySelector('[data-testid="internal-track-link"],[dir="auto"]')?.textContent||'').trim();
+  if(!title)return null;
+
+  const artistLinks=[...row.querySelectorAll('a[href*="/artist/"]')];
+  let artists=artistLinks.map(a=>(a.textContent||'').trim()).filter(Boolean);
+  if(!artists.length&&react?.artists?.length)artists=react.artists;
+  let artistUris=artistLinks.map(a=>uriFromHref(a.getAttribute('href')||'')).filter(x=>x.startsWith('spotify:artist:'));
+  if(!artistUris.length&&react?.artistUris?.length)artistUris=react.artistUris;
+
+  const albumLink=row.querySelector('a[href*="/album/"]');
+  let album=(albumLink?.textContent||react?.album||'').trim();
+  const albumHref=albumLink?.getAttribute?.('href')||'';
+  const albumMatch=albumHref.match(/\/album\/([A-Za-z0-9]+)/);
+  const albumUri=albumMatch?'spotify:album:'+albumMatch[1]:
+    (react?.albumUri?.startsWith?.('spotify:album:')?react.albumUri:'');
+
+  const pageMatch=location.pathname.match(/\/(playlist|album|artist)\/([A-Za-z0-9]+)/);
+  const contextUri=pageMatch?'spotify:'+pageMatch[1]+':'+pageMatch[2]:'';
+  const pageTitle=(row.closest('section,[data-testid$="-page"]')?.querySelector('h1')?.textContent||
+    document.querySelector('main h1')?.textContent||'').trim();
+  if(!album&&pageMatch?.[1]==='album')album=pageTitle;
+  if(!artists.length&&pageMatch?.[1]==='artist'&&pageTitle)artists=[pageTitle];
+
+  const artist=artists[0]||'';
+  const allArtists=artists.join(', ')||artist;
+  const ignoreUris=[uri,albumUri,contextUri,...artistUris].filter(Boolean);
+  return {row,uri,title,artist,album,allArtists,albumUri,contextUri,artistUris,ignoreUris};
+}
+sgf.trackInfoFromRows=rows=>{
+  const source=rows?[...rows]:[...document.querySelectorAll('div[data-testid="tracklist-row"],.main-trackList-trackListRow,div[role="row"]')];
+  const out=[],seenUri=new Set(),seenRow=new Set();
+  for(const candidate of source){
+    const row=canonicalRow(candidate);if(!row||seenRow.has(row))continue;
+    seenRow.add(row);
+    const info=rowInfo(row);if(!info||seenUri.has(info.uri))continue;
+    seenUri.add(info.uri);out.push(info);
+  }
+  return out;
+};
 function encodeBatch(infos){
   return infos.slice(0,128).map(i=>[i.uri,i.title,i.artist,i.album,i.allArtists].join(sgf.FS)).join(sgf.RS);
 }
