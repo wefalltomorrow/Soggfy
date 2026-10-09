@@ -1,11 +1,11 @@
-# Soggfy v3.0.0-rc.43
+# Soggfy v3.0.0-rc.44
 
-RC43 fixes the remaining immediate Spotify startup crash seen with RC40-RC42.
+RC44 fixes RC43 launching to an empty Spotify window.
 
-The three new RC42 dumps all fail in the same place as the earlier dumps: execute access violation at 0x01F10B54, returning to Spotify.dll+0x5200C. The dump timestamps match the process creation timestamps, so the crash occurs in the very first second while Spotify.dll is still being initialized.
+RC43 waited for libcef.dll before touching Spotify.dll. That avoided the earlier loader crash, but it also delayed the connectivity compatibility hook until after Spotify had already made its initial network-state decision, which can leave the XPUI shell blank.
 
-The previous RC42 change made the individual speed/connectivity paths safer, but we were still calling StartConnectivityHook and StartPlaybackSpeed as soon as GetModuleHandle could see Spotify.dll. A DLL can be visible before its loader initialization has completed, so that was still too early.
+RC44 no longer uses CEF as the readiness signal. It directly checks several loader-critical Spotify.dll normal imports and requires them to resolve to executable addresses, then waits an additional 1500 ms before installing the connectivity, playback-speed and capture hooks.
 
-RC43 changes the startup model: Soggfy observes Spotify.dll but does not patch it until libcef.dll has loaded. That later CEF load is a practical post-loader readiness point because the Windows loader lock prevents another DLL load from completing while Spotify.dll is still inside its initialization path.
+This is the same loader-readiness strategy previously used to avoid raw-RVA startup crashes, while keeping the connectivity hook early enough to affect Spotify's first connectivity check.
 
-After CEF is present, Soggfy installs the connectivity compatibility hook, the validated 1.3.1.234 playback-speed hook, and the audio capture hook from its normal worker thread. The RC40-RC42 fixes remain otherwise unchanged.
+RC42's delay-IAT safety and startup-disarmed acceleration, RC41's natural-transition speed recovery, and RC40's Classic UI fallback remain in place.
