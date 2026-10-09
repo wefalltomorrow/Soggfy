@@ -6,7 +6,8 @@ sgf.__statusLoaded=true;
 
 const STATUS_ICON={
   ERROR:sgf.Icons.Error,IN_PROGRESS:sgf.Icons.InProgress,CONVERTING:sgf.Icons.Processing,
-  WARN:sgf.Icons.Warning,DONE:sgf.Icons.Done,IGNORED:sgf.Icons.SyncDisabled
+  WARN:sgf.Icons.Warning,DONE:sgf.Icons.Done,IGNORED:sgf.Icons.SyncDisabled,
+  MISSING:sgf.Icons.Error
 };
 const ignoreKey='soggfy.ignorelist.v1';
 let ignoreSet=new Set();
@@ -133,8 +134,16 @@ window.__soggfyReceiveStatuses=payload=>{
   sgf.pumpStatusQueue();
 };
 
+// A missing native status means no matching local file, not 'hide the badge'.
+// Original Soggfy used a red X for these songs and a green tick for saved songs.
+sgf.displayTrackStatus=info=>info?.status ? info : {status:'MISSING',message:'Not downloaded',path:''};
+
 function statusCard(info){
   const n=document.createElement('div');n.className='sgf-status-indicator';
+  const label=info.message||(info.status==='DONE'?'Downloaded':info.status==='MISSING'?'Not downloaded':info.status);
+  n.title=label;
+  n.setAttribute('aria-label',label);
+  n.__sgfToken=[info.status,info.path||'',info.message||''].join('\x1f');
   const card=document.createElement('div');card.className='sgf-status-indicator-card';
   if(info.status==='DONE'&&info.path){
     const b=document.createElement('button');b.className='sgf-status-browse-button';
@@ -150,16 +159,18 @@ function statusCard(info){
 }
 sgf.renderVisibleStatuses=()=>{
   for(const t of sgf.trackInfoFromRows()){
-    let info=sgf.statusMap.get(t.uri);
+    let info=sgf.displayTrackStatus(sgf.statusMap.get(t.uri));
     if((t.ignoreUris||[t.uri]).some(uri=>sgf.isIgnored(uri)))info={status:'IGNORED',message:'Ignored',path:''};
-    let old=t.row.__sgf_status_ind;
-    if(!info||!info.status){
-      if(old){old.remove();delete t.row.__sgf_status_ind;}continue;
-    }
-    if(old?.__sgfStatus===info.status&&old?.isConnected)continue;
+    const old=t.row.__sgf_status_ind;
+    const token=[info.status,info.path||'',info.message||''].join('\x1f');
+    if(old?.__sgfToken===token&&old?.isConnected)continue;
     old?.remove();
     const n=statusCard(info);
-    const target=t.row.lastElementChild||t.row;
+    // Spotify 1.3.x uses a dedicated trailing duration cell. Prefer it to
+    // an arbitrary last child (often an overlay or an invisible button).
+    const target=t.row.querySelector('.main-trackList-rowSectionEnd')||
+      t.row.querySelector('[data-testid="tracklist-row-duration"]')?.parentElement||
+      t.row.lastElementChild||t.row;
     target.prepend(n);t.row.__sgf_status_ind=n;
   }
 };
@@ -254,4 +265,12 @@ const start=()=>{
   sgf.refreshVisibleStatuses();
 };
 start();
+
+// Statuses can change after asynchronous conversion with no playlist DOM
+// mutation. Periodically reconcile visible rows with native disk/live status.
+setInterval(()=>{
+  if(document.visibilityState==='hidden'||sgf.statusActive||sgf.statusQueue.length)return;
+  if(document.querySelector('div[data-testid="tracklist-row"],.main-trackList-trackListRow,div[role="row"]'))
+    sgf.refreshVisibleStatuses();
+},3000);
 })();
