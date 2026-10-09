@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.44
+
+- Fixed RC43 opening only a blank Spotify shell by removing the CEF-load gate from Spotify.dll hook startup.
+- Spotify.dll hooks are now released by a direct loader-readiness check instead: several normal imports must already contain executable resolved targets, followed by a 1500 ms quiet grace period.
+- This preserves the startup-crash protection without delaying the connectivity compatibility hook until after Spotify has already made its first network-state decision.
+- RC42's unresolved delay-IAT guard and startup-disarmed acceleration remain in place.
+- RC41 natural-transition speed recovery and RC40 Classic UI fallback remain unchanged.
+
 ## 3.0.0-rc.43
 
 - Fixed the remaining instant startup crash on Spotify 1.3.1.234 by moving every Spotify.dll patch out of the DLL loader phase.

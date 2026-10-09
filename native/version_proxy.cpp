@@ -28,6 +28,9 @@ static HMODULE proxy_module;
 static volatile LONG logged_results;
 static hooks::PendingModule pending_spotify;
 static hooks::InitController connectivity_init;
+static HMODULE loader_ready_module;
+static ULONGLONG loader_ready_since;
+static bool loader_ready_logged;
 
 static void Log(const char* message) {
     history::HistoryLog(message);
@@ -276,6 +279,61 @@ static bool DelayImportResolved(void* value, HMODULE module, DWORD image_size) {
     return ExecutableAddress(value);
 }
 
+static bool ResolvedNormalImport(HMODULE module, DWORD image_size, const char* function_name) {
+    auto* base=reinterpret_cast<std::uint8_t*>(module);
+    const auto imports=hooks::FindImportSlots(base,image_size,nullptr,function_name);
+    if(imports.malformed || !imports.normal) return false;
+
+    void* value=nullptr;
+    // Read only. Before LdrpSnapModule has fixed an x64 IAT entry it may still
+    // contain a raw hint/name RVA. Never start MinHook/IAT work in that state.
+    std::memcpy(&value,imports.normal,sizeof(value));
+    const auto numeric=reinterpret_cast<std::uintptr_t>(value);
+    if(numeric<image_size) return false;
+    return ExecutableAddress(value);
+}
+
+static bool SpotifyLoaderReady(HMODULE module) {
+    const DWORD image_size=MappedImageSize(module);
+    if(!image_size) return false;
+
+    if(loader_ready_module!=module) {
+        loader_ready_module=module;
+        loader_ready_since=0;
+        loader_ready_logged=false;
+    }
+
+    static const char* required[]={
+        "GetCommandLineW",
+        "GetCurrentProcessId",
+        "GetModuleHandleW",
+        "GetProcAddress",
+        "VirtualProtect"
+    };
+    for(const char* function:required) {
+        if(!ResolvedNormalImport(module,image_size,function)) {
+            loader_ready_since=0;
+            return false;
+        }
+    }
+
+    const ULONGLONG now=GetTickCount64();
+    if(!loader_ready_since) {
+        loader_ready_since=now;
+        return false;
+    }
+
+    constexpr ULONGLONG kLoaderGraceMs=1500;
+    if(now-loader_ready_since<kLoaderGraceMs) return false;
+
+    if(!loader_ready_logged) {
+        loader_ready_logged=true;
+        Log("Spotify.dll normal imports resolved; native hooks released after 1500 ms loader grace");
+    }
+    return true;
+}
+
+
 static bool WriteImportSlot(void** slot, void* value, void** previous) {
     if (!slot) return true;
     if (*slot == value) {
@@ -400,26 +458,16 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
     history::InitSettings(proxy_module);
     Log("version.dll proxy loaded; no Windows settings or signed files changed");
 
-    // Spotify.dll becomes visible to GetModuleHandle while the Windows loader can
-    // still be executing its initializers. Never patch Spotify.dll at that point:
-    // changing code/IAT state while its DllMain/startup thunks are active can race
-    // the loader and turn an internal RVA into an absolute call target.
-    //
-    // libcef.dll is loaded later, after the Spotify.dll loader phase has completed.
-    // Latch that as our post-loader readiness signal, then install all Spotify.dll
-    // hooks from this ordinary worker context.
-    bool cef_seen=false;
-    bool spotify_deferred_logged=false;
-
     // Polling also covers clients that loaded Spotify.dll before notification
-    // registration. Stay alive at low frequency so late loads and temporary
-    // allocation or hook failures remain recoverable.
+    // registration. CEF remains independent: delaying Spotify hooks until CEF
+    // proved too late for Spotify's first connectivity decision and could leave
+    // the client as a blank shell. Instead, gate Spotify.dll mutation directly
+    // on resolved loader-critical imports plus a quiet grace period.
     for (unsigned i = 0;; ++i) {
         const bool spotify_notification = pending_spotify.Consume() != 0;
         (void)spotify_notification;
         HMODULE cef;
         if(GetModuleHandleExW(0,L"libcef.dll",&cef)) {
-            cef_seen=true;
             history::StartCefRequestFilter(cef);
             history::StartMetadataCollector(cef);
             StartToDiskMenu(cef);
@@ -427,13 +475,10 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
         }
         HMODULE module;
         if (GetModuleHandleExW(0, L"Spotify.dll", &module)) {
-            if (cef_seen) {
+            if (SpotifyLoaderReady(module)) {
                 StartConnectivityHook(module);
                 history::StartPlaybackSpeed(module);
                 if (i >= 80) StartAudioHistory(module, proxy_module);
-            } else if(!spotify_deferred_logged) {
-                Log("Spotify.dll observed during loader startup; native Spotify hooks deferred until CEF is loaded");
-                spotify_deferred_logged=true;
             }
             FreeLibrary(module);
         }
