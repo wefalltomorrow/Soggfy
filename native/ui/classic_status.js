@@ -243,7 +243,7 @@ sgf.renderVisibleStatuses=()=>{
     target.prepend(n);t.row.__sgf_status_ind=n;
   }
 };
-let refreshTimer=0;
+let refreshTimer=0,lastStatusDiag=0;
 sgf.refreshVisibleStatuses=()=>{
   clearTimeout(refreshTimer);
   refreshTimer=setTimeout(async()=>{
@@ -251,6 +251,17 @@ sgf.refreshVisibleStatuses=()=>{
     const statuses=await sgf.requestStatuses(infos);
     for(const [uri,value] of statuses)sgf.statusMap.set(uri,value);
     sgf.renderVisibleStatuses();
+    // A low-frequency diagnostic makes it possible to distinguish failed
+    // row discovery from a stale or unreturned native status response.
+    const now=Date.now();
+    if(sgf.state.debug && now-lastStatusDiag>=20000){
+      lastStatusDiag=now;
+      const counts={};
+      for(const value of statuses.values())counts[value.status||'NONE']=(counts[value.status||'NONE']||0)+1;
+      sgf.send('status_diag','rows='+infos.length+' responses='+statuses.size+
+        ' local_ids='+infos.filter(x=>x.uri.startsWith('spotify:track:sgf')).length+
+        ' states='+JSON.stringify(counts));
+    }
   },120);
 };
 
