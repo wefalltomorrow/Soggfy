@@ -213,6 +213,49 @@ sgf.checkQueue=async()=>{
   finally{queueBusy=false;}
 };
 
+let speedApplyBusy=false,speedApplyRetryAt=0;
+sgf.ensurePlaybackSpeedForCurrentTrack=async item=>{
+  const speed=Math.max(1,Math.min(50,Number(sgf.state.playbackSpeed)||1));
+  const current=sgf.currentState?.();
+  const uri=item?.uri||current?.item?.uri||'';
+  if(!uri)return false;
+
+  if(speed===1||!sgf.state.speedSupported){
+    sgf.speedApplied={uri,speed};
+    return false;
+  }
+
+  if(sgf.speedApplied?.uri===uri&&Number(sgf.speedApplied?.speed)===speed)return true;
+  if(speedApplyBusy||Date.now()<speedApplyRetryAt)return false;
+
+  speedApplyBusy=true;
+  try{
+    // Spotify 1.3.1.234 can automatically advance using a pre-created 1x
+    // player. Give the new item a moment to settle, then recreate that same
+    // current track so the validated constructor hook sees the configured
+    // accelerated speed. The URI guard prevents our own recreation from
+    // causing a reset loop.
+    await new Promise(resolve=>setTimeout(resolve,120));
+    const fresh=sgf.currentState?.();
+    if(fresh?.item?.uri!==uri)return false;
+
+    const reset=await sgf.resetCurrentTrack?.(false);
+    if(reset){
+      sgf.speedApplied={uri,speed};
+      console.info('FLOGGFY_STATUS:reapplied '+speed+'x playback speed after track transition');
+      return true;
+    }
+    speedApplyRetryAt=Date.now()+500;
+    return false;
+  }catch(e){
+    console.warn('Soggfy playback-speed transition reapply failed',e);
+    speedApplyRetryAt=Date.now()+500;
+    return false;
+  }finally{
+    speedApplyBusy=false;
+  }
+};
+
 sgf.installPlayerListeners=()=>{
   try{
     const events=sgf.player?.getEvents?.()||sgf.player?._events;
@@ -221,12 +264,19 @@ sgf.installPlayerListeners=()=>{
       if(item?.uri){
         sgf.send('ignore_current',sgf.isTrackIgnored(item)?'1':'0');
         setTimeout(()=>sgf.refreshVisibleStatuses(),80);
+        sgf.ensurePlaybackSpeedForCurrentTrack?.(item);
       }
-      if(sgf.state.playbackSpeed!==1)sgf.setPlaybackSpeed?.(sgf.state.playbackSpeed);
     });
     events?.addListener?.('queue_update',()=>sgf.checkQueue());
   }catch{}
   setInterval(()=>sgf.checkQueue(),1800);
+  // Some natural transitions do not emit the same update path as an explicit
+  // Next click. A lightweight watchdog catches the new URI and performs the
+  // same one-time recreation without depending on that event.
+  setInterval(()=>{
+    const item=sgf.currentState?.()?.item;
+    if(item?.uri)sgf.ensurePlaybackSpeedForCurrentTrack?.(item);
+  },250);
 };
 
 const observer=new MutationObserver(mutations=>{

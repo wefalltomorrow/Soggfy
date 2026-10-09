@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.41
+
+- Fixed accelerated playback dropping back to real 1x after Spotify naturally advances to the next track.
+- Spotify 1.3.1.234 can reuse a pre-created next-track player on natural transitions, bypassing the constructor path where Soggfy applies the configured speed.
+- Soggfy now recreates each newly-current track once when accelerated playback is enabled so the validated native speed hook is applied consistently.
+- Added a URI guard and short retry/watchdog path so Soggfy's own recreation cannot loop and natural transitions are handled even when Spotify does not emit the same update event as a manual Next click.
+- Manual Next remains supported and the configured speed persists across the queue.
+
 ## 3.0.0-rc.40
 
 - Fixed the Classic Soggfy UI intermittently missing during normal Spotify 1.3.1.234 startup even though the native backend loaded successfully.
