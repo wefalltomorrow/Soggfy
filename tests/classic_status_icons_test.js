@@ -16,6 +16,7 @@ class ElementMock {
     this.lastElementChild = null;
   }
   append(...items) { this.children.push(...items); }
+  appendChild(item) { this.children.push(item); return item; }
   prepend(...items) { this.children.unshift(...items); }
   remove() { this.isConnected = false; }
   setAttribute(name, value) { this.attributes[name] = value; }
