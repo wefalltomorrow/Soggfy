@@ -9,6 +9,33 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+function Test-ExplorerLaunch {
+    try {
+        $self = Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction Stop
+        $parent = Get-Process -Id $self.ParentProcessId -ErrorAction Stop
+        return $parent.ProcessName -ieq 'explorer'
+    }
+    catch {
+        return $false
+    }
+}
+
+$script:PauseAtExit = Test-ExplorerLaunch
+
+function Pause-IfDirectLaunch {
+    if (-not $script:PauseAtExit) {
+        return
+    }
+    Write-Host
+    [void](Read-Host 'Press Enter to close this window')
+}
+
+trap {
+    Write-Error $_
+    Pause-IfDirectLaunch
+    exit 1
+}
+
 $InstallerVersion = 'RC45'
 $PinnedSpotifyVersion = '1.3.1.234'
 $PinnedSpotifyFullVersion = '1.3.1.234.g59d6bf59'
@@ -305,3 +332,4 @@ else {
     Write-Host 'Done. Soggfy installed without SpotX.'
 }
 Write-Host 'Start Spotify and use the Soggfy Downloads button in the top bar.'
+Pause-IfDirectLaunch
