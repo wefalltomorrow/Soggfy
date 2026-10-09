@@ -166,6 +166,11 @@ sgf.setPlaybackSpeed = async speed => {
   sgf.state.playbackSpeed=speed;
   sgf.send('playbackSpeed',String(speed));
   if(speed===1||sgf.state.speedSupported){
+    // Persisted acceleration is deliberately disarmed during Spotify startup.
+    // Arm only from the live UI/player path immediately before rebuilding the
+    // actual current track.
+    sgf.send('speedReady','1');
+    await new Promise(resolve=>setTimeout(resolve,80));
     // The native x64 hook reads Playback Speed when Spotify constructs the
     // track player. Re-create the current track so a change applies now.
     const reset=await sgf.resetCurrentTrack(!sgf.state.downloads);

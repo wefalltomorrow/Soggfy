@@ -23,6 +23,7 @@ using CreateTrackPlayer=std::uint64_t(*)(
 static CreateTrackPlayer original=nullptr;
 static hooks::InitController speed_init;
 static std::atomic<bool> supported{false};
+static std::atomic<bool> runtime_armed{false};
 
 struct SpotifyVersion {
     std::uint16_t major=0,minor=0,patch=0,build=0;
@@ -66,7 +67,8 @@ static std::uint64_t Hook(std::uint64_t a1,std::uint64_t player_meta,void* track
                           std::uint64_t start_position_ms,std::uint64_t seek_timestamp,
                           std::uint64_t a12,std::uint64_t a13) {
     const auto configured=GetSettings().playback_speed;
-    const double speed=configured>1.0?configured:native_speed;
+    const bool armed=runtime_armed.load(std::memory_order_acquire);
+    const double speed=armed&&configured>1.0?configured:native_speed;
     return original(a1,player_meta,track_meta,speed,normalization,urgency,track_select_flag,
                     a8,a9,start_position_ms,seek_timestamp,a12,a13);
 }
@@ -86,6 +88,16 @@ static bool ImageSize(HMODULE module,std::size_t& size) {
 
 bool PlaybackSpeedSupported() {
     return supported.load(std::memory_order_acquire);
+}
+
+void ArmPlaybackSpeedRuntime() {
+    if(!supported.load(std::memory_order_acquire))return;
+    if(!runtime_armed.exchange(true,std::memory_order_acq_rel))
+        HistoryLog("native playback-speed runtime armed after Spotify player initialization");
+}
+
+bool PlaybackSpeedRuntimeArmed() {
+    return runtime_armed.load(std::memory_order_acquire);
 }
 
 void StartPlaybackSpeed(HMODULE module) {
@@ -131,8 +143,8 @@ void StartPlaybackSpeed(HMODULE module) {
     if(status==MH_OK||status==MH_ERROR_ENABLED) {
         supported.store(true,std::memory_order_release);
         speed_init.Activate();
-        char line[160];std::snprintf(line,sizeof(line),
-            "native playback-speed hook active at Spotify.dll+0x%08x",rva);
+        char line[220];std::snprintf(line,sizeof(line),
+            "native playback-speed hook active at Spotify.dll+0x%08x; acceleration remains disarmed until the Spotify player is ready",rva);
         HistoryLog(line);
     } else {
         char line[180];std::snprintf(line,sizeof(line),

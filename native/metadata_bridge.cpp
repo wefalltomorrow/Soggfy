@@ -434,6 +434,7 @@ static bool ClassicUiMessage(const String* text) {
  else if(key==L"blockTelemetry")ok=SetBlockTelemetry(flag());
  else if(key==L"liftQueue")ok=SetLiftAddToQueue(flag());
  else if(key==L"keepNative")ok=SetKeepNativeOriginal(flag());
+ else if(key==L"speedReady"){ArmPlaybackSpeedRuntime();return true;}
  else if(key==L"playbackSpeed") {try{ok=SetPlaybackSpeed(std::stod(decoded));}catch(...){ok=false;}}
  else if(key==L"template")ok=SetPathTemplate(WideUtf8(decoded));
  else if(key==L"podcastTemplate")ok=SetPodcastTemplate(WideUtf8(decoded));

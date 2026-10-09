@@ -230,12 +230,15 @@ sgf.ensurePlaybackSpeedForCurrentTrack=async item=>{
 
   speedApplyBusy=true;
   try{
+    // Persisted acceleration stays disarmed during Spotify startup. Only the
+    // live player path may arm it, immediately before rebuilding a real track.
+    sgf.send('speedReady','1');
     // Spotify 1.3.1.234 can automatically advance using a pre-created 1x
     // player. Give the new item a moment to settle, then recreate that same
     // current track so the validated constructor hook sees the configured
     // accelerated speed. The URI guard prevents our own recreation from
     // causing a reset loop.
-    await new Promise(resolve=>setTimeout(resolve,120));
+    await new Promise(resolve=>setTimeout(resolve,160));
     const fresh=sgf.currentState?.();
     if(fresh?.item?.uri!==uri)return false;
 
