@@ -23,8 +23,20 @@ namespace history { namespace {
 struct Base {size_t size;void(*add)(Base*);int(*release)(Base*);int(*one)(Base*);int(*any)(Base*);};
 struct String {wchar_t* str;size_t length;void(*dtor)(wchar_t*);};
 template<size_t N> struct Object {Base base;void* methods[N];};
-using Client=Object<19>;using Display=Object<13>;using Load=Object<4>;using Browser=Object<21>;using Frame=Object<26>;
+using Client=Object<19>;using Display=Object<13>;using Load=Object<4>;using Browser=Object<21>;using BrowserHost=Object<10>;using Frame=Object<26>;
 static void Release(void* p) {if(p)static_cast<Base*>(p)->release(static_cast<Base*>(p));}
+static bool Executable(const void* address) {
+ if(!address)return false;
+ MEMORY_BASIC_INFORMATION memory{};
+ if(!VirtualQuery(address,&memory,sizeof(memory))||memory.State!=MEM_COMMIT||
+    (memory.Protect&(PAGE_GUARD|PAGE_NOACCESS)))return false;
+ const DWORD protection=memory.Protect&0xffu;
+ return protection==PAGE_EXECUTE||protection==PAGE_EXECUTE_READ||
+        protection==PAGE_EXECUTE_READWRITE||protection==PAGE_EXECUTE_WRITECOPY;
+}
+static bool HasMethod(const Base* base,size_t index) {
+ return base&&base->size>=sizeof(Base)+(index+1)*sizeof(void*);
+}
 static int HexDigit(wchar_t c) {
  if(c>=L'0'&&c<=L'9')return int(c-L'0');
  if(c>=L'a'&&c<=L'f')return int(c-L'a')+10;
@@ -87,7 +99,51 @@ struct CallbackHook {
  }
  template<class F> F Original()const{return reinterpret_cast<F>(original.load(std::memory_order_acquire));}
 };
-static CallbackHook display_getter,load_getter,console_callback,loading_callback,load_end_callback;
+struct CallbackPatch {
+ SRWLOCK lock=SRWLOCK_INIT;
+ std::atomic<void*> original{nullptr};
+ bool Install(void** slot,void* callback,const char* name) {
+  if(!slot||!callback)return false;
+  void* current=nullptr;std::memcpy(&current,slot,sizeof(current));
+  if(current==callback)return true;
+  if(!current)return false;
+  AcquireSRWLockExclusive(&lock);
+  void* known=original.load(std::memory_order_acquire);
+  if(!known){original.store(current,std::memory_order_release);known=current;}
+  if(known!=current){
+   ReleaseSRWLockExclusive(&lock);
+   char line[192];snprintf(line,sizeof(line),"metadata callback %s has multiple implementations; slot left untouched",name);HistoryLog(line);
+   return false;
+  }
+  MEMORY_BASIC_INFORMATION memory{};
+  if(!VirtualQuery(slot,&memory,sizeof(memory))){
+   ReleaseSRWLockExclusive(&lock);HistoryLog("metadata callback slot query failed");return false;
+  }
+  DWORD old_protect=0;
+  const DWORD protection=memory.Protect&0xffu;
+  const bool writable=protection==PAGE_READWRITE||protection==PAGE_WRITECOPY||
+                      protection==PAGE_EXECUTE_READWRITE||protection==PAGE_EXECUTE_WRITECOPY;
+  if(!writable&&!VirtualProtect(slot,sizeof(void*),PAGE_READWRITE,&old_protect)){
+   ReleaseSRWLockExclusive(&lock);
+   char line[192];snprintf(line,sizeof(line),"metadata callback %s slot protection change failed",name);HistoryLog(line);
+   return false;
+  }
+  void* previous=InterlockedExchangePointer(reinterpret_cast<void* volatile*>(slot),callback);
+  const bool ok=previous==current||previous==callback;
+  if(!ok)InterlockedExchangePointer(reinterpret_cast<void* volatile*>(slot),previous);
+  if(!writable){DWORD ignored=0;VirtualProtect(slot,sizeof(void*),old_protect,&ignored);}
+  ReleaseSRWLockExclusive(&lock);
+  if(!ok){
+   char line[192];snprintf(line,sizeof(line),"metadata callback %s slot changed concurrently; patch skipped",name);HistoryLog(line);
+   return false;
+  }
+  HistoryLog("metadata callback console patched by object slot; no MinHook suspend");
+  return true;
+ }
+ template<class F> F Original()const{return reinterpret_cast<F>(original.load(std::memory_order_acquire));}
+};
+static CallbackHook display_getter,load_getter,loading_callback,load_end_callback;
+static CallbackPatch console_callback;
 struct Task {Base base;void(*execute)(Task*);};
 struct PollTask {Task task;std::atomic<unsigned> refs{1};};
 static Frame* polling_frame=nullptr;static SRWLOCK frame_lock=SRWLOCK_INIT;
@@ -160,14 +216,26 @@ static void SyncClassicUi(Frame* preferred=nullptr) {
  if(f){ExecuteFrameCode(f,UiConfigCode(),L"soggfy-config.js");Release(f);}
 }
 static void FlushClassicStatusResponse(Frame* frame);
+static void DiscoverBrowserOnUi();
 static std::atomic<bool> poll_pending{false};static int(*post_task)(int,Task*)=nullptr;
+static Browser*(*get_browser_by_id)(int)=nullptr;
+static ULONGLONG browser_discovery_ready_at=0;
 static void PollAdd(Base* b){++reinterpret_cast<PollTask*>(b)->refs;}
 static int PollDrop(Base* b){auto t=reinterpret_cast<PollTask*>(b);if(--t->refs)return 0;delete t;return 1;}
 static int PollOne(Base* b){return reinterpret_cast<PollTask*>(b)->refs==1;}
 static int PollAny(Base* b){return reinterpret_cast<PollTask*>(b)->refs>0;}
 static void PollExecute(Task*){
  Frame* f=nullptr;AcquireSRWLockShared(&frame_lock);f=polling_frame;if(f)f->base.add(&f->base);ReleaseSRWLockShared(&frame_lock);
- if(f&&reinterpret_cast<int(*)(Frame*)>(f->methods[0])(f)){
+ bool valid=f&&HasMethod(&f->base,15)&&Executable(f->methods[0])&&
+            reinterpret_cast<int(*)(Frame*)>(f->methods[0])(f);
+ if(!valid){
+  Release(f);f=nullptr;
+  DiscoverBrowserOnUi();
+  AcquireSRWLockShared(&frame_lock);f=polling_frame;if(f)f->base.add(&f->base);ReleaseSRWLockShared(&frame_lock);
+  valid=f&&HasMethod(&f->base,15)&&Executable(f->methods[0])&&
+        reinterpret_cast<int(*)(Frame*)>(f->methods[0])(f);
+ }
+ if(valid){
   const wchar_t code_text[]=L"if(window.__floggfyPoll)window.__floggfyPoll();";
   String code={const_cast<wchar_t*>(code_text),wcslen(code_text),nullptr};const wchar_t name[]=L"floggfy-metadata.js";String source={const_cast<wchar_t*>(name),wcslen(name),nullptr};
   reinterpret_cast<void(*)(Frame*,const String*,const String*,int)>(f->methods[14])(f,&code,&source,1);
@@ -435,7 +503,8 @@ static void LoadEnd(Load* self,Browser* b,Frame* f,int status){
 }
 static Display* GetDisplay(Client* self){
  auto callback=metadata_callbacks.Enter();auto result=display_getter.Original<Display*(*)(Client*)>()(self);
- if(result&&result->base.size==sizeof(Display))console_callback.Install(result->methods[6],reinterpret_cast<void*>(Console),"console");
+ if(result&&result->base.size==sizeof(Display)&&HasMethod(&result->base,6))
+  console_callback.Install(&result->methods[6],reinterpret_cast<void*>(Console),"console");
  return result;
 }
 static Load* GetLoad(Client* self){
@@ -460,6 +529,56 @@ static Create original_create;static Sync original_sync;static View original_vie
 static int CreateHook(const void* win,Client* client,const String* url,const void* settings,void* extra,void* context){auto callback=metadata_callbacks.Enter();return original_create(win,ObserveClient(client),url,settings,extra,context);}
 static Browser* SyncHook(const void* win,Client* client,const String* url,const void* settings,void* extra,void* context){auto callback=metadata_callbacks.Enter();return original_sync(win,ObserveClient(client),url,settings,extra,context);}
 static void* ViewHook(Client* client,const String* url,const void* settings,void* extra,void* context,void* delegate){auto callback=metadata_callbacks.Enter();return original_view(ObserveClient(client),url,settings,extra,context,delegate);}
+
+static void AttachExistingConsoleBridge(Client* client){
+ if(!client||client->base.size!=sizeof(Client)||!HasMethod(&client->base,4))return;
+ auto getter_slot=client->methods[4];
+ auto get_display=Executable(getter_slot)?reinterpret_cast<Display*(*)(Client*)>(getter_slot):nullptr;
+ Display* display=get_display?get_display(client):nullptr;
+ if(display&&display->base.size==sizeof(Display)&&HasMethod(&display->base,6))
+  console_callback.Install(&display->methods[6],reinterpret_cast<void*>(Console),"console");
+ Release(display);
+}
+
+static void DiscoverBrowserOnUi(){
+ if(!get_browser_by_id||GetTickCount64()<browser_discovery_ready_at)return;
+ for(int id=1;id<=64;++id){
+  Browser* browser=get_browser_by_id(id);
+  if(!browser)continue;
+  bool attached=false;
+  if(HasMethod(&browser->base,14)){
+   auto host_slot=browser->methods[1];
+   auto get_host=Executable(host_slot)?reinterpret_cast<BrowserHost*(*)(Browser*)>(host_slot):nullptr;
+   BrowserHost* host=get_host?get_host(browser):nullptr;
+   if(host){
+    // CEF 151: BrowserHost slot 8 is has_view(); get_client() is slot 9.
+    // Calling slot 8 as get_client caused the RC35 VERSION.dll+0x6D3E2 crash.
+    if(HasMethod(&host->base,9)){
+     auto client_slot=host->methods[9];
+     auto get_client=Executable(client_slot)?reinterpret_cast<Client*(*)(BrowserHost*)>(client_slot):nullptr;
+     Client* client=get_client?get_client(host):nullptr;
+     if(client&&client->base.size==sizeof(Client))AttachExistingConsoleBridge(client);
+     else if(client)HistoryLog("CEF discovery client ABI unsupported; console bridge skipped");
+     Release(client);
+    } else HistoryLog("CEF discovery host ABI too small for get_client; console bridge skipped");
+    Release(host);
+   }
+   auto frame_slot=browser->methods[14];
+   auto get_main_frame=Executable(frame_slot)?reinterpret_cast<Frame*(*)(Browser*)>(frame_slot):nullptr;
+   Frame* frame=get_main_frame?get_main_frame(browser):nullptr;
+   if(frame){
+    Inject(frame);
+    attached=true;
+    Release(frame);
+   }
+  }
+  Release(browser);
+  if(attached){
+   HistoryLog("CEF bridge attached by post-start browser discovery fallback");
+   break;
+  }
+ }
+}
 }
 std::string ReadClientPlaybackQuality(const Media& media) {
  if(!GetSettings().metadata)return {};
@@ -540,7 +659,10 @@ void StartMetadataCollector(HMODULE cef) {
   HistoryLog("metadata CEF identity unsupported; revision is not in the audited compatibility table");metadata_init.MarkUnsupported();return;
  }
  auto post_address=GetProcAddress(cef,"cef_post_task");memcpy(&post_task,&post_address,sizeof(post_task));
+ auto browser_address=GetProcAddress(cef,"cef_browser_host_get_browser_by_identifier");memcpy(&get_browser_by_id,&browser_address,sizeof(get_browser_by_id));
  if(!post_task){HistoryLog("metadata collector unsupported: cef_post_task missing");metadata_init.MarkUnsupported();return;}
+ browser_discovery_ready_at=GetTickCount64()+1500;
+ if(!get_browser_by_id)HistoryLog("CEF post-start discovery export unavailable; browser-creation hooks only");
  message_event=CreateEventW(nullptr,FALSE,FALSE,nullptr);
  if(!message_event){HistoryLog("metadata event allocation failed; retry scheduled");metadata_init.Retry(now);return;}
  head=tail=count=0;
@@ -581,6 +703,7 @@ void StartMetadataCollector(HMODULE cef) {
   return;
  }
  metadata_polling.store(true,std::memory_order_release);SetEvent(message_event);CloseHandle(thread);metadata_init.Activate();
- char line[160];snprintf(line,sizeof(line),"metadata collector active: found=%u created=%u enabled=%u",counts.found,counts.created,counts.enabled);HistoryLog(line);
+ char line[220];snprintf(line,sizeof(line),"metadata collector active: found=%u created=%u enabled=%u discovery=%s delay_ms=1500",
+   counts.found,counts.created,counts.enabled,get_browser_by_id?"available":"unavailable");HistoryLog(line);
 }
 }
