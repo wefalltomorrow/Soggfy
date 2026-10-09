@@ -399,6 +399,18 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
 
     history::InitSettings(proxy_module);
     Log("version.dll proxy loaded; no Windows settings or signed files changed");
+
+    // Spotify.dll becomes visible to GetModuleHandle while the Windows loader can
+    // still be executing its initializers. Never patch Spotify.dll at that point:
+    // changing code/IAT state while its DllMain/startup thunks are active can race
+    // the loader and turn an internal RVA into an absolute call target.
+    //
+    // libcef.dll is loaded later, after the Spotify.dll loader phase has completed.
+    // Latch that as our post-loader readiness signal, then install all Spotify.dll
+    // hooks from this ordinary worker context.
+    bool cef_seen=false;
+    bool spotify_deferred_logged=false;
+
     // Polling also covers clients that loaded Spotify.dll before notification
     // registration. Stay alive at low frequency so late loads and temporary
     // allocation or hook failures remain recoverable.
@@ -407,6 +419,7 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
         (void)spotify_notification;
         HMODULE cef;
         if(GetModuleHandleExW(0,L"libcef.dll",&cef)) {
+            cef_seen=true;
             history::StartCefRequestFilter(cef);
             history::StartMetadataCollector(cef);
             StartToDiskMenu(cef);
@@ -414,9 +427,14 @@ static DWORD WINAPI StartupMonitor(LPVOID) {
         }
         HMODULE module;
         if (GetModuleHandleExW(0, L"Spotify.dll", &module)) {
-            StartConnectivityHook(module);
-            history::StartPlaybackSpeed(module);
-            if (i >= 80) StartAudioHistory(module, proxy_module);
+            if (cef_seen) {
+                StartConnectivityHook(module);
+                history::StartPlaybackSpeed(module);
+                if (i >= 80) StartAudioHistory(module, proxy_module);
+            } else if(!spotify_deferred_logged) {
+                Log("Spotify.dll observed during loader startup; native Spotify hooks deferred until CEF is loaded");
+                spotify_deferred_logged=true;
+            }
             FreeLibrary(module);
         }
         if(i==0) startup::SignalReady();
