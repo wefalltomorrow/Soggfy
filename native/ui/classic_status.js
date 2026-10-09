@@ -63,12 +63,23 @@ function reactUri(row){
 function rowInfo(row){
   if(!(row instanceof Element))return null;
   const trackLink=row.querySelector('a[href*="/track/"],a[href*="/episode/"],[data-testid="internal-track-link"]');
-  const uri=uriFromHref(trackLink?.getAttribute?.('href')||'')||reactUri(row);
-  if(!uri)return null;
-  const title=(trackLink?.textContent||row.querySelector('[data-testid="tracklist-row"] [dir="auto"]')?.textContent||'').trim();
+  // On Spotify 1.3.x the row itself normally carries data-testid=tracklist-row.
+  // A selector prefixed with that attribute does not match its own children.
+  const title=(trackLink?.textContent||
+    row.querySelector('.main-trackList-rowTitle,[data-testid="tracklist-row-title"],[dir="auto"]')?.textContent||'').trim();
   if(!title)return null;
   const artistLinks=[...row.querySelectorAll('a[href*="/artist/"]')];
-  const artists=artistLinks.map(a=>(a.textContent||'').trim()).filter(Boolean);
+  let artists=artistLinks.map(a=>(a.textContent||'').trim()).filter(Boolean);
+  if(!artists.length){
+    const artistText=(row.querySelector('.main-trackList-rowSubTitle,[data-testid="tracklist-row-artist"]')?.textContent||'').trim();
+    if(artistText)artists=[artistText];
+  }
+  const nativeUri=uriFromHref(trackLink?.getAttribute?.('href')||'')||reactUri(row);
+  // Track metadata may be visible even when its Spotify URI is not exposed
+  // through the current React layout. A local per-row query identity still
+  // allows the on-disk filename check and keeps independent rows distinct.
+  const fallbackIdentity=[title,artists.join(', ')].join('\x1f');
+  const uri=nativeUri||('spotify:track:sgfrow-'+encodeURIComponent(fallbackIdentity));
   const artistUris=artistLinks.map(a=>uriFromHref(a.getAttribute('href')||'')).filter(x=>x.startsWith('spotify:artist:'));
   const albumLink=row.querySelector('a[href*="/album/"]');
   let album=(albumLink?.textContent||'').trim();
