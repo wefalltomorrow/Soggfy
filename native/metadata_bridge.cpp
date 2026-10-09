@@ -449,6 +449,10 @@ static bool ClassicUiMessage(const String* text) {
  else if(key==L"browse"){PickSaveLocation(GetActiveWindow());}
  else if(key==L"ignore_current"){SetClassicCurrentIgnored(flag());return true;}
  else if(key==L"status_batch"){QueueClassicStatusRequest(decoded);return true;}
+ else if(key==L"playback_recovery"){
+  HistoryLog(("classic playback recovery "+decoded.substr(0,512)).c_str());
+  return true;
+ }
  else if(key==L"open_folder"){RevealClassicTrack(WideUtf8(decoded));return true;}
  else if(key==L"save_m3u"){
   std::wstring suggested;std::string playlist;std::vector<ClassicM3UEntry> entries;
