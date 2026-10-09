@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <string>
 #include <vector>
+#include "media_position_core.h"
 namespace history {
 struct Media {
     std::wstring title, artist, album, album_artist, app, genre;
@@ -19,6 +20,7 @@ class MediaReader {
     void* manager_ = nullptr;
     bool initialized_ = false;
     Media cached_;
+    MediaPositionClock position_clock_;
 public:
     ~MediaReader();
     bool Read(Media& out,bool include_artwork=true,double playback_rate=1.0);
