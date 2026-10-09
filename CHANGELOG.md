@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.42
+
+- Fixed Spotify failing to launch when a persisted accelerated playback speed such as 50x was already configured at process startup.
+- The native speed hook now installs in a safe disarmed state and passes Spotify's own native speed until the live player/UI explicitly arms acceleration.
+- UI-requested speed changes and RC41 natural-transition recovery arm acceleration immediately before rebuilding the real current track.
+- Hardened the Spotify connectivity compatibility hook so an unresolved delay-IAT entry is never overwritten; Soggfy now waits for Windows to resolve that import before patching it.
+- This addresses the repeated startup crash signature that attempted to execute a low raw Spotify RVA before the normal Soggfy initialization logs completed.
+
 ## 3.0.0-rc.41
 
 - Fixed accelerated playback dropping back to real 1x after Spotify naturally advances to the next track.
