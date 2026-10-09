@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.48
+
+- Restored a red cross for tracks missing from the download folder and retained green checkmarks for completed downloads.
+- Periodically refresh playlist indicators after conversion finishes, including when Spotify does not rebuild the row DOM.
+- Stabilized icon positioning beside track durations and improved playlist row title parsing.
+- Added a Classic UI status indicator regression test.
+
+
 ## 3.0.0-rc.47
 
 - Fixed RC46 dropping otherwise complete downloads because Spotify's 1× SMTC timestamp refresh made an accelerated 50× media-position estimate jump backwards.
