@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.47
+
+- Fixed RC46 dropping otherwise complete downloads because Spotify's 1× SMTC timestamp refresh made an accelerated 50× media-position estimate jump backwards.
+- Introduced a per-track monotonic accelerated clock to keep complete-listen validation stable across timestamp refresh, pauses, speed changes and natural next-track transitions.
+- Kept the working RC46 PCM decoder hook and 1× playback behavior unchanged.
+- Added regression coverage for a 50× audio timeline refresh and accepted natural completion.
+
+
 ## 3.0.0-rc.46
 
 - Replaced the Spotify 1.3.1.234 per-track constructor speed hook with original-Soggfy-style PCM thinning at the live snd-decoder dispatcher.
