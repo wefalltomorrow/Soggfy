@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.49
+
+- Added conservative high-speed playback recovery after the track exceeds its expected accelerated wall-clock duration plus buffering allowance.
+- Retry a stalled track twice before a single fallback skip; never act during deliberate pauses or at 1x.
+- Log recovery actions and add tests preventing repeated skip or unwanted normal-transition resets.
+- Kept RC47's completed-capture timeline fix and RC48's status icons unchanged.
+
+
 ## 3.0.0-rc.48
 
 - Restored a red cross for tracks missing from the download folder and retained green checkmarks for completed downloads.

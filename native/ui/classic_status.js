@@ -261,6 +261,7 @@ sgf.installPlayerListeners=()=>{
     });
   }catch{}
   setInterval(()=>sgf.checkQueue(),1800);
+  sgf.installPlaybackStallRecovery?.();
 };
 
 const observer=new MutationObserver(mutations=>{
