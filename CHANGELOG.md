@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.40
+
+- Fixed the Classic Soggfy UI intermittently missing during normal Spotify 1.3.1.234 startup even though the native backend loaded successfully.
+- Kept the existing CEF browser-creation callbacks and added post-start discovery of an already-created browser when no valid main frame was captured.
+- Added validated browser, host, client and frame access in the fallback path.
+- Uses the corrected CEF 151 BrowserHost get_client method slot identified during the earlier crash investigation.
+- The fallback starts after a short grace period and retries on later CEF UI polls until a valid browser is found.
+- Spotify 1.3.1.234 playback speed, capture, metadata, and installer behavior are otherwise unchanged.
+
 ## 3.0.0-rc.39
 
 - Removed Soggfy's own ad-request blocking; the native CEF filter now blocks telemetry only.
