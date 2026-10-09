@@ -22,16 +22,12 @@ jobs:
       - name: Extract installer
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force extracted | Out-Null
-          & 7z x spotify131.exe '-oextracted' -y
-          $dll = Get-ChildItem extracted -Recurse -Filter Spotify.dll -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $dll) {
-            Write-Host '7z did not expose Spotify.dll; trying silent installer'
-            Start-Process -FilePath (Resolve-Path .\spotify131.exe) -ArgumentList '/S' -Wait
-            Start-Sleep -Seconds 3
-            $dll = Get-Item "$env:APPDATA\Spotify\Spotify.dll" -ErrorAction SilentlyContinue
-          }
-          if (-not $dll) { throw 'Spotify.dll not found after extraction/install' }
+          $dest = Join-Path (Get-Location) 'extracted'
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          $p = Start-Process -FilePath (Resolve-Path .\spotify131.exe) -ArgumentList ('/extract "{0}"' -f $dest) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Spotify /extract failed with exit code $($p.ExitCode)" }
+          $dll = Get-Item (Join-Path $dest 'Spotify.dll') -ErrorAction SilentlyContinue
+          if (-not $dll) { throw 'Spotify.dll not found after /extract' }
           Copy-Item $dll.FullName .\Spotify131.dll
           Get-FileHash .\Spotify131.dll -Algorithm SHA256
           Get-Item .\Spotify131.dll | Select-Object Length
