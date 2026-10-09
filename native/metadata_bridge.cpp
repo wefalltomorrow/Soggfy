@@ -449,6 +449,7 @@ static bool ClassicUiMessage(const String* text) {
  else if(key==L"browse"){PickSaveLocation(GetActiveWindow());}
  else if(key==L"ignore_current"){SetClassicCurrentIgnored(flag());return true;}
  else if(key==L"status_batch"){QueueClassicStatusRequest(decoded);return true;}
+ else if(key==L"status_diag"){HistoryLog(("classic status "+decoded.substr(0,512)).c_str());return true;}
  else if(key==L"playback_recovery"){
   HistoryLog(("classic playback recovery "+decoded.substr(0,512)).c_str());
   return true;
