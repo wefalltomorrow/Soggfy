@@ -255,6 +255,27 @@ static DWORD MappedImageSize(HMODULE module) {
     return nt->OptionalHeader.SizeOfImage;
 }
 
+static bool ExecutableAddress(const void* address) {
+    if(!address) return false;
+    MEMORY_BASIC_INFORMATION memory{};
+    if(!VirtualQuery(address,&memory,sizeof(memory)) || memory.State!=MEM_COMMIT ||
+       (memory.Protect&(PAGE_GUARD|PAGE_NOACCESS))) return false;
+    const DWORD protection=memory.Protect&0xffu;
+    return protection==PAGE_EXECUTE || protection==PAGE_EXECUTE_READ ||
+           protection==PAGE_EXECUTE_READWRITE || protection==PAGE_EXECUTE_WRITECOPY;
+}
+
+static bool DelayImportResolved(void* value, HMODULE module, DWORD image_size) {
+    if(!value || !module || !image_size) return false;
+    const auto target=reinterpret_cast<std::uintptr_t>(value);
+    const auto base=reinterpret_cast<std::uintptr_t>(module);
+    // An unresolved delay-IAT slot can still contain a Spotify-local thunk or
+    // even a raw image RVA. Do not replace it until Windows has resolved the
+    // import to executable code outside Spotify.dll.
+    if(target>=base && target<base+image_size) return false;
+    return ExecutableAddress(value);
+}
+
 static bool WriteImportSlot(void** slot, void* value, void** previous) {
     if (!slot) return true;
     if (*slot == value) {
@@ -290,10 +311,15 @@ static ImportHookResult HookSpotifyImports(HMODULE module) {
     bool changed[2] = {};
     void* replacement = reinterpret_cast<void*>(RepairCoCreateInstance);
     unsigned found = 0;
+    bool deferred_delay = false;
     for (unsigned i = 0; i < 2; ++i) {
         if (!slots[i]) continue;
         ++found;
         const bool was_replacement = *slots[i] == replacement;
+        if (i == 1 && !was_replacement && !DelayImportResolved(*slots[i], module, image_size)) {
+            deferred_delay = true;
+            continue;
+        }
         if (!WriteImportSlot(slots[i], replacement, &previous[i])) {
             for (unsigned rollback = 0; rollback < i; ++rollback) {
                 if (changed[rollback]) WriteImportSlot(slots[rollback], previous[rollback], nullptr);
@@ -303,6 +329,8 @@ static ImportHookResult HookSpotifyImports(HMODULE module) {
         changed[i] = !was_replacement;
     }
     if (!found) return ImportHookResult::Unsupported;
+    if (deferred_delay && !changed[0] && !changed[1] && !imports.normal)
+        return ImportHookResult::RetryableFailure;
     if (changed[0] || changed[1]) {
         char message[192];
         snprintf(message, sizeof(message),
