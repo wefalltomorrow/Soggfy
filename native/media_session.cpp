@@ -153,6 +153,11 @@ bool MediaReader::Read(Media& out,bool include_artwork,double playback_rate) {
         media.position+=elapsed*playback_rate;
     media.position=std::max(0.0,std::min(media.position,media.duration));
     if(media.title.empty() || media.duration<=0) return false;
+    // Spotify refreshes the public SMTC timestamp at 1x regardless of
+    // decoder acceleration. Re-anchoring each poll falsely rewinds a 50x
+    // listen, causing otherwise complete Ogg streams not to be published.
+    media.position=position_clock_.Observe(media.Key(),media.position,media.duration,
+        media.playing,playback_rate,double(GetTickCount64())/1000.0);
     if(include_artwork) {
         if(media.Key()==cached_.Key() && !cached_.cover.empty()) {
             media.cover=cached_.cover; media.cover_extension=cached_.cover_extension;
