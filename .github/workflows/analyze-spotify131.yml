@@ -1,0 +1,114 @@
+name: Analyze Spotify 1.3.1 decoder
+
+on:
+  push:
+    branches:
+      - analyze-spotify131-decoder
+
+jobs:
+  analyze:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download Spotify 1.3.1.234 x64
+        shell: pwsh
+        run: |
+          $url = 'https://loadspot.amd64fox1.workers.dev/download/spotify_installer-1.3.1.234.g59d6bf59-x64.exe'
+          Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile spotify131.exe
+          Get-FileHash spotify131.exe -Algorithm SHA256
+          Get-Item spotify131.exe | Select-Object Length
+
+      - name: Extract installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force extracted | Out-Null
+          & 7z x spotify131.exe '-oextracted' -y
+          $dll = Get-ChildItem extracted -Recurse -Filter Spotify.dll -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $dll) {
+            Write-Host '7z did not expose Spotify.dll; trying silent installer'
+            Start-Process -FilePath (Resolve-Path .\spotify131.exe) -ArgumentList '/S' -Wait
+            Start-Sleep -Seconds 3
+            $dll = Get-Item "$env:APPDATA\Spotify\Spotify.dll" -ErrorAction SilentlyContinue
+          }
+          if (-not $dll) { throw 'Spotify.dll not found after extraction/install' }
+          Copy-Item $dll.FullName .\Spotify131.dll
+          Get-FileHash .\Spotify131.dll -Algorithm SHA256
+          Get-Item .\Spotify131.dll | Select-Object Length
+
+      - name: Install analysis dependencies
+        shell: pwsh
+        run: python -m pip install pefile capstone
+
+      - name: Analyze snd-decoder vtable and dispatcher
+        shell: pwsh
+        run: |
+          @'
+          import pefile, struct
+          from capstone import Cs, CS_ARCH_X86, CS_MODE_64
+
+          path='Spotify131.dll'
+          data=open(path,'rb').read()
+          pe=pefile.PE(path, fast_load=False)
+          base=pe.OPTIONAL_HEADER.ImageBase
+          size=pe.OPTIONAL_HEADER.SizeOfImage
+          print(f'ImageBase=0x{base:x} SizeOfImage=0x{size:x}')
+
+          def off_to_rva(off):
+              for sec in pe.sections:
+                  start=sec.PointerToRawData
+                  end=start+sec.SizeOfRawData
+                  if start <= off < end:
+                      return sec.VirtualAddress + (off-start)
+              if off < pe.OPTIONAL_HEADER.SizeOfHeaders:
+                  return off
+              return None
+
+          def rva_bytes(rva,n):
+              off=pe.get_offset_from_rva(rva)
+              return data[off:off+n]
+
+          needle=b'snd-decoder\x00'
+          pos=0
+          hits=[]
+          while True:
+              pos=data.find(needle,pos)
+              if pos<0: break
+              rva=off_to_rva(pos)
+              hits.append((pos,rva))
+              pos+=1
+          print('snd-decoder hits:',[(hex(o),hex(r) if r is not None else None) for o,r in hits])
+
+          md=Cs(CS_ARCH_X86,CS_MODE_64)
+          md.detail=False
+          for off,rva in hits:
+              if rva is None: continue
+              print(f'\n=== snd-decoder RVA 0x{rva:x} ===')
+              for delta in range(0,0x80,8):
+                  try:
+                      q=struct.unpack('<Q',rva_bytes(rva+delta,8))[0]
+                  except Exception:
+                      continue
+                  target_rva=q-base if base <= q < base+size else None
+                  print(f'+0x{delta:02x}: qword=0x{q:016x} target_rva={hex(target_rva) if target_rva is not None else "-"}')
+                  if target_rva is not None:
+                      try:
+                          blob=rva_bytes(target_rva,0x280)
+                          print(f'  disasm RVA 0x{target_rva:x}:')
+                          for ins in list(md.disasm(blob,base+target_rva))[:35]:
+                              print(f'    {ins.address-base:08x}: {ins.mnemonic:8s} {ins.op_str}')
+                      except Exception as e:
+                          print('  disasm failed',e)
+
+          # Also search for RC28's 1.3.3 dispatcher prefix and close variants.
+          prefix=bytes.fromhex('48 8b c4 48 89 58 08 48 89 70 10 48 89 78 20 4c 89 40 18 55 41 54 41 55 41 56 41 57 48 8b ec')
+          p=0
+          exact=[]
+          while True:
+              p=data.find(prefix,p)
+              if p<0: break
+              exact.append((p,off_to_rva(p)))
+              p+=1
+          print('\nExact 1.3.3 dispatcher-prefix hits:',[(hex(o),hex(r) if r else None) for o,r in exact])
+          '@ | Set-Content analyze.py
+          python analyze.py
