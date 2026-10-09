@@ -53,6 +53,7 @@ for script in native/ui/classic_core.js native/ui/classic_settings.js native/ui/
 done
 node tests/metadata_collector_test.js
 node tests/classic_status_icons_test.js
+node tests/classic_row_binding_test.js
 node tests/classic_recovery_test.js
 
 python3 tests/create_cache_fixtures.py build/cache-fixtures
