@@ -159,6 +159,8 @@ sgf.resetCurrentTrack = async preserve => {
   return false;
 };
 
+sgf.speedApplied = sgf.speedApplied || {uri:'',speed:1};
+
 sgf.setPlaybackSpeed = async speed => {
   speed=Math.max(1,Math.min(50,Number(speed)||1));
   sgf.state.playbackSpeed=speed;
@@ -167,7 +169,12 @@ sgf.setPlaybackSpeed = async speed => {
     // The native x64 hook reads Playback Speed when Spotify constructs the
     // track player. Re-create the current track so a change applies now.
     const reset=await sgf.resetCurrentTrack(!sgf.state.downloads);
-    if(!reset&&speed!==1)sgf.notify('Playback speed will apply on the next local track',sgf.Icons.Warning);
+    if(reset){
+      const uri=sgf.currentState()?.item?.uri||'';
+      sgf.speedApplied={uri,speed};
+    }else if(speed!==1){
+      sgf.notify('Playback speed will apply on the next local track',sgf.Icons.Warning);
+    }
     return true;
   }
   sgf.notify('Accelerated playback is unavailable on this Spotify build',sgf.Icons.Warning);
