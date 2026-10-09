@@ -148,7 +148,6 @@ function rowInfo(row){
   const uri=nativeUri||localQueryUri(title,artist,album);
   const ignoreUris=[nativeUri,albumUri,contextUri,...artistUris].filter(Boolean);
   return {row,uri,title,artist,album,allArtists,albumUri,contextUri,artistUris,ignoreUris};
-};
 }
 sgf.trackInfoFromRows=rows=>{
   const view=sgf.mainTrackView();
