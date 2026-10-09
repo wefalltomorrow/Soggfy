@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.50
+
+- Fixed RC48/49 red crosses appearing on home-page tiles, playlist covers and sidebar because generic ARIA rows were treated as tracks.
+- Restored upstream Soggfy behaviour: only actual track-list rows with real track URIs receive indicators; missing files show no error cross.
+- Insert badges only into the verified track's trailing duration cell and restore the original compact styling.
+- Added DOM-scoping regression tests while preserving RC49 stalled-playback recovery and RC47 downloads.
+
+
 ## 3.0.0-rc.49
 
 - Added conservative high-speed playback recovery after the track exceeds its expected accelerated wall-clock duration plus buffering allowance.
