@@ -29,9 +29,9 @@ if (-not (Test-Path -LiteralPath $SpotifyExe -PathType Leaf)) {
 $installedVersion = (Get-Item -LiteralPath $SpotifyExe).VersionInfo.FileVersion
 if ([string]::IsNullOrWhiteSpace($installedVersion) -or
     -not $installedVersion.StartsWith($PinnedSpotifyVersion, [StringComparison]::OrdinalIgnoreCase)) {
-    Fail "RC39 targets Spotify $PinnedSpotifyFullVersion x64. Installed Spotify reports '$installedVersion'. Install the pinned Spotify build first."
+    Fail "RC40 targets Spotify $PinnedSpotifyFullVersion x64. Installed Spotify reports '$installedVersion'. Install the pinned Spotify build first."
 }
-Write-Host "Spotify $installedVersion detected (RC39 baseline)."
+Write-Host "Spotify $installedVersion detected (RC40 baseline)."
 
 $running = Get-Process -Name Spotify -ErrorAction SilentlyContinue
 if ($running) {
@@ -89,7 +89,7 @@ if ($installSpotX) {
     }
 }
 else {
-    Write-Warning 'SpotX was skipped. Soggfy RC39 does not block ads or Spotify updates itself; only telemetry blocking remains native.'
+    Write-Warning 'SpotX was skipped. Soggfy RC40 does not block ads or Spotify updates itself; only telemetry blocking remains native.'
 }
 
 $packageRoot = Split-Path -Parent $PSScriptRoot
