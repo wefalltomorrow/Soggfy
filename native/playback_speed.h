@@ -3,4 +3,6 @@
 namespace history {
 void StartPlaybackSpeed(HMODULE spotify_module);
 bool PlaybackSpeedSupported();
+void ArmPlaybackSpeedRuntime();
+bool PlaybackSpeedRuntimeArmed();
 }
