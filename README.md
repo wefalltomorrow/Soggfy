@@ -2,7 +2,7 @@
 
 A maintained Windows x64 continuation of Soggfy with the old Soggfy Spotify UI on top of the modern Floggfy capture engine.
 
-The goal is to keep the interaction model people used in old Soggfy on the modern x64 capture backend. RC38 deliberately uses Spotify 1.3.1.234 as the supported playback-speed baseline after abandoning the unstable 1.3.3.264 experiment line.
+The goal is to keep the interaction model people used in old Soggfy on the modern x64 capture backend. RC40 deliberately uses Spotify 1.3.1.234 as the supported playback-speed baseline after abandoning the unstable 1.3.3.264 experiment line.
 
 ## What it does
 
@@ -26,7 +26,7 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 
 ## Install
 
-**RC38 targets Spotify Windows x64 1.3.1.234.** That is the runtime-validated baseline for Soggfy's native 1-50x playback-speed hook. The Spotify 1.3.3.264 experiment line has been rolled back rather than carried into this build. Other Spotify versions fail closed for native playback speed. Microsoft Store installs remain unvalidated.
+**RC40 targets Spotify Windows x64 1.3.1.234.** That is the runtime-validated baseline for Soggfy's native 1-50x playback-speed hook. The Spotify 1.3.3.264 experiment line has been rolled back rather than carried into this build. Other Spotify versions fail closed for native playback speed. Microsoft Store installs remain unvalidated.
 
 Releases use a single all-in-one Windows x64 ZIP. It contains both startup modes; install **only one**.
 
@@ -116,6 +116,8 @@ Skip Downloaded Tracks checks the configured path template first, but accepts an
 ## Fallback UI
 
 The Floggfy-style native To Disk menu is suppressed while Classic UI is enabled.
+
+RC40 adds a post-start browser-discovery fallback so the Classic UI still appears if Spotify creates its main CEF browser before Soggfy observes the normal browser-creation callback.
 
 For troubleshooting only, set Classic UI=0 and Native Menu=1 in the Soggfy section of SpotifyHistory.ini and restart Spotify.
 
