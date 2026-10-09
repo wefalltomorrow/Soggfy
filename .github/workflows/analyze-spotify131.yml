@@ -106,5 +106,44 @@ jobs:
               exact.append((p,off_to_rva(p)))
               p+=1
           print('\nExact 1.3.3 dispatcher-prefix hits:',[(hex(o),hex(r) if r else None) for o,r in exact])
+
+          target=0x00e9b3a0
+          print(f'\n=== FULL probable DecodeAudio dispatcher RVA 0x{target:x} ===')
+          blob=rva_bytes(target,0x500)
+          insns=list(md.disasm(blob,base+target))
+          for ins in insns:
+              print(f'{ins.address-base:08x}: {ins.mnemonic:8s} {ins.op_str}')
+              if ins.mnemonic=='ret':
+                  # keep a little beyond first ret only when it appears very early
+                  if ins.address-(base+target)>0x100:
+                      break
+
+          # Search for RIP-relative LEA references to the snd-decoder vtable.
+          vtable_rva=0x01aa55b8
+          vtable_va=base+vtable_rva
+          print(f'\n=== xrefs to snd-decoder vtable VA 0x{vtable_va:x} ===')
+          for sec in pe.sections:
+              if not (sec.Characteristics & 0x20000000):
+                  continue
+              sec_rva=sec.VirtualAddress
+              sec_blob=rva_bytes(sec_rva,max(sec.Misc_VirtualSize,sec.SizeOfRawData))
+              for ins in md.disasm(sec_blob,base+sec_rva):
+                  if ins.mnemonic not in ('lea','mov'):
+                      continue
+                  # Capstone text is sufficient for this one-off deterministic scan.
+                  if 'rip' not in ins.op_str:
+                      continue
+                  b=bytes(ins.bytes)
+                  # Decode the final rel32 for common RIP-relative forms.
+                  if len(b)<7:
+                      continue
+                  rel=struct.unpack('<i',b[-4:])[0]
+                  dest=ins.address+ins.size+rel
+                  if dest==vtable_va:
+                      print(f'xref {ins.address-base:08x}: {ins.mnemonic} {ins.op_str}')
+                      start=max(0,(ins.address-base)-0x60)
+                      context=rva_bytes(start,0x140)
+                      for ci in md.disasm(context,base+start):
+                          print(f'  {ci.address-base:08x}: {ci.mnemonic:8s} {ci.op_str}')
           '@ | Set-Content analyze.py
           python analyze.py
