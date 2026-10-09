@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0-rc.45
+
+- Fixed the installer incorrectly reporting SpotX success after upstream SpotX stopped with an error but returned process exit code 0.
+- Added preflight validation for Apps/xpui.spa and automatic restore from a valid Apps/xpui.bak when available.
+- Added temporary backups of Spotify.exe, Spotify.dll, chrome_elf.dll and Apps/xpui.spa around the SpotX patch step, with automatic rollback on any detected SpotX failure.
+- Added post-SpotX validation that xpui.spa is still a readable archive and contains SpotX's expected xpui.js patch marker.
+- The default %APPDATA%/Spotify install is no longer passed to SpotX as a custom -SpotifyPath, preserving SpotX's normal repair/update behavior.
+- SpotX is now invoked with podcasts_on so Soggfy only asks it to handle ads and update blocking, without the extra homepage podcast removal.
+- Fixed stale installer text that still said RC40 baseline.
+
 ## 3.0.0-rc.44
 
 - Fixed RC43 opening only a blank Spotify shell by removing the CEF-load gate from Spotify.dll hook startup.
