@@ -1,13 +1,9 @@
-# Soggfy v3.0.0-rc.40
+# Soggfy v3.0.0-rc.41
 
-RC40 fixes the Classic Soggfy UI sometimes failing to appear on Spotify 1.3.1.234 during a normal launch.
+RC41 fixes Spotify 1.3.1.234 dropping accelerated playback back to audible 1x after a track ends naturally.
 
-## Classic UI startup fix
+Manual Next already created a fresh track player and picked up the configured Soggfy speed. Natural queue advancement could instead reuse a pre-created 1x player, so Soggfy's native constructor hook never got a chance to apply 10x-50x to that new track.
 
-RC39 could load successfully but still miss the main browser if Spotify created it before the normal UI callback was observed.
+RC41 keeps the validated 1.3.1.234 native speed hook and adds a one-time current-track recreation whenever the active Spotify URI changes while accelerated playback is enabled. A short watchdog covers natural transitions that do not follow the same update path as a manual Next click, and a URI/speed guard prevents reset loops.
 
-RC40 keeps the existing callback path and adds a post-start fallback that looks up the already-running CEF browser after a short grace period, validates the browser objects, attaches the existing UI bridge, and loads Soggfy into the current main frame.
-
-The fallback retries until a valid browser is available and uses the corrected CEF 151 client method slot identified during the earlier crash investigation.
-
-Spotify 1.3.1.234 remains the supported baseline. Playback speed, capture, metadata, output handling, and the RC39 installer setup are otherwise unchanged.
+The RC40 Classic UI startup-race fix, capture engine, metadata, FFmpeg output, telemetry-only Soggfy filtering and SpotX ad/update handling remain unchanged.
