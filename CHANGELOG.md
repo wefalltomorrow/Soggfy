@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.43
+
+- Fixed the remaining instant startup crash on Spotify 1.3.1.234 by moving every Spotify.dll patch out of the DLL loader phase.
+- New crash dumps showed the same execute-access violation at raw address 0x01F10B54 with process uptime under one second, proving the failure happens during Spotify.dll initialization before the UI/player paths run.
+- Soggfy now waits until libcef.dll has loaded before touching Spotify.dll. CEF loading is used as the post-loader readiness signal because Windows cannot complete that later DLL load while Spotify.dll is still executing its loader initialization under the loader lock.
+- Connectivity IAT repair, native playback-speed hook installation, and audio capture hook setup now all run only after that post-loader point.
+- RC42's startup-disarmed acceleration, RC41's natural-transition speed recovery, and RC40's Classic UI fallback remain intact.
+
 ## 3.0.0-rc.42
 
 - Fixed Spotify failing to launch when a persisted accelerated playback speed such as 50x was already configured at process startup.
