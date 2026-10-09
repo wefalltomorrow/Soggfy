@@ -177,6 +177,7 @@ static std::wstring UiConfigCode() {
  const bool speed_supported=PlaybackSpeedSupported();
  add("playbackSpeed",std::to_string(speed_supported?s.playback_speed:1.0));
  add("speedSupported",bit(speed_supported));
+ add("speedImmediate",bit(PlaybackSpeedImmediate()));
  const auto quality=PlaybackQualityLabels(ReadPlaybackQuality());
  auto quality_value=[](const std::wstring& row) {
   const auto at=row.find(L": ");
