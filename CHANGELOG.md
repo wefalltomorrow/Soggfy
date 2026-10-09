@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.51
+
+- Fixed track badges binding to the first song because React Fiber scanning returned another row's URI.
+- Added row-specific React menu extraction, safe local track-query identities, and support for multiple occurrences of a song.
+- Fixed playlist title being misused as track album, preventing live state DONE/ERROR updates.
+- Added multi-row status regression tests and rate-limited debug status response diagnostics.
+- Preserved upstream icon styling and RC49 playback recovery.
+
+
 ## 3.0.0-rc.50
 
 - Fixed RC48/49 red crosses appearing on home-page tiles, playlist covers and sidebar because generic ARIA rows were treated as tracks.

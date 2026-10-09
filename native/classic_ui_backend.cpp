@@ -163,7 +163,7 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
         ClassicTrackResult result;result.uri=q.uri;
         const Recent* newest=nullptr;
         for(const auto& entry:live) {
-            if(!entry.title.empty() && SameText(q.title,entry.title) && SameText(q.album,entry.album) &&
+            if(!entry.title.empty() && SameText(q.title,entry.title) && (q.album.empty()||SameText(q.album,entry.album)) &&
                ArtistMatches(q,entry) && now>=entry.time && now-entry.time<=120000 &&
                (!newest||entry.time>newest->time))newest=&entry;
         }

@@ -47,23 +47,71 @@ function uriFromHref(href){
   const m=href.match(/\/(track|episode|artist|album|playlist)\/([A-Za-z0-9]+)/);
   return m?'spotify:'+m[1]+':'+m[2]:'';
 }
-function deepFindUri(root){
-  const stack=[root],seen=new Set();let budget=500;
-  while(stack.length&&budget-->0){
-    const v=stack.pop();if(!v||typeof v!=='object'||seen.has(v))continue;seen.add(v);
-    for(const [k,x] of Object.entries(v)){
-      if(typeof x==='string'&&/^spotify:(track|episode):/.test(x))return x;
-      if(x&&typeof x==='object'&&!seen.has(x))stack.push(x);
+const trueTrackUri=uri=>/^spotify:(track|episode):[A-Za-z0-9]{10,}$/.test(uri||'');
+
+// Original Rafiuth/Soggfy resolves the URI through the *same row's* React
+// menu props. Recursive Fiber searching wrongly returns the first playlist
+// track's URI for unrelated rows.
+function upstreamMenuProps(row,menu){
+  const key=Object.keys(row).find(k=>k.startsWith('__reactProps$'));
+  if(!key||!menu||!row.contains(menu))return null;
+  const path=[];
+  for(let el=menu;el&&el!==row;el=el.parentElement){
+    let offset=0;
+    for(let sibling=el;sibling;sibling=sibling.previousElementSibling)
+      if(key in sibling)offset++;
+    if(!offset)return null;
+    path.push(offset);
+  }
+  let state=row[key];
+  const fragment=Symbol.for('react.fragment');
+  for(let n=path.length-1;n>=0&&state;n--){
+    const children=state.children?.type===fragment?
+      state.children.props?.children:state.children;
+    const list=Array.isArray(children)?children:[children];
+    let count=0,next=null;
+    for(const child of list){
+      if(!child||typeof child!=='object')continue;
+      const nested=child.type===fragment?child.props?.children:null;
+      count+=Array.isArray(nested)?nested.length:1;
+      if(count>=path[n]){next=child;break;}
+    }
+    state=next?.props||null;
+  }
+  return state;
+}
+function uriFromTrackState(state){
+  const choices=[
+    state?.menu?.props?.uri,state?.menu?.uri,state?.uri,
+    state?.item?.uri,state?.track?.uri,state?.trackUri,
+    state?.data?.uri,state?.contextTrack?.uri,state?.props?.uri
+  ];
+  return choices.find(trueTrackUri)||'';
+}
+function reactUri(row){
+  const menu=row.querySelector('[data-testid="more-button"],.main-trackList-rowMoreButton');
+  if(menu){
+    const uri=uriFromTrackState(upstreamMenuProps(row,menu));
+    if(uri)return uri;
+  }
+  for(const el of [menu,row]){
+    if(!el)continue;
+    for(const k of Object.keys(el).filter(k=>k.startsWith('__reactProps$'))){
+      const uri=uriFromTrackState(el[k]);
+      if(uri)return uri;
     }
   }
   return '';
 }
-function reactUri(row){
-  for(const e of [row,...row.querySelectorAll('[data-testid="more-button"],button')]){
-    const key=Object.keys(e).find(k=>k.startsWith('__reactProps$')||k.startsWith('__reactFiber$'));
-    if(key){const uri=deepFindUri(e[key]);if(uri)return uri;}
-  }
-  return '';
+// When Spotify does not expose a URI in a track-list row, this deterministic
+// key is used ONLY for requesting filename/native status of that specific
+// track. We never traverse a parent Fiber or treat home cards as tracks.
+function localQueryUri(title,artist,album){
+  const value=[title,artist,album].join('\x1f');
+  let h=2166136261,h2=2246822507;
+  for(let i=0;i<value.length;i++)h=Math.imul(h^value.charCodeAt(i),16777619)>>>0;
+  for(let i=value.length-1;i>=0;i--)h2=Math.imul(h2^value.charCodeAt(i),3266489909)>>>0;
+  return 'spotify:track:sgf'+h.toString(16).padStart(8,'0')+h2.toString(16).padStart(8,'0');
 }
 function rowInfo(row){
   if(!(row instanceof Element)||!row.matches(TRACK_ROW))return null;
@@ -80,10 +128,6 @@ function rowInfo(row){
     if(artistText)artists=[artistText];
   }
   const nativeUri=uriFromHref(trackLink?.getAttribute?.('href')||'')||reactUri(row);
-  // Never fabricate a Spotify URI from arbitrary DOM text. Original Soggfy
-  // used actual track URIs, which also prevents injecting badges into cards.
-  const uri=nativeUri;
-  if(!/^spotify:(track|episode):[A-Za-z0-9]{10,}$/.test(uri))return null;
   const artistUris=artistLinks.map(a=>uriFromHref(a.getAttribute('href')||'')).filter(x=>x.startsWith('spotify:artist:'));
   const albumLink=row.querySelector('a[href*="/album/"]');
   let album=(albumLink?.textContent||'').trim();
@@ -93,12 +137,16 @@ function rowInfo(row){
   const pageMatch=location.pathname.match(/\/(playlist|album|artist)\/([A-Za-z0-9]+)/);
   const contextUri=pageMatch?'spotify:'+pageMatch[1]+':'+pageMatch[2]:'';
   if(!album){
-    const section=row.closest('section,[data-testid$="-page"]');
-    album=(section?.querySelector('h1')?.textContent||document.querySelector('main h1')?.textContent||'').trim();
+    album=(row.querySelector('[data-testid="tracklist-row-album"],.main-trackList-rowSectionVariable')?.textContent||'').trim();
+    // A playlist title must never be mistaken for a track's album.
+    if(!album&&location.pathname.startsWith('/album/'))
+      album=(row.closest('section')?.querySelector('h1')?.textContent||'').trim();
   }
   const artist=artists[0]||'';
   const allArtists=artists.join(', ')||artist;
-  const ignoreUris=[uri,albumUri,contextUri,...artistUris].filter(Boolean);
+  if(!nativeUri&&!artist)return null;
+  const uri=nativeUri||localQueryUri(title,artist,album);
+  const ignoreUris=[nativeUri,albumUri,contextUri,...artistUris].filter(Boolean);
   return {row,uri,title,artist,album,allArtists,albumUri,contextUri,artistUris,ignoreUris};
 }
 sgf.trackInfoFromRows=rows=>{
@@ -106,11 +154,12 @@ sgf.trackInfoFromRows=rows=>{
   if(!view)return [];
   const source=rows?[...rows].filter(row=>row?.matches?.(TRACK_ROW)&&view.contains(row)):
     [...view.querySelectorAll(TRACK_ROW)];
-  const out=[],seen=new Set();
+  const out=[];
   for(const row of source){
-    const info=rowInfo(row);if(!info||seen.has(info.uri))continue;
-    seen.add(info.uri);out.push(info);
+    const info=rowInfo(row);
+    if(info)out.push(info);
   }
+  // A duplicated song still has multiple visible rows: each gets its badge.
   return out;
 };
 
@@ -194,7 +243,7 @@ sgf.renderVisibleStatuses=()=>{
     target.prepend(n);t.row.__sgf_status_ind=n;
   }
 };
-let refreshTimer=0;
+let refreshTimer=0,lastStatusDiag=0;
 sgf.refreshVisibleStatuses=()=>{
   clearTimeout(refreshTimer);
   refreshTimer=setTimeout(async()=>{
@@ -202,6 +251,17 @@ sgf.refreshVisibleStatuses=()=>{
     const statuses=await sgf.requestStatuses(infos);
     for(const [uri,value] of statuses)sgf.statusMap.set(uri,value);
     sgf.renderVisibleStatuses();
+    // A low-frequency diagnostic makes it possible to distinguish failed
+    // row discovery from a stale or unreturned native status response.
+    const now=Date.now();
+    if(sgf.state.debug && now-lastStatusDiag>=20000){
+      lastStatusDiag=now;
+      const counts={};
+      for(const value of statuses.values())counts[value.status||'NONE']=(counts[value.status||'NONE']||0)+1;
+      sgf.send('status_diag','rows='+infos.length+' responses='+statuses.size+
+        ' local_ids='+infos.filter(x=>x.uri.startsWith('spotify:track:sgf')).length+
+        ' states='+JSON.stringify(counts));
+    }
   },120);
 };
 
