@@ -6,9 +6,14 @@ sgf.__statusLoaded=true;
 
 const STATUS_ICON={
   ERROR:sgf.Icons.Error,IN_PROGRESS:sgf.Icons.InProgress,CONVERTING:sgf.Icons.Processing,
-  WARN:sgf.Icons.Warning,DONE:sgf.Icons.Done,IGNORED:sgf.Icons.SyncDisabled,
-  MISSING:sgf.Icons.Error
+  WARN:sgf.Icons.Warning,DONE:sgf.Icons.Done,IGNORED:sgf.Icons.SyncDisabled
 };
+// Match original Sprinkles: indicators belong ONLY to Spotify track-list rows
+// inside the main view. Generic ARIA rows also occur in cards, home, and sidebar.
+const TRACK_ROW='div[data-testid="tracklist-row"],.main-trackList-trackListRow';
+sgf.mainTrackView=()=>document.querySelector('.main-view-container__scroll-node-child')||
+  document.querySelector('[data-testid="main-view"]')||
+  document.querySelector('main');
 const ignoreKey='soggfy.ignorelist.v1';
 let ignoreSet=new Set();
 try{ignoreSet=new Set(JSON.parse(localStorage.getItem(ignoreKey)||'[]'));}catch{}
@@ -61,7 +66,7 @@ function reactUri(row){
   return '';
 }
 function rowInfo(row){
-  if(!(row instanceof Element))return null;
+  if(!(row instanceof Element)||!row.matches(TRACK_ROW))return null;
   const trackLink=row.querySelector('a[href*="/track/"],a[href*="/episode/"],[data-testid="internal-track-link"]');
   // On Spotify 1.3.x the row itself normally carries data-testid=tracklist-row.
   // A selector prefixed with that attribute does not match its own children.
@@ -75,11 +80,10 @@ function rowInfo(row){
     if(artistText)artists=[artistText];
   }
   const nativeUri=uriFromHref(trackLink?.getAttribute?.('href')||'')||reactUri(row);
-  // Track metadata may be visible even when its Spotify URI is not exposed
-  // through the current React layout. A local per-row query identity still
-  // allows the on-disk filename check and keeps independent rows distinct.
-  const fallbackIdentity=[title,artists.join(', ')].join('\x1f');
-  const uri=nativeUri||('spotify:track:sgfrow-'+encodeURIComponent(fallbackIdentity));
+  // Never fabricate a Spotify URI from arbitrary DOM text. Original Soggfy
+  // used actual track URIs, which also prevents injecting badges into cards.
+  const uri=nativeUri;
+  if(!/^spotify:(track|episode):[A-Za-z0-9]{10,}$/.test(uri))return null;
   const artistUris=artistLinks.map(a=>uriFromHref(a.getAttribute('href')||'')).filter(x=>x.startsWith('spotify:artist:'));
   const albumLink=row.querySelector('a[href*="/album/"]');
   let album=(albumLink?.textContent||'').trim();
@@ -98,7 +102,10 @@ function rowInfo(row){
   return {row,uri,title,artist,album,allArtists,albumUri,contextUri,artistUris,ignoreUris};
 }
 sgf.trackInfoFromRows=rows=>{
-  const source=rows?[...rows]:[...document.querySelectorAll('div[data-testid="tracklist-row"],.main-trackList-trackListRow,div[role="row"]')];
+  const view=sgf.mainTrackView();
+  if(!view)return [];
+  const source=rows?[...rows].filter(row=>row?.matches?.(TRACK_ROW)&&view.contains(row)):
+    [...view.querySelectorAll(TRACK_ROW)];
   const out=[],seen=new Set();
   for(const row of source){
     const info=rowInfo(row);if(!info||seen.has(info.uri))continue;
@@ -145,13 +152,9 @@ window.__soggfyReceiveStatuses=payload=>{
   sgf.pumpStatusQueue();
 };
 
-// A missing native status means no matching local file, not 'hide the badge'.
-// Original Soggfy used a red X for these songs and a green tick for saved songs.
-sgf.displayTrackStatus=info=>info?.status ? info : {status:'MISSING',message:'Not downloaded',path:''};
-
 function statusCard(info){
   const n=document.createElement('div');n.className='sgf-status-indicator';
-  const label=info.message||(info.status==='DONE'?'Downloaded':info.status==='MISSING'?'Not downloaded':info.status);
+  const label=info.message||(info.status==='DONE'?'Downloaded':info.status);
   n.title=label;
   n.setAttribute('aria-label',label);
   n.__sgfToken=[info.status,info.path||'',info.message||''].join('\x1f');
@@ -170,18 +173,24 @@ function statusCard(info){
 }
 sgf.renderVisibleStatuses=()=>{
   for(const t of sgf.trackInfoFromRows()){
-    let info=sgf.displayTrackStatus(sgf.statusMap.get(t.uri));
+    let info=sgf.statusMap.get(t.uri);
     if((t.ignoreUris||[t.uri]).some(uri=>sgf.isIgnored(uri)))info={status:'IGNORED',message:'Ignored',path:''};
     const old=t.row.__sgf_status_ind;
+    // Original Soggfy shows a red X for ERROR, not for every absent file.
+    if(!info?.status){
+      if(old){old.remove();delete t.row.__sgf_status_ind;}
+      continue;
+    }
     const token=[info.status,info.path||'',info.message||''].join('\x1f');
     if(old?.__sgfToken===token&&old?.isConnected)continue;
     old?.remove();
     const n=statusCard(info);
-    // Spotify 1.3.x uses a dedicated trailing duration cell. Prefer it to
-    // an arbitrary last child (often an overlay or an invisible button).
+    // Only the trailing cell of a verified track row; never prepend to row
+    // itself, sidebar content, cards, track headings or playlist artwork.
     const target=t.row.querySelector('.main-trackList-rowSectionEnd')||
       t.row.querySelector('[data-testid="tracklist-row-duration"]')?.parentElement||
-      t.row.lastElementChild||t.row;
+      t.row.lastElementChild;
+    if(!target||target===t.row)continue;
     target.prepend(n);t.row.__sgf_status_ind=n;
   }
 };
@@ -267,7 +276,7 @@ sgf.installPlayerListeners=()=>{
 const observer=new MutationObserver(mutations=>{
   let rows=false;
   for(const m of mutations)for(const n of m.addedNodes){
-    if(n?.nodeType===1&&(n.matches?.('div[role="row"],div[data-testid="tracklist-row"]')||n.querySelector?.('div[role="row"],div[data-testid="tracklist-row"]'))){rows=true;break;}
+    if(n?.nodeType===1&&(n.matches?.(TRACK_ROW)||n.querySelector?.(TRACK_ROW))){rows=true;break;}
   }
   if(rows)sgf.refreshVisibleStatuses();
 });
@@ -282,7 +291,6 @@ start();
 // mutation. Periodically reconcile visible rows with native disk/live status.
 setInterval(()=>{
   if(document.visibilityState==='hidden'||sgf.statusActive||sgf.statusQueue.length)return;
-  if(document.querySelector('div[data-testid="tracklist-row"],.main-trackList-trackListRow,div[role="row"]'))
-    sgf.refreshVisibleStatuses();
+  if(sgf.mainTrackView()?.querySelector(TRACK_ROW))sgf.refreshVisibleStatuses();
 },3000);
 })();
