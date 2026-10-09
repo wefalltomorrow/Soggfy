@@ -1,11 +1,15 @@
-# Soggfy v3.0.0-rc.47
+# Soggfy v3.0.0-rc.48
 
-RC47 fixes the RC46 regression where Spotify tracks played at 50× but nothing was downloaded.
+RC48 restores the per-track red crosses and green checkmarks in the Classic Soggfy playlist interface.
 
-The decoder hook introduced in RC46 is still working and has not been changed. The failure was in the separate complete-listen tracker: each time Spotify refreshed its public playback timestamp at normal speed, Soggfy recalculated the accelerated position from that new timestamp. A track could jump from 190 seconds back to 13 seconds, get rejected as `position_rewind`, and never reach the file conversion/save queue even after a complete native Ogg capture.
+- A red cross now appears for tracks without a matching local download, rather than leaving the status column blank.
+- Green checkmarks indicate completed downloads, with a hover tooltip and Open Folder action.
+- Failed tracks show the red error icon with the actual failure reason; in-progress/converting and ignored states retain their existing icons.
+- Visible playlist rows are checked periodically for new files because MP3 conversion can finish without Spotify updating the playlist DOM.
+- The status indicator is placed beside the track-duration cell and given a fixed visible size.
+- Track-title extraction is more tolerant of Spotify's newer row markup. If a URI is unavailable, a local query identity allows filename-based status detection.
+- Added regression tests for missing, downloaded, error and refreshed statuses.
 
-RC47 keeps an independent monotonic position for each media identity during accelerated playback. Public Spotify metadata still establishes the initial position of each new track, normal 1× playback retains its previous behavior, and pausing or changing the speed does not reset the accelerated position.
+RC47's functioning 50x decoder, audio capture, listen completion, MP3 conversion and SpotX support are unchanged.
 
-Added regression tests reproducing the RC46 timeline refresh and verifying that a full 50× natural track transition is accepted. This is a targeted candidate fix; actual Spotify download publication still needs an in-app test.
-
-SpotX installation handling, Classic UI, compressed Ogg/FLAC integrity checks, FFmpeg settings and the RC46 PCM decoder speed hook are unchanged.
+The Classic UI indicators and their refresh logic still require a real Spotify UI test to verify appearance and native status matching.
