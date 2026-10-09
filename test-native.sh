@@ -23,6 +23,8 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/playback_speed_discovery_test.cpp
 build/playback-speed-discovery-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/playback_speed_compat_test.cpp native/playback_speed_compat.cpp -o build/playback-speed-compat-test
 build/playback-speed-compat-test
+g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/playback_speed_pcm_test.cpp -o build/playback-speed-pcm-test
+build/playback-speed-pcm-test
 build/spotify-hook-discovery-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/history_core_test.cpp native/ogg_history_core.cpp -o build/history-core-test
 build/history-core-test

@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0-rc.46
+
+- Replaced the Spotify 1.3.1.234 per-track constructor speed hook with original-Soggfy-style PCM thinning at the live snd-decoder dispatcher.
+- Reverse-engineered and validated the 1.3.1.234 x64 decoder layout: snd-decoder name RVA 0x01AA55A8, vtable RVA 0x01AA55B8, DecodeAudio slot RVA 0x01AA55C0, dispatcher RVA 0x00E9B3A0.
+- Playback speed is now applied on every decode call after Spotify consumes the compressed input, so natural queue advances and pre-created next-track players no longer fall back to real 1x.
+- Removed RC41's automatic track recreation/watchdog, which the RC45 diagnostic log proved caused a position rewind and could pause the naturally-advanced track.
+- Speed changes are immediate on the PCM backend and no longer require queue manipulation or a track restart.
+- Restored original Soggfy-style playback_stuck recovery: only an actual Spotify playback_stuck error triggers a current-track rebuild.
+- Running Install.ps1 directly from Explorer now pauses at success or failure so the final output remains readable; terminal launches still return immediately.
+
 ## 3.0.0-rc.45
 
 - Fixed the installer incorrectly reporting SpotX success after upstream SpotX stopped with an error but returned process exit code 0.

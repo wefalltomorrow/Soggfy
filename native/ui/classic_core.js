@@ -14,7 +14,7 @@ sgf.state = Object.assign({
   downloads:false, ogg:true, flac:true, metadata:true, log:true, debug:false, normalize:true,
   skipDownloaded:false, skipIgnored:false, embedCover:true, saveCover:true, embedLyrics:true,
   saveLyrics:true, saveCanvas:false, blockTelemetry:true, liftQueue:false, keepNative:true,
-  playbackSpeed:1, speedSupported:false,
+  playbackSpeed:1, speedSupported:false, speedImmediate:false,
   qualitySong:'Unavailable', qualityLevel:'Unavailable', qualityFormat:'Unavailable', qualitySample:'Unavailable',
   root:'', template:'', podcastTemplate:'', canvasTemplate:'',
   invalidChars:'unicode', outputPreset:'Native', outputExt:'', outputArgs:'', ffmpegPath:''
@@ -106,6 +106,7 @@ sgf.applyConfig = payload => {
     for(const key of strings)if(p.has(key))sgf.state[key]=p.get(key)||'';
     if(p.has('playbackSpeed'))sgf.state.playbackSpeed=Math.max(1,Math.min(50,Number(p.get('playbackSpeed'))||1));
     if(p.has('speedSupported'))sgf.state.speedSupported=sgf.flag(p,'speedSupported',sgf.state.speedSupported);
+    if(p.has('speedImmediate'))sgf.state.speedImmediate=sgf.flag(p,'speedImmediate',sgf.state.speedImmediate);
     if(sgf.refreshControls)sgf.refreshControls();
   } catch {}
 };
@@ -159,30 +160,30 @@ sgf.resetCurrentTrack = async preserve => {
   return false;
 };
 
-sgf.speedApplied = sgf.speedApplied || {uri:'',speed:1};
-
 sgf.setPlaybackSpeed = async speed => {
   speed=Math.max(1,Math.min(50,Number(speed)||1));
   sgf.state.playbackSpeed=speed;
   sgf.send('playbackSpeed',String(speed));
+
+  if(!sgf.state.speedSupported&&speed!==1){
+    sgf.notify('Accelerated playback is unavailable on this Spotify build',sgf.Icons.Warning);
+    return false;
+  }
+
+  // Spotify 1.3.1 uses the original Soggfy-style PCM thinning backend. It
+  // reads the configured speed on every decoder call, so changing speed is
+  // immediate and does not require queue manipulation or track recreation.
+  if(sgf.state.speedImmediate)return true;
+
+  // Fallback for a future constructor-style backend.
   if(speed===1||sgf.state.speedSupported){
-    // Persisted acceleration is deliberately disarmed during Spotify startup.
-    // Arm only from the live UI/player path immediately before rebuilding the
-    // actual current track.
     sgf.send('speedReady','1');
     await new Promise(resolve=>setTimeout(resolve,80));
-    // The native x64 hook reads Playback Speed when Spotify constructs the
-    // track player. Re-create the current track so a change applies now.
     const reset=await sgf.resetCurrentTrack(!sgf.state.downloads);
-    if(reset){
-      const uri=sgf.currentState()?.item?.uri||'';
-      sgf.speedApplied={uri,speed};
-    }else if(speed!==1){
+    if(!reset&&speed!==1)
       sgf.notify('Playback speed will apply on the next local track',sgf.Icons.Warning);
-    }
     return true;
   }
-  sgf.notify('Accelerated playback is unavailable on this Spotify build',sgf.Icons.Warning);
   return false;
 };
 
@@ -219,7 +220,8 @@ sgf.mountTopbar = existing => {
     download.innerHTML=sgf.state.downloads?sgf.Icons.FileDownload:sgf.Icons.FileDownloadOff;
     download.title=sgf.state.downloads?'Soggfy downloads enabled':'Soggfy downloads disabled';
     download.setAttribute('aria-label',download.title);
-    if(sgf.state.downloads||sgf.state.playbackSpeed!==1)await sgf.resetCurrentTrack(!sgf.state.downloads);
+    if(!sgf.state.speedImmediate&&(sgf.state.downloads||sgf.state.playbackSpeed!==1))
+      await sgf.resetCurrentTrack(!sgf.state.downloads);
     sgf.notify(sgf.state.downloads?'Soggfy downloads enabled':'Soggfy downloads disabled');
   },true);
 

@@ -1,11 +1,15 @@
-# Soggfy v3.0.0-rc.45
+# Soggfy v3.0.0-rc.46
 
-RC45 hardens the Soggfy installer around SpotX failures.
+RC46 replaces the Spotify 1.3.1.234 playback-speed implementation rather than trying another queue-reset workaround.
 
-The RC44 installer trusted SpotX's process exit code. Upstream SpotX uses bare Exit in several error paths, so a fatal error such as a broken xpui.spa archive can still return exit code 0. That allowed Soggfy to print Done and install version.dll even though SpotX had stopped.
+The RC45 log showed the failure precisely: The Magumba State was genuinely decoding at 50x, but after Spotify advanced naturally to Empty Branes the native player reported the configured 50x while the raw playback clock stayed near zero. RC41 then recreated the track, causing a large position rewind and eventually leaving playback paused.
 
-RC45 now validates Spotify's Apps/xpui.spa before SpotX runs, restores a valid Apps/xpui.bak automatically if needed, backs up the Spotify files SpotX may modify, and verifies the resulting xpui archive and SpotX patch marker afterwards. If SpotX fails, Soggfy restores the pre-SpotX files and stops instead of continuing.
+The reason is architectural: the RC38-RC45 speed code changed a speed argument when Spotify constructed a track player. Spotify can pre-create/reuse the next player during a natural transition, bypassing that path. Manual Next creates a fresh player, which is why it appeared to fix the speed.
 
-For the normal %APPDATA%/Spotify install, RC45 also stops passing -SpotifyPath to SpotX so upstream SpotX can use its normal repair/update path. SpotX is invoked with podcasts_on to avoid the unrelated homepage podcast-removal modification.
+RC46 returns to the mechanism used by original Soggfy. We reverse-engineered the exact Spotify 1.3.1.234 x64 snd-decoder and hook its live DecodeAudio dispatcher. Spotify consumes the full compressed input normally; after the decoder returns, Soggfy reduces only the number of PCM float samples handed to playback by the configured 1x-50x factor. Because this happens on every decode callback, it applies to every track and every pre-created player without touching the queue.
 
-The Soggfy runtime itself is otherwise the RC44 build: direct Spotify loader-readiness gating, RC42 startup speed safety, RC41 natural-transition speed recovery, and RC40 Classic UI startup fallback remain unchanged.
+The hook is fail-closed and validates the exact decoder name, vtable/slot pointers, function prologue, live decoder-call anchor and produced-sample-count store before MinHook is enabled.
+
+RC41's natural-transition reset/watchdog has been removed. Original Soggfy's targeted playback_stuck recovery is restored instead. The installer also now pauses when launched directly from Explorer so successful/error output can be read, while normal terminal usage remains non-blocking.
+
+RC45 SpotX failure handling and RC44 startup loader-readiness protections remain unchanged.
