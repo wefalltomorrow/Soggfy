@@ -6,7 +6,6 @@
 #include <shlobj.h>
 #include "classic_ui_backend.h"
 #include "classic_path_match.h"
-#include "classic_status_persistence.h"
 #include "history_settings.h"
 #include "library_layout.h"
 #include <algorithm>
@@ -138,13 +137,6 @@ void SetClassicTrackStatus(const Media& media,const char* status,const std::stri
     }
     ReleaseSRWLockExclusive(&recent_lock);
 
-    // DONE/ERROR are terminal; preserve them between Spotify restarts.
-    // Never persist transient IN_PROGRESS or CONVERTING indicators.
-    const std::string final_status=status;
-    if(final_status=="DONE" || final_status=="ERROR") {
-        PersistClassicTrackStatus(GetSettings().root,
-            {media.title,media.artist,media.album,path,final_status,message});
-    }
 }
 
 std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<ClassicTrackQuery>& queries) {
@@ -166,7 +158,6 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
         bool legacy_flat=false;
         std::wstring match;
         unsigned matches=0;
-        std::string previous_error;
     };
     std::vector<Pending> pending;
 
@@ -182,30 +173,8 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
             result.status=newest->status;result.message=newest->message;result.path=newest->path;
             results.push_back(std::move(result));continue;
         }
-        // First check the saved status journal, then fall through to the
-        // disk index (which also detects older Soggfy music files).
-        std::string previous_error;
-        bool saved_file=false;
-        for(const auto& state:FindPersistedClassicTrackStatuses(settings.root,q.title)) {
-            if(!SameText(q.title,state.title) ||
-               (!q.album.empty()&&!state.album.empty()&&!SameText(q.album,state.album)))continue;
-            Recent candidate;
-            candidate.artist=state.artist;
-            if(!ArtistMatches(q,candidate))continue;
-            if(state.status=="DONE"&&!state.path.empty()) {
-                const DWORD attrs=GetFileAttributesW(WindowsPath(state.path).c_str());
-                if(attrs!=INVALID_FILE_ATTRIBUTES && !(attrs&FILE_ATTRIBUTE_DIRECTORY)) {
-                    result.status="DONE";result.path=state.path;
-                    saved_file=true;break;
-                }
-            } else if(state.status=="ERROR") {
-                previous_error=state.message.empty()?"Previous download failed":state.message;
-            }
-        }
-        if(saved_file){results.push_back(std::move(result));continue;}
         try {
             Pending item;
-            item.previous_error=std::move(previous_error);
             item.query=q;
             item.path_query={q.title,q.artist,q.album,q.all_artists};
             const auto& path_template=(q.uri.rfind("spotify:episode:",0)==0 && !settings.podcast_template.empty())
@@ -253,8 +222,6 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
                 result.status="DONE";result.path=p.match;
             } else if(p.matches>1) {
                 result.status="WARN";result.message="Different tracks mapping to the same file name";
-            } else if(!p.previous_error.empty()) {
-                result.status="ERROR";result.message=p.previous_error;
             }
             results.push_back(std::move(result));
         }
