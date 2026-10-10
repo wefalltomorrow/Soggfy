@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.52
+
+- Fixed accelerated playback watchdog failing to arm on Spotify's native `track.uri`, `is_paused` and `is_playing` state fields.
+- Retained camelCase playback-state compatibility and added a guarded transport-button fallback for missing play flags.
+- Updated the current-track retry helper to support native Spotify URI and queue state; added a fallback Next action.
+- Added watchdog initialization and rate-limited inactive-state diagnostics plus native-state recovery regression tests.
+- Left RC51 status indicators, 50x PCM decoder, MP3 capture, SpotX and output settings untouched.
+
+
 ## 3.0.0-rc.51
 
 - Fixed track badges binding to the first song because React Fiber scanning returned another row's URI.
