@@ -1,23 +1,22 @@
-# Soggfy v3.0.0-rc.56 — original Skip Downloaded Tracks behaviour
+# Soggfy v3.0.0-rc.57 — original downloaded-file detection on Windows
 
-RC56 restores original Rafiuth/Soggfy's queue-based skip flow using modern Spotify 1.3.1.x track/queue data. It does not introduce a separate database, alternate library source, or automated skipping of currently playing music.
+This build targets the RC56 regression where existing MP3s are visible in `C:\Users\Shimon\Music\Spotify`, but the original-style green checkmarks are missing and **Skip downloaded tracks** cannot find confirmed `DONE` statuses.
 
-## Root cause in RC55
+## What was observed
 
-Original Soggfy `Sprinkles/src/player-state-tracker.ts` listens to Spotify's `queue_update` event, reads **`data.nextUp`**, creates a templated file-status lookup for queued tracks, caches confirmed matches by URI, then passes downloaded `ContextTrack` entries to **`Player.removeFromQueue()`**.
+The supplied screenshots show a configured `{all_artist_names} - {track_name}.{ext}` template and existing files including `Shpongle - The Magumba State.mp3`, `Shpongle - Empty Branes.mp3` and `Oasis - Wonderwall.mp3`. The user-supplied RC56 log showed `classic status rows=28 responses=28 local_ids=28 states={"IN_PROGRESS":1,"NONE":27}`, meaning the status backend returned no completed-file matches for those rows. The visible playlist itself is working. The exact filenames pass `ClassicPathMatches` C++ regression tests; this makes a filesystem traversal problem plausible, though not proven until tested in Spotify.
 
-RC55 ignored event `data`, instead retrieving `player._queue.getQueue().queued`; that is not guaranteed to contain the upcoming `nextUp` tracks in Spotify 1.3.x. RC55 also set a whole-queue signature **before** checking files: missing metadata, empty lookup responses and timeouts could prevent any subsequent check for an unchanged queue.
+## Changes
 
-## Behaviour in RC56
+- Use Windows' Unicode `FindFirstFileW`/`FindNextFileW` directory enumeration to build the same read-only recursive file index used by Soggfy's original file-based status detection. This avoids an unreported `std::filesystem::recursive_directory_iterator` failure on Windows/MinGW and works with the same Win32 extended-length path normalization used by Soggfy elsewhere.
+- Continue to scan the **configured base folder** (no status journal or database), recurse to depth 12, cap the index at 100,000 files, ignore directory reparse points, and preserve full file paths for the original Open Folder indicator.
+- With `DebugLog=1`, log `classic disk index file_count=... directory_count=... root_exists=... root_attributes=... last_error=...` on the ten-second index refresh. Also log a bounded `classic disk match` count and up to three unmatched track titles/artists every 20 seconds. These are **diagnostics**, not automatic repair or skipping logic.
+- Add regression cases for the exact screenshot file names and the selected MP3 output template, with artist/title identity checks.
 
-- Use `queue_update` **`data.nextUp`** directly when supplied, exactly like upstream. For modern Spotify builds with different queue representations, accept `event.nextTracks`, `Spicetify.Queue.nextTracks`, raw `PlayerState.next_tracks`, or native `_queue.getQueue()` variants when event `nextUp` is unavailable.
-- Map original `name`/`artists`/`album` and modern `metadata.title`/`artist_name`/`album_title` to the **existing file-based status matcher**. Never mark a track downloaded merely because it was played before.
-- Cache *only valid native lookup responses* per queued track URI, and forget them after tracks leave the upcoming queue. A timed-out/partial lookup remains unverified and will be retried. The native 128-entry batch limit is handled in chunks so larger queues are not silently truncated.
-- Remove only upcoming tracks with status **DONE** via `Player.removeFromQueue()`, preserving each queue entry's **uid** when available so repeat occurrences are handled correctly. Retain the original ignore-list check and don't skip currently playing tracks.
-- When `DebugLog` is enabled, use the existing Soggfy `classic status` diagnostics to record the queue source, queue counts and successful removal attempts without track names or a new logging system.
+No change to original-style `DONE` handling, 50× playback, capture/MP3 publication, playlist UI, skip queue, ignore settings, or 1× listen mode. No user files are modified.
 
-## Regression tests
+## Test
 
-`tests/classic_skip_downloaded_test.js` verifies the authoritative `queue_update.nextUp` path despite an unrelated empty `getQueue().queued`, older and modern track metadata, UID-aware removal, unverified native response retries, cache re-use, the modern queue fallbacks, duplicate track entries, ignored tracks, missing snapshot retries and >128-song batches.
+Install over RC56. On the *Tunes* playlist, verify the existing Shpongle, Oasis and other MP3s show green checks. With Skip downloaded tracks on, confirm they disappear from the *upcoming queue* only, just like original Soggfy. If checks are still missing, provide `Soggfy.log` with `DebugLog=1`; `classic disk index` and `classic disk miss` lines will now distinguish folder enumeration failure from artist/title mismatches.
 
-Retained unchanged: original file-based icon detection from RC55, RC54 50×/1× listen mode, RC53 decoder diagnostics, RC52 playback stall recovery, RC51 status icons, 50× decoder algorithm and MP3 conversion.
+Passing CI proves builds and filename matching, not in-app filesystem detection until the user verifies it.
