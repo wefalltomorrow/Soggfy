@@ -6,6 +6,7 @@
 #include <shlobj.h>
 #include "classic_ui_backend.h"
 #include "classic_path_match.h"
+#include "classic_status_persistence.h"
 #include "history_settings.h"
 #include "library_layout.h"
 #include <algorithm>
@@ -136,6 +137,13 @@ void SetClassicTrackStatus(const Media& media,const char* status,const std::stri
         recent_next=(recent_next+1)%recent.size();
     }
     ReleaseSRWLockExclusive(&recent_lock);
+
+    // DONE/ERROR are terminal; preserve them between Spotify restarts.
+    // Never persist transient IN_PROGRESS or CONVERTING indicators.
+    if(item.status=="DONE" || item.status=="ERROR") {
+        PersistClassicTrackStatus(GetSettings().root,
+            {media.title,media.artist,media.album,path,item.status,message});
+    }
 }
 
 std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<ClassicTrackQuery>& queries) {
