@@ -161,6 +161,7 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
         ClassicPathQuery path_query;
         std::wregex regex;
         std::wregex legacy_flat_regex;
+        std::wregex original_folder_regex;
         bool legacy_flat=false;
         std::wstring match;
         unsigned matches=0;
@@ -213,6 +214,12 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
                                   settings.invalid_char_repl,true),
                                   std::regex_constants::ECMAScript|std::regex_constants::icase);
             item.legacy_flat=q.uri.rfind("spotify:track:",0)==0;
+            if(item.legacy_flat) {
+                item.original_folder_regex=std::wregex(BuildClassicPathRegex(item.path_query,
+                    L"{artist_name}/{album_name}{multi_disc_path}/{track_num}. {track_name}.{ext}",
+                    L"",true,L"unicode",true),
+                    std::regex_constants::ECMAScript|std::regex_constants::icase);
+            }
             if(item.legacy_flat)
                 item.legacy_flat_regex=std::wregex(BuildLegacySoggfyFlatRegex(item.path_query),
                     std::regex_constants::ECMAScript|std::regex_constants::icase);
@@ -230,7 +237,8 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
                 if(p.matches>=2)continue;
                 const bool current_match=std::regex_match(file.relative,p.regex);
                 const bool legacy_match=!current_match&&p.legacy_flat&&
-                    std::regex_match(file.relative,p.legacy_flat_regex);
+                    (std::regex_match(file.relative,p.legacy_flat_regex)||
+                     std::regex_match(file.relative,p.original_folder_regex));
                 if(current_match||legacy_match) {
                     ++p.matches;
                     if(p.matches==1)p.match=file.display;
