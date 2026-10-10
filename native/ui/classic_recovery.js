@@ -73,7 +73,7 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
         if(st.mode==='unknown')diagnostic(now,'unknown_state',current);
         return;
       }
-      const rate=Math.max(1,Math.min(50,speed()));
+      const rate=Math.max(1,Math.min(sgf.MAX_PLAYBACK_SPEED||30,speed()));
       const length=st.durationMs;
       const expected=length>0?length/rate:0;
       const deadline=Math.max(18000,expected+12000);

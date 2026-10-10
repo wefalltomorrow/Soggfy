@@ -62,7 +62,7 @@ function textInput(key,nativeKey=key){
   n.onchange=()=>sendState(nativeKey,n.value);
   register(key,n);return n;
 }
-function slider(key,nativeKey=key,min=1,max=50,step=1){
+function slider(key,nativeKey=key,min=1,max=sgf.MAX_PLAYBACK_SPEED,step=1){
   const wrap=document.createElement('div');wrap.className='sgf-slider-wrapper';
   const label=document.createElement('input');label.className='sgf-slider-label';
   const range=document.createElement('input');range.className='sgf-slider';range.type='range';
