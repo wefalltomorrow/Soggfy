@@ -12,6 +12,7 @@
 #include <atomic>
 #include <array>
 #include <cwctype>
+#include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <regex>
