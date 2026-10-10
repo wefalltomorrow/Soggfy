@@ -25,6 +25,8 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/playback_speed_compat_test.cpp na
 build/playback-speed-compat-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/playback_speed_pcm_test.cpp -o build/playback-speed-pcm-test
 build/playback-speed-pcm-test
+g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/playback_speed_policy_test.cpp -o build/playback-speed-policy-test
+build/playback-speed-policy-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/playback_speed_probe_test.cpp -o build/playback-speed-probe-test
 build/playback-speed-probe-test
 build/spotify-hook-discovery-test
