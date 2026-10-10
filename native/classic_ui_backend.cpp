@@ -140,9 +140,10 @@ void SetClassicTrackStatus(const Media& media,const char* status,const std::stri
 
     // DONE/ERROR are terminal; preserve them between Spotify restarts.
     // Never persist transient IN_PROGRESS or CONVERTING indicators.
-    if(item.status=="DONE" || item.status=="ERROR") {
+    const std::string final_status=status;
+    if(final_status=="DONE" || final_status=="ERROR") {
         PersistClassicTrackStatus(GetSettings().root,
-            {media.title,media.artist,media.album,path,item.status,message});
+            {media.title,media.artist,media.album,path,final_status,message});
     }
 }
 
