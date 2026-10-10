@@ -5,9 +5,9 @@ const vm=require('vm');
 let now=0,playing=true,uri='spotify:track:stalled',attempts=0,skips=0;
 const log=[],timers=[];
 const sgf={
- state:{downloads:true,speedSupported:true,speedImmediate:true,playbackSpeed:50},
+ state:{downloads:true,speedSupported:true,speedImmediate:true,playbackSpeed:30},
  send:(key,value)=>log.push(key+':'+value),
- currentState:()=>({track:{uri,duration:197903},duration:197903,
+ currentState:()=>({track:{uri,duration:150000},duration:150000,
    is_paused:!playing,is_playing:playing})
 };
 const document={querySelector:()=>null};
@@ -17,7 +17,7 @@ vm.runInNewContext(fs.readFileSync('native/ui/classic_recovery.js','utf8'),conte
  {filename:'classic_recovery.js'});
 assert.strictEqual(sgf.readRecoveryState(sgf.currentState()).uri,uri);
 assert.strictEqual(sgf.readRecoveryState(sgf.currentState()).mode,'playing');
-assert.strictEqual(sgf.readRecoveryState(sgf.currentState()).durationMs,197903);
+assert.strictEqual(sgf.readRecoveryState(sgf.currentState()).durationMs,150000);
 const watcher=sgf.createPlaybackRecoveryMonitor({
  now:()=>now,getState:()=>sgf.currentState(),
  reset:async()=>{attempts++;return true;},
@@ -69,5 +69,5 @@ const watcher=sgf.createPlaybackRecoveryMonitor({
  sgf.installPlaybackStallRecovery();
  assert(timers.some(t=>t.ms===1500));
  assert(log.some(t=>t.includes('watchdog_initialized')),'Diagnostics identify active recovery');
- console.log('PASS: native Spotify snake_case state, pauses, RC51 50x stall recovery, retries and bounded skip');
+ console.log('PASS: native Spotify snake_case state, pauses, 30x stall recovery, retries and bounded skip');
 })().catch(error=>{console.error(error);process.exitCode=1});
