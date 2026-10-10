@@ -1,23 +1,20 @@
-# Soggfy v3.0.0-rc.54
+# Soggfy v3.0.0-rc.55 — original file-based status indicators
 
-RC54 restores two original Soggfy behaviours: completed/failed track indicators after restarting Spotify, and normal 1× music playback whenever downloading is disabled—even with a stored 50× playback-speed preference.
+RC55 removes the experimental persistence database introduced in RC54. The user prefers original Soggfy's behaviour, so downloaded status again comes directly from the saved audio files, without a separate per-track journal.
 
-## Playlist indicators after restart
+## Status indicators (restored original approach)
 
-The RC53 Classic UI shows the correct icon on each playlist row, but previously kept terminal statuses only in a 64-record, two-minute in-memory cache. On restart, it tried to infer green checks from the output directory and current filename template; red crosses had no durable history.
+- Green checkmarks are calculated from **existing audio files** in the configured download directory. The folder is scanned recursively and the result is matched against each real playlist row's artist, album and title, including the configured path template, original Soggfy's `Artist/Album/Track number. Track.ext` layout, and old flat `Artist - Track.mp3` files.
+- Blue downloading and red failure indicators are **session-only**, derived from Soggfy's active playback/download states. As in original Soggfy, error history is not restored from a separate database after restart. No red cross is shown for a merely missing file.
+- RC55 **does not create, read or update** `SoggfyTrackStatus.tsv`. An old TSV created by RC54 is **left on disk untouched**; RC55 ignores it. Do not delete any user's files automatically.
+- An audio file must match the filename/path conventions to yield a green check; custom renames or files stored outside the configured root may not match. This is intentional original-style behaviour.
 
-RC54 stores only **DONE** and **ERROR** outcomes in `SoggfyTrackStatus.tsv` under the configured download directory. The append-only UTF-8 journal has hex-escaped fields, checksums and a 16 MiB compaction threshold; corrupt or partial lines are ignored during loading. Statuses are keyed by actual title, artist and album rather than the UI's temporary synthetic row IDs. An existing **DONE** path is verified to exist before restoring its green check. The normal filesystem scan also remains, and takes priority over a recorded error when an older matching MP3 or other audio file exists. Failed downloads preserve a red cross and failure tooltip across restarts; incomplete blue **IN_PROGRESS** and converting states never persist.
+The RC54-only persistence source files and journal test have been removed from the codebase and the Windows build. A regression test verifies recognition of the original nested file layout even when the selected save template has changed.
 
-For older tracks that predate RC54, the filesystem scan now understands both the flat legacy `Artist - Track.mp3` convention and the original Soggfy `Artist/Album/Track number. Track.ext` template independently of the currently configured output layout. Previously displayed errors that never entered the new journal cannot be reconstructed retroactively.
+## Playback speed toggling
 
-## Original playback mode behaviour
+RC54's original Soggfy listening mode remains: with selected speed 50×, turning downloads off uses actual **1×**, and re-enabling restores **50×**. The stored speed preference is not modified.
 
-The original Rafiuth/Soggfy `StateManager::GetPlaySpeed()` returns 1.0 if downloading is disabled, otherwise the saved playback speed.
+## Unchanged
 
-RC54 applies this same policy in the x64 PCM decoder and the history/media clock. With playback-speed preference set to 50×, disabling downloads now means **effective speed 1×**, and re-enabling downloads restores **50×** without modifying the stored slider value. Toggling downloads also attempts the original-style restart of the current playback (preserving position on entering listening mode), to avoid a mismatched accelerated timeline.
-
-The existing 50× PCM decoder calculation, RC53 passive debug probes, RC52 stall watchdog, RC51 UI positioning, capture, MP3 export and SpotX integration are otherwise unchanged.
-
-## Validation
-
-New regression coverage tests playback-speed gating through enable/disable/enable, corrupt/truncated journal records, Unicode/error text and terminal-only persistence. Windows compilation and actual Spotify restart behaviour still require in-app validation.
+RC51 playlist indicator placement, RC52 stall-recovery watchdog, RC53 read-only decoder instrumentation, audio capture, MP3 conversion and playback backend are untouched. Real Spotify restart/toggle verification remains necessary.
