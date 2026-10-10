@@ -113,29 +113,49 @@ sgf.applyConfig = payload => {
 window.__soggfyApplyConfig=sgf.applyConfig;
 if(window.__soggfyNativeConfig)sgf.applyConfig(window.__soggfyNativeConfig);
 
+// Original Soggfy keeps polling the React root until PlayerAPI is present.
+// Do not descend the first child and then bounce between it and its parent:
+// that never visits sibling branches on newer Spotify React trees.
 sgf.getPlatform = async () => {
-  if(window.Spicetify?.Platform)return window.Spicetify.Platform;
-  for(let attempt=0;attempt<200;attempt++){
+  let attempts=0;
+  for(;;){
+    const exposed=window.Spicetify?.Platform;
+    if(typeof exposed?.getPlayerAPI==='function')return exposed;
     const main=document.querySelector('#main');
     if(main){
       const key=Object.keys(main).find(k=>k.startsWith('__reactContainer$'));
-      let node=key?main[key]:null;
+      const root=key?main[key]:null;
+      const pending=root?[root]:[];
       const seen=new Set();
-      for(let depth=0;node&&depth<60;depth++){
-        if(seen.has(node))break;seen.add(node);
+      // DFS prioritises the upstream ten-child path, but also checks siblings.
+      // Limit each search to keep Spotify's main renderer responsive.
+      while(pending.length&&seen.size<12000){
+        const node=pending.pop();
+        if(!node||typeof node!=='object'||seen.has(node))continue;
+        seen.add(node);
+        const props=node.stateNode?.props;
         const candidates=[
-          node?.stateNode?.props?.platform,
-          node?.memoizedProps?.platform,
-          node?.pendingProps?.platform,
-          node?.stateNode?.props?.children?.props?.children?.props?.platform
+          props?.platform,
+          node.memoizedProps?.platform,
+          node.pendingProps?.platform,
+          props?.children?.props?.children?.props?.platform,
+          node.memoizedProps?.children?.props?.children?.props?.platform
         ];
-        for(const candidate of candidates)if(candidate?.getPlayerAPI)return candidate;
-        node=node.child||node.sibling||node.return;
+        for(const candidate of candidates)
+          if(typeof candidate?.getPlayerAPI==='function')return candidate;
+        if(node.sibling)pending.push(node.sibling);
+        if(node.child)pending.push(node.child);
       }
     }
-    await new Promise(resolve=>setTimeout(resolve,50));
+    attempts++;
+    if(sgf.state.debug&&(attempts===1||attempts%150===0))
+      sgf.send('status_diag','queue platform pending attempts='+attempts+
+        ' skipDownloaded='+Number(!!sgf.state.skipDownloaded)+
+        ' skipIgnored='+Number(!!sgf.state.skipIgnored));
+    // Upstream waits for Spotify to expose the platform; do not permanently
+    // disable queue listening just because the client loads slowly.
+    await new Promise(resolve=>setTimeout(resolve,100));
   }
-  return null;
 };
 
 sgf.currentState = () => {
@@ -270,9 +290,16 @@ sgf.refreshControls = () => {
 };
 
 sgf.initPlayer = async () => {
-  sgf.platform=await sgf.getPlatform();
-  if(!sgf.platform)return;
-  try{sgf.player=sgf.platform.getPlayerAPI();}catch{}
+  for(;;){
+    sgf.platform=await sgf.getPlatform();
+    try{sgf.player=sgf.platform.getPlayerAPI();}catch{sgf.player=null;}
+    if(sgf.player)break;
+    if(sgf.state.debug)sgf.send('status_diag','queue platform found but getPlayerAPI unavailable; retrying');
+    await new Promise(resolve=>setTimeout(resolve,500));
+  }
+  if(sgf.state.debug)sgf.send('status_diag','queue player ready skipDownloaded='+
+    Number(!!sgf.state.skipDownloaded)+' skipIgnored='+
+    Number(!!sgf.state.skipIgnored));
   try{
     const settings=sgf.platform.getSettingsAPI?.();
     settings?.quality?.streamingQuality?.setValue?.(4);

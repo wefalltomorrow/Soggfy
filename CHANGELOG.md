@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.58
+
+- Fixed React Fiber PlayerAPI search getting trapped in first-child/parent cycles and never traversing sibling branches on modern Spotify.
+- Matched original Soggfy's persistent Platform polling, with retry when getPlayerAPI is temporarily unavailable instead of permanently disabling queue skipping after ~10 seconds.
+- Added `classic queue platform pending` and `classic queue player ready` diagnostics, plus a Node regression test for sibling discovery, startup after 200 attempts and queue listener attachment.
+- Preserved RC57's verified 2,214-file disk index/checkmarks, RC56 queue skipping logic, original no-status-database behaviour and all playback/capture controls.
+
+
 ## 3.0.0-rc.57
 
 - Fixed a suspected silent MinGW/Windows filesystem enumeration problem by indexing saved audio files using native Unicode `FindFirstFileW`/`FindNextFileW`, preserving original Soggfy read-only file-based status detection.
