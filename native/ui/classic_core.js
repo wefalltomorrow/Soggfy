@@ -224,8 +224,14 @@ sgf.mountTopbar = existing => {
     download.innerHTML=sgf.state.downloads?sgf.Icons.FileDownload:sgf.Icons.FileDownloadOff;
     download.title=sgf.state.downloads?'Soggfy downloads enabled':'Soggfy downloads disabled';
     download.setAttribute('aria-label',download.title);
-    if(!sgf.state.speedImmediate&&(sgf.state.downloads||sgf.state.playbackSpeed!==1))
+    // Match the original Soggfy topbar: a download-mode toggle also
+    // requeues the current accelerated track so Spotify's player timeline
+    // changes cleanly between normal listening and accelerated capture.
+    // The configured slider remains untouched (e.g. 50x -> 1x -> 50x).
+    if(sgf.state.playbackSpeed!==1 && sgf.state.speedSupported){
+      await new Promise(resolve=>setTimeout(resolve,100));
       await sgf.resetCurrentTrack(!sgf.state.downloads);
+    }
     sgf.notify(sgf.state.downloads?'Soggfy downloads enabled':'Soggfy downloads disabled');
   },true);
 

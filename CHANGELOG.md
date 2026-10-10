@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.54
+
+- Persisted terminal DONE/ERROR playlist statuses in a checksummed per-download-directory journal, restoring icons and failure reasons after Spotify restarts while verifying the completed file still exists.
+- Recognized the original Soggfy nested Artist/Album/Track filename layout as well as flat legacy MP3s regardless of the current output template.
+- Matched original Soggfy: downloads disabled plays at 1x even with the stored 50x preference, enabling downloads resumes the configured speed.
+- Kept RC53 diagnostic hook, RC52 recovery, RC51 icon placement and native/MP3 audio handling intact.
+
+
 ## 3.0.0-rc.53
 
 - Added passive lock-free entry/return, input and PCM counters to the existing Spotify x64 decoder hook (DebugLog only).
