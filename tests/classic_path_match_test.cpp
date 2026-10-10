@@ -75,5 +75,24 @@ int main(){
     check(!ClassicPathMatches(L"AC／DC\\Back in Black\\1. Hells Bells.txt",
           ac_q,upstream_template,L"",true,L"unicode",true),
           "folder lookup must never match non-audio sidecars");
-    std::puts("PASS: original on-disk downloaded-track matching without a status database");
+    // Real RC56 user repro: 2,214 existing files directly in the configured
+    // Music\\Spotify directory. Exact flat template and Spotify row metadata
+    // must map to a DONE result without relying on any in-memory database.
+    constexpr wchar_t flat_template[]=L"{all_artist_names} - {track_name}.{ext}";
+    ClassicPathQuery shpongle{L"The Magumba State",L"Shpongle",L"Codex VI",L"Shpongle"};
+    ClassicPathQuery shpongle2{L"Empty Branes",L"Shpongle",L"Codex VI",L"Shpongle"};
+    ClassicPathQuery oasis{L"Wonderwall",L"Oasis",L"(What's The Story) Morning Glory?",L"Oasis"};
+    check(ClassicPathMatches(L"Shpongle - The Magumba State.mp3",shpongle,
+           flat_template,L"mp3",true,L"unicode",true),
+          "RC56 repro existing flat Shpongle The Magumba State MP3");
+    check(ClassicPathMatches(L"Shpongle - Empty Branes.mp3",shpongle2,
+           flat_template,L"mp3",true,L"unicode",true),
+          "RC56 repro existing flat Shpongle Empty Branes MP3");
+    check(ClassicPathMatches(L"Oasis - Wonderwall.mp3",oasis,
+           flat_template,L"mp3",true,L"unicode",true),
+          "RC56 repro existing flat Oasis Wonderwall MP3");
+    check(!ClassicPathMatches(L"Shpongle - Empty Branes.mp3",shpongle,
+           flat_template,L"mp3",true,L"unicode",true),
+          "File identity must distinguish different songs by same artist");
+    std::puts("PASS: RC56 screenshot sample MP3 names and original on-disk matching");
 }
