@@ -145,12 +145,16 @@ sgf.currentState = () => {
 sgf.resetCurrentTrack = async preserve => {
   try{
     const st=sgf.currentState();
-    if(!st?.item?.uri||!sgf.player)return false;
-    const position=Math.max(0,(Date.now()-(st.timestamp||Date.now()))*(st.speed||1)+(st.positionAsOfTimestamp||st.position||0));
+    const trackUri=st?.item?.uri||st?.track?.uri||st?.item?.contextTrack?.uri||'';
+    if(!trackUri||!sgf.player)return false;
+    const anchor=st.positionAsOfTimestamp??st.position_as_of_timestamp??st.position??0;
+    const position=Math.max(0,(Date.now()-(st.timestamp||Date.now()))*
+      (st.speed??st.playback_speed??1)+Number(anchor));
     const queue=sgf.player._queue;
-    const queued=queue?.getQueue?.()?.queued||[];
+    const snapshot=await queue?.getQueue?.();
+    const queued=snapshot?.queued||[];
     if(queue?.insertIntoQueue&&sgf.player.skipToNext){
-      const tracks=[{uri:st.item.uri}];
+      const tracks=[{uri:trackUri}];
       if(queued.length)await queue.insertIntoQueue(tracks,{before:queued[0]});else await queue.addToQueue(tracks);
       await sgf.player.skipToNext();
       if(preserve&&sgf.player.seekTo)await sgf.player.seekTo(position);

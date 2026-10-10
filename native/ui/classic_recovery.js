@@ -12,50 +12,69 @@ sgf.__recoveryLoaded=true;
 // This watchdog does NOT depend on synthetic media position (which can reach
 // the end even when Spotify's decoder is silent). A deliberate user pause
 // suspends its deadline. Neither 1x playback nor disabled downloads is touched.
+// Normalise Spotify native PlayerState (track.uri, is_playing, is_paused)
+// and the camelCase wrapper state used by some Spotify versions.
+sgf.readRecoveryState=st=>{
+  const item=st?.item||st?.track||st?.contextTrack||st?.context_track;
+  const uri=item?.uri||item?.contextTrack?.uri||st?.track_uri||'';
+  const paused=st?.isPaused??st?.is_paused??st?.paused;
+  const playing=st?.isPlaying??st?.is_playing;
+  let mode='unknown';
+  if(paused===true||playing===false)mode='paused';
+  else if(paused===false||playing===true)mode='playing';
+  else{
+    try{
+      if(document.querySelector('button[data-testid="control-button-pause"]'))mode='playing';
+      else if(document.querySelector('button[data-testid="control-button-play"]'))mode='paused';
+    }catch{}
+  }
+  const duration=Number(st?.duration??st?.durationMs??st?.duration_ms??
+    item?.duration??item?.duration_ms??item?.metadata?.duration_ms??
+    item?.metadata?.duration??0);
+  return {uri,mode,durationMs:Number.isFinite(duration)&&duration>0?
+    (duration>1000?duration:duration*1000):0};
+};
 sgf.createPlaybackRecoveryMonitor=(opts={})=>{
-  let uri='',since=0,attempts=0,busy=false,finished=false;
+  let uri='',since=0,attempts=0,busy=false,finished=false,lastDiagnostic=-Infinity;
   const clock=opts.now||(()=>Date.now());
   const state=opts.getState||(()=>sgf.currentState?.());
+  const read=opts.read||sgf.readRecoveryState;
   const reset=opts.reset||(()=>sgf.resetCurrentTrack?.(false));
-  const skip=opts.skip||(()=>sgf.player?.skipToNext?.());
+  const skip=opts.skip||(()=>sgf.player?.skipToNext?.()||window.Spicetify?.Player?.next?.());
   const report=opts.report||((action,name,age)=>{
     sgf.send('playback_recovery',action+' title='+name+' elapsed_ms='+Math.round(age));
   });
   const allowed=opts.allowed||(()=>sgf.state.downloads&&sgf.state.speedSupported&&
-       sgf.state.speedImmediate&&sgf.state.playbackSpeed>=5);
+       sgf.state.playbackSpeed>=5);
   const speed=opts.speed||(()=>Number(sgf.state.playbackSpeed)||1);
   const clear=()=>{uri='';since=0;attempts=0;busy=false;finished=false;};
-  const durationMs=st=>{
-    const value=Number(st?.duration||st?.durationMs||st?.item?.duration||
-      st?.item?.metadata?.duration||st?.item?.metadata?.duration_ms||0);
-    if(!Number.isFinite(value)||value<=0)return 0;
-    // Spotify state/metadata normally expose duration in milliseconds.
-    return value>1000?value:value*1000;
+  const diagnostic=(now,reason,name)=>{
+    if(now-lastDiagnostic<30000)return;
+    lastDiagnostic=now;
+    report('watchdog_'+reason,name||'unknown',0);
   };
   return {
     clear,
     async tick(){
       if(busy)return;
       if(!allowed()){clear();return;}
-      const st=state();
-      const current=st?.item?.uri||st?.item?.contextTrack?.uri||'';
       const now=clock();
-      if(!current||!Number.isFinite(now)){clear();return;}
+      if(!Number.isFinite(now))return;
+      const st=read(state());
+      const current=st?.uri||'';
+      if(!current){clear();diagnostic(now,'no_track','');return;}
       if(current!==uri){uri=current;since=now;attempts=0;finished=false;return;}
       if(finished)return;
 
       // Never override Play/Pause, headset controls, remote playback or an
       // intentionally paused song. No explicit "playing" flag = no action.
-      if(st.isPaused===true||st.paused===true||st.isPlaying===false){
+      if(st.mode!=='playing'){
         since=now;
-        return;
-      }
-      if(!(st.isPaused===false||st.paused===false||st.isPlaying===true)){
-        since=now;
+        if(st.mode==='unknown')diagnostic(now,'unknown_state',current);
         return;
       }
       const rate=Math.max(1,Math.min(50,speed()));
-      const length=durationMs(st);
+      const length=st.durationMs;
       const expected=length>0?length/rate:0;
       const deadline=Math.max(18000,expected+12000);
       const age=now-since;
@@ -65,7 +84,7 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
       try {
         // The active track may have changed while we waited for an async
         // Spotify player operation; do not reset the wrong track.
-        if((state()?.item?.uri||'')!==current)return;
+        if(read(state()).uri!==current)return;
         if(attempts<2){
           attempts++;
           report('retry_'+attempts,current,age);
@@ -80,7 +99,7 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
           attempts=2;
         }
 
-        if((state()?.item?.uri||'')!==current)return;
+        if(read(state()).uri!==current)return;
         report('skip_stalled',current,age);
         // Only one skip per stalled identity. If skip fails, leave the player
         // alone rather than endlessly rebuilding the queue.
@@ -95,6 +114,7 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
 sgf.installPlaybackStallRecovery=()=>{
   if(sgf.__recoveryMonitor)return;
   sgf.__recoveryMonitor=sgf.createPlaybackRecoveryMonitor();
+  sgf.send('playback_recovery','watchdog_initialized state_fields=camel_or_snake');
   setInterval(()=>{void sgf.__recoveryMonitor.tick();},1500);
 };
 })();
