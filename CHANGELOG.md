@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.55
+
+- Removed the RC54 `SoggfyTrackStatus.tsv` status journal and all related persistence code; no new database is created or read.
+- Restored original Soggfy behaviour: downloaded checks come from saved audio files; downloading/errors are live-session statuses only.
+- Retained folder/file matching for the original Soggfy nested layout and older flat MP3s even when the current filename template changes.
+- Preserved RC54's original-style 1× listening mode when downloads are off, and the saved 50× setting when downloads are turned back on.
+- Preserved RC51 indicators, RC52 stall recovery, RC53 passive diagnostics and MP3 conversion.
+
+
 ## 3.0.0-rc.54
 
 - Persisted terminal DONE/ERROR playlist statuses in a checksummed per-download-directory journal, restoring icons and failure reasons after Spotify restarts while verifying the completed file still exists.
