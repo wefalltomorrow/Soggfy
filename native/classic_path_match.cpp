@@ -60,10 +60,25 @@ void AddUnique(std::vector<std::wstring>& values,std::wstring value) {
     for(const auto& existing:values)if(SameInsensitive(existing,value))return;
     values.push_back(std::move(value));
 }
+// Spotify track rows join their artist list with ", ", while the native
+// metadata collector and file publisher use "; ".  Accept both exact
+// representations without weakening the track title or artist identity.
+std::wstring PublishedSemicolonArtists(const ClassicPathQuery& q) {
+    if(q.artist.empty())return {};
+    const auto& all=q.all_artists;
+    const size_t prefix=q.artist.size();
+    if(all.size()<=prefix+2 ||
+       !SameInsensitive(all.substr(0,prefix),q.artist) ||
+       all.compare(prefix,2,L", ")!=0)return {};
+    std::wstring remaining=all.substr(prefix+2);
+    ReplaceAll(remaining,L", ",L"; ");
+    return q.artist+L"; "+remaining;
+}
 std::vector<std::wstring> LegacyArtistNames(const ClassicPathQuery& q) {
     std::vector<std::wstring> artists;
     AddUnique(artists,q.artist);
     AddUnique(artists,q.all_artists);
+    AddUnique(artists,PublishedSemicolonArtists(q));
 
     auto add_normalized=[&](std::wstring value) {
         if(value.empty())return;
@@ -122,7 +137,14 @@ std::wstring BuildClassicPathRegex(const ClassicPathQuery& q,
                 const auto token=pattern.substr(i,close-i+1);
                 if(token==L"{track_name}")escaped+=RegexEscape(EscapePathValue(q.title,invalid_char_replacement,L"Untitled"));
                 else if(token==L"{artist_name}")escaped+=RegexEscape(EscapePathValue(artist,invalid_char_replacement,L"Unknown Artist"));
-                else if(token==L"{all_artist_names}")escaped+=RegexEscape(EscapePathValue(all,invalid_char_replacement,L"Unknown Artist"));
+                else if(token==L"{all_artist_names}") {
+                    const auto exact=RegexEscape(EscapePathValue(all,invalid_char_replacement,L"Unknown Artist"));
+                    auto published=PublishedSemicolonArtists(q);
+                    if(normalize_artist_separators)ReplaceAll(published,L" / ",L", ");
+                    if(published.empty()||SameInsensitive(published,all))escaped+=exact;
+                    else escaped+=L"(?:"+exact+L"|"+
+                        RegexEscape(EscapePathValue(published,invalid_char_replacement,L"Unknown Artist"))+L")";
+                }
                 else if(token==L"{album_name}")escaped+=RegexEscape(EscapePathValue(q.album,invalid_char_replacement,L"Unknown Album"));
                 else if(token==L"{track_num}")escaped+=L"\\d+";
                 else if(token==L"{track_num_2}")escaped+=L"\\d{2}";
