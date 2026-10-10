@@ -93,8 +93,14 @@
  }
  function tick(){
   try{
+   // Spotify's cached PlayerAPI is required by original Soggfy's queue
+   // listener as well as metadata. Discover it even when the optional
+   // enrichment feature is disabled, without network/service requests.
+   scan();
+   if(player&&method(player,'getState')&&method(player,'getEvents'))
+    window.__soggfyVerifiedPlayerAPI=player;
    if(window.__soggfyMetadataEnabled===false)return;
-   scan();if(!player){playback({v:1});return;}
+   if(!player){playback({v:1});return;}
    if(!reported){console.info('FLOGGFY_STATUS:cached player found');reported=true;}
    const state=method(player,'getState').call(player),item=own(state,'item'),m=own(item,'metadata')||{},uri=text(own(item,'uri'));
    const isTrack=/^spotify:track:[A-Za-z0-9]{22}$/.test(uri||''),isEpisode=/^spotify:episode:[A-Za-z0-9]{22}$/.test(uri||'');
