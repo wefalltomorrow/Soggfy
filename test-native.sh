@@ -58,6 +58,7 @@ done
 node tests/metadata_collector_test.js
 node tests/classic_status_icons_test.js
 node tests/classic_row_binding_test.js
+node tests/classic_skip_downloaded_test.js
 node tests/classic_recovery_test.js
 node tests/classic_recovery_native_state_test.js
 
