@@ -3,6 +3,7 @@
 #include "playback_speed.h"
 #include "playback_speed_compat.h"
 #include "playback_speed_pcm_core.h"
+#include "playback_speed_probe.h"
 #include "history_settings.h"
 #include "hook_init_state.h"
 #include "vendor/minhook/include/MinHook.h"
@@ -33,6 +34,19 @@ static std::atomic<bool> supported{false};
 static std::atomic<unsigned long long> decode_calls{0};
 static std::atomic<unsigned long long> thinned_calls{0};
 static std::atomic<double> last_requested{1.0};
+
+// Instrument ONLY when DebugLog is enabled. No I/O, heap allocation, mutex,
+// or UI calls are allowed in Spotify's decoder callback. The history worker
+// reads these relaxed atomics and writes a bounded diagnostic every 2 seconds.
+static std::atomic<bool> probe_enabled{false};
+struct ProbeCounters {
+    std::atomic<std::uint64_t> enters{0},exits{0},last_enter_ms{0},last_exit_ms{0};
+    std::atomic<std::uint64_t> decoded_samples{0},reported_samples{0},compressed_units{0};
+    std::atomic<std::uint64_t> no_pcm_calls{0},no_input_change_calls{0},invalid_output_calls{0};
+    std::atomic<std::uint64_t> last_capacity{0},last_produced{0},last_kept{0};
+    std::atomic<std::uint64_t> last_encoded_before{0},last_encoded_after{0},last_flags{0};
+};
+static ProbeCounters probe;
 
 // Spotify 1.3.1.234.g59d6bf59 x64, verified against the official x64 payload.
 // This is the live snd-decoder dispatcher: the same layer old Soggfy hooked.
@@ -143,12 +157,24 @@ static DecodeResult* DecodeAudioHook(void* self,DecodeResult* output,
                                      unsigned char flags) {
     const std::uint64_t capacity=sample_count?*sample_count:0;
     const std::uint64_t encoded_before=encoded_count?*encoded_count:0;
+    const bool observing=probe_enabled.load(std::memory_order_relaxed);
+    if(observing) {
+        probe.last_enter_ms.store(GetTickCount64(),std::memory_order_relaxed);
+        probe.enters.fetch_add(1,std::memory_order_relaxed);
+    }
 
     DecodeResult* result=original_decode(
         self,output,pcm,sample_count,encoded,encoded_count,flags);
 
     const auto call=decode_calls.fetch_add(1,std::memory_order_relaxed)+1;
-    if(!sample_count)return result;
+    if(!sample_count) {
+        if(observing) {
+            probe.no_pcm_calls.fetch_add(1,std::memory_order_relaxed);
+            probe.last_exit_ms.store(GetTickCount64(),std::memory_order_relaxed);
+            probe.exits.fetch_add(1,std::memory_order_relaxed);
+        }
+        return result;
+    }
 
     const double requested=RequestedSpeed();
     const std::uint64_t produced=*sample_count;
@@ -165,6 +191,25 @@ static DecodeResult* DecodeAudioHook(void* self,DecodeResult* output,
             thinned=true;
             thinned_calls.fetch_add(1,std::memory_order_relaxed);
         }
+    }
+
+    if(observing) {
+        const std::uint64_t consumed=encoded_before>=encoded_after ?
+            encoded_before-encoded_after : 0;
+        probe.decoded_samples.fetch_add(produced,std::memory_order_relaxed);
+        probe.reported_samples.fetch_add(kept,std::memory_order_relaxed);
+        probe.compressed_units.fetch_add(consumed,std::memory_order_relaxed);
+        if(!produced)probe.no_pcm_calls.fetch_add(1,std::memory_order_relaxed);
+        if(!consumed)probe.no_input_change_calls.fetch_add(1,std::memory_order_relaxed);
+        if(produced && !sane)probe.invalid_output_calls.fetch_add(1,std::memory_order_relaxed);
+        probe.last_capacity.store(capacity,std::memory_order_relaxed);
+        probe.last_produced.store(produced,std::memory_order_relaxed);
+        probe.last_kept.store(kept,std::memory_order_relaxed);
+        probe.last_encoded_before.store(encoded_before,std::memory_order_relaxed);
+        probe.last_encoded_after.store(encoded_after,std::memory_order_relaxed);
+        probe.last_flags.store(flags,std::memory_order_relaxed);
+        probe.last_exit_ms.store(GetTickCount64(),std::memory_order_relaxed);
+        probe.exits.fetch_add(1,std::memory_order_relaxed);
     }
 
     const double previous=last_requested.exchange(requested,std::memory_order_relaxed);
@@ -185,6 +230,34 @@ static DecodeResult* DecodeAudioHook(void* self,DecodeResult* output,
     return result;
 }
 
+}
+
+// Producer/consumer instrumentation separated from the actual PCM hook.
+// "Encoded units" refer only to the decoder ABI's in/out count difference;
+// until validated, they must NOT be interpreted as Spotify network bytes.
+void SetPlaybackSpeedProbeEnabled(bool enabled) {
+    probe_enabled.store(enabled,std::memory_order_release);
+}
+
+DecodeProbeSnapshot ReadPlaybackSpeedProbe() {
+    DecodeProbeSnapshot s;
+    s.enters=probe.enters.load(std::memory_order_relaxed);
+    s.exits=probe.exits.load(std::memory_order_relaxed);
+    s.last_enter_ms=probe.last_enter_ms.load(std::memory_order_relaxed);
+    s.last_exit_ms=probe.last_exit_ms.load(std::memory_order_relaxed);
+    s.decoded_samples=probe.decoded_samples.load(std::memory_order_relaxed);
+    s.reported_samples=probe.reported_samples.load(std::memory_order_relaxed);
+    s.compressed_units=probe.compressed_units.load(std::memory_order_relaxed);
+    s.no_pcm_calls=probe.no_pcm_calls.load(std::memory_order_relaxed);
+    s.no_input_change_calls=probe.no_input_change_calls.load(std::memory_order_relaxed);
+    s.invalid_output_calls=probe.invalid_output_calls.load(std::memory_order_relaxed);
+    s.last_capacity=probe.last_capacity.load(std::memory_order_relaxed);
+    s.last_produced=probe.last_produced.load(std::memory_order_relaxed);
+    s.last_kept=probe.last_kept.load(std::memory_order_relaxed);
+    s.last_encoded_before=probe.last_encoded_before.load(std::memory_order_relaxed);
+    s.last_encoded_after=probe.last_encoded_after.load(std::memory_order_relaxed);
+    s.last_flags=probe.last_flags.load(std::memory_order_relaxed);
+    return s;
 }
 
 bool PlaybackSpeedSupported() {
