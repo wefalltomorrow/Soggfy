@@ -305,9 +305,8 @@ function queuedInfo(entry){
   const album=track?.album?.name||entry?.album?.name||meta.album_title||'';
   const uid=entry?.uid??track?.uid;
   return {uri,title,artist,allArtists,album,
-    // Original Soggfy removes actual queued tracks via PlayerAPI, not a
-    // newly constructed playback request. Preserve UID for duplicates.
-    track:uid==null?{uri}:{uri,uid}};
+    // Original Soggfy removes queued ContextTracks, preserving a per-entry UID.
+    track:uid==null?{uri}:{uri,uid},ignoreTarget:track};
 }
 // Cache only completed lookup results per queued URI (as upstream does),
 // and drop entries after the URI leaves the upcoming queue. Unlike RC55,
@@ -347,7 +346,7 @@ sgf.checkQueue=async eventData=>{
       }
     }
     const remove=infos.filter(info=>
-      (sgf.state.skipIgnored&&sgf.isTrackIgnored(info.track))||
+      (sgf.state.skipIgnored&&sgf.isTrackIgnored(info.ignoreTarget))||
       (sgf.state.skipDownloaded&&queueStatusCache.get(info.uri)===true))
       .map(info=>info.track);
     if(remove.length){
