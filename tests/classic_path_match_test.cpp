@@ -61,5 +61,19 @@ int main(){
     check(!ClassicLegacyFlatPathMatches(L"AC／DC - Hells Bells.txt",ac_q),
           "legacy fallback ignores non-audio files");
 
-    std::puts("PASS: classic and legacy Soggfy downloaded-track matching");
+    // The selected output template can be changed years after a file was
+    // downloaded. The original Soggfy folder layout remains detectable.
+    const std::wstring upstream_template=
+        L"{artist_name}/{album_name}{multi_disc_path}/{track_num}. {track_name}.{ext}";
+    const std::wstring new_template=L"{artist_name} - {track_name}.{ext}";
+    check(ClassicPathMatches(L"AC／DC\\Back in Black\\1. Hells Bells.mp3",
+          ac_q,upstream_template,L"",true,L"unicode",true),
+          "original Soggfy Artist/Album/Track.mp3 recognized after restart");
+    check(!ClassicPathMatches(L"AC／DC\\Back in Black\\1. Hells Bells.mp3",
+          ac_q,new_template,L"",true,L"unicode",true),
+          "different configured output template cannot match the old nested path alone");
+    check(!ClassicPathMatches(L"AC／DC\\Back in Black\\1. Hells Bells.txt",
+          ac_q,upstream_template,L"",true,L"unicode",true),
+          "folder lookup must never match non-audio sidecars");
+    std::puts("PASS: original on-disk downloaded-track matching without a status database");
 }
