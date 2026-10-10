@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.60 — 1–30x playback-speed ceiling
+
+- Cap Classic UI slider and typed playback-speed input at 30x (remove 31–50x).
+- Treat existing saved preferences above 30x as 30x at startup.
+- Enforce the ceiling in native settings, effective-speed policy, PCM decoder, and playback-stall watchdog.
+- Add JavaScript and native C++ regressions for the new ceiling, legacy 50x settings and recovery timing.
+- Preserve RC59's confirmed queue-skipping fix and the separately tested PR61 multi-artist status changes.
+
+
 ## 3.0.0-rc.59
 
 - Fixed downloaded-track skipping never starting in Spotify 1.3.x by reusing the already verified PlayerAPI from the native metadata collector's cached service-registry traversal.

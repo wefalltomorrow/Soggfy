@@ -4,10 +4,10 @@ const fs=require('fs');
 const vm=require('vm');
 const assert=require('assert');
 
-let time=0,allowed=true,track='spotify:track:A',paused=false,speed=50;
+let time=0,allowed=true,track='spotify:track:A',paused=false,speed=30;
 let attempts=0,skips=0;
 const reports=[],intervals=[];
-const sgf={state:{downloads:true,speedSupported:true,speedImmediate:true,playbackSpeed:50},
+const sgf={state:{downloads:true,speedSupported:true,speedImmediate:true,playbackSpeed:30},
     send(k,v){reports.push(k+':'+v);}};
 const context={
   window:{__SoggfyClassic:sgf},
@@ -17,7 +17,7 @@ const context={
 vm.runInNewContext(fs.readFileSync('native/ui/classic_recovery.js','utf8'),context,
     {filename:'classic_recovery.js'});
 
-const state=()=>({item:{uri:track,duration:200000},isPaused:paused});
+const state=()=>({item:{uri:track,duration:150000},isPaused:paused});
 const monitor=sgf.createPlaybackRecoveryMonitor({
     now:()=>time,getState:state,allowed:()=>allowed,speed:()=>speed,
     async reset(){attempts++;return true;},
@@ -74,7 +74,7 @@ async function tick(t){time=t;await monitor.tick();}
 
   // A failed requeue must not retry endlessly and should move forward once.
   const failures=sgf.createPlaybackRecoveryMonitor({
-    now:()=>time,getState:state,allowed:()=>true,speed:()=>50,
+    now:()=>time,getState:state,allowed:()=>true,speed:()=>30,
     reset:async()=>false,skip:async()=>{skips++},report:()=>{}
   });
   await failures.tick();

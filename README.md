@@ -9,7 +9,7 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Uses the old Soggfy-style top-bar Downloads button and Soggfy settings modal.
 - Shows per-track status icons for downloading, converting, completed, failed, warning and ignored states.
 - Restores Skip Downloaded Tracks, Skip Ignored Tracks, Ignore/Unignore and Generate M3U.
-- Restores the old 1–50x playback-speed control only on explicitly runtime-validated Spotify player ABIs. Unsupported or newer builds fail closed at 1x instead of risking startup.
+- Offers a conservative 1–30x playback-speed control only on explicitly runtime-validated Spotify player ABIs. Unsupported or newer builds fail closed at 1x instead of risking startup.
 - Restores old-style output presets including MP3, M4A/AAC, Opus and custom FFmpeg output.
 - Always captures Spotify's native Ogg or FLAC first, and keeps native FLAC lossless.
 - Embeds artwork, lyrics and rich locally cached metadata when enabled.
@@ -26,7 +26,7 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 
 ## Install
 
-**RC40 targets Spotify Windows x64 1.3.1.234.** That is the runtime-validated baseline for Soggfy's native 1-50x playback-speed hook. The Spotify 1.3.3.264 experiment line has been rolled back rather than carried into this build. Other Spotify versions fail closed for native playback speed. Microsoft Store installs remain unvalidated.
+**RC40 targets Spotify Windows x64 1.3.1.234.** That is the runtime-validated baseline for Soggfy's native 1-30x playback-speed hook. The Spotify 1.3.3.264 experiment line has been rolled back rather than carried into this build. Existing saved speeds above 30x are automatically limited to 30x. Other Spotify versions fail closed for native playback speed. Microsoft Store installs remain unvalidated.
 
 Releases use a single all-in-one Windows x64 ZIP. It contains both startup modes; install **only one**.
 

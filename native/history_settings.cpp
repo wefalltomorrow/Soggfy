@@ -1,5 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include "history_settings.h"
+#include "playback_speed_limit.h"
 #include <shobjidl.h>
 #include <shlobj.h>
 #include <algorithm>
@@ -190,7 +191,7 @@ void InitSettings(HMODULE proxy) {
     settings.path_template=raw_template;
 
     GetPrivateProfileStringW(L"Soggfy",L"Playback Speed",L"1",value,4096,ini.c_str());
-    settings.playback_speed=std::max(1.0,std::min(50.0,wcstod(value,nullptr)));
+    settings.playback_speed=std::max(1.0,std::min(kMaxPlaybackSpeed,wcstod(value,nullptr)));
     GetPrivateProfileStringW(L"Soggfy",L"Output Preset",L"Native",value,4096,ini.c_str());settings.output_preset=value;
     GetPrivateProfileStringW(L"Soggfy",L"Output Ext",L"",value,4096,ini.c_str());settings.output_ext=value;
     GetPrivateProfileStringW(L"Soggfy",L"Output Args",L"",value,4096,ini.c_str());settings.output_args=value;
@@ -271,7 +272,7 @@ static bool SetTextValue(const std::wstring& value,std::wstring& field,size_t li
     return ok;
 }
 bool SetPlaybackSpeed(double value) {
-    if(!std::isfinite(value) || value<1.0 || value>50.0)return false;
+    if(!std::isfinite(value) || value<1.0 || value>kMaxPlaybackSpeed)return false;
     AcquireSRWLockExclusive(&lock);
     bool ok=settings_signal!=nullptr;
     if(ok){settings.playback_speed=value;++settings.generation;}

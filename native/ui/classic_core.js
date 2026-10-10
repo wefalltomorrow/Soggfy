@@ -5,6 +5,8 @@ window.__SoggfyClassicCoreLoaded = true;
 
 const sgf = window.__SoggfyClassic = window.__SoggfyClassic || {};
 sgf.PREFIX = 'SOGGFY_UI_V1:';
+// Keep this user-facing cap in sync with native/playback_speed_limit.h.
+sgf.MAX_PLAYBACK_SPEED = 30;
 sgf.RS = String.fromCharCode(0x1e);
 sgf.FS = String.fromCharCode(0x1f);
 sgf.bootFns = sgf.bootFns || [];
@@ -104,7 +106,7 @@ sgf.applyConfig = payload => {
     const strings=['root','template','podcastTemplate','canvasTemplate','invalidChars','outputPreset','outputExt','outputArgs','ffmpegPath',
       'qualitySong','qualityLevel','qualityFormat','qualitySample'];
     for(const key of strings)if(p.has(key))sgf.state[key]=p.get(key)||'';
-    if(p.has('playbackSpeed'))sgf.state.playbackSpeed=Math.max(1,Math.min(50,Number(p.get('playbackSpeed'))||1));
+    if(p.has('playbackSpeed'))sgf.state.playbackSpeed=Math.max(1,Math.min(sgf.MAX_PLAYBACK_SPEED,Number(p.get('playbackSpeed'))||1));
     if(p.has('speedSupported'))sgf.state.speedSupported=sgf.flag(p,'speedSupported',sgf.state.speedSupported);
     if(p.has('speedImmediate'))sgf.state.speedImmediate=sgf.flag(p,'speedImmediate',sgf.state.speedImmediate);
     if(sgf.refreshControls)sgf.refreshControls();
@@ -192,7 +194,7 @@ sgf.resetCurrentTrack = async preserve => {
 };
 
 sgf.setPlaybackSpeed = async speed => {
-  speed=Math.max(1,Math.min(50,Number(speed)||1));
+  speed=Math.max(1,Math.min(sgf.MAX_PLAYBACK_SPEED,Number(speed)||1));
   sgf.state.playbackSpeed=speed;
   sgf.send('playbackSpeed',String(speed));
 
@@ -254,7 +256,7 @@ sgf.mountTopbar = existing => {
     // Match the original Soggfy topbar: a download-mode toggle also
     // requeues the current accelerated track so Spotify's player timeline
     // changes cleanly between normal listening and accelerated capture.
-    // The configured slider remains untouched (e.g. 50x -> 1x -> 50x).
+    // The configured slider remains untouched (e.g. 30x -> 1x -> 30x).
     if(sgf.state.playbackSpeed!==1 && sgf.state.speedSupported){
       await new Promise(resolve=>setTimeout(resolve,100));
       await sgf.resetCurrentTrack(!sgf.state.downloads);
