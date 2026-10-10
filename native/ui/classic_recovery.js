@@ -93,7 +93,12 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
         const details='from='+previous+' to='+st.mode+' source='+st.source+
           ' position_ms='+Math.round(st.positionMs)+' duration_ms='+Math.round(st.durationMs);
         if(st.mode==='paused')report('pause_observed',current,now-since,details);
-        else if(st.mode==='playing')report('resume_observed',current,now-since,details);
+        else if(st.mode==='playing'){
+          report('resume_observed',current,now-since,details);
+          // A resumed player earns a fresh full grace period: paused time
+          // cannot count towards a "stalled while playing" deadline.
+          since=now;
+        }
         else diagnostic(now,'unknown_state',current);
       }
 
