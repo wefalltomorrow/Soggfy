@@ -5,6 +5,7 @@
 #include <shobjidl.h>
 #include <shlobj.h>
 #include "classic_ui_backend.h"
+#include "media_session.h"
 #include "classic_path_match.h"
 #include "history_settings.h"
 #include "library_layout.h"
@@ -264,6 +265,48 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
                 result.status="WARN";result.message="Different tracks mapping to the same file name";
             }
             results.push_back(std::move(result));
+        }
+
+        // When a folder contains thousands of existing tracks but the UI
+        // receives NONE, distinguish broken enumeration from row metadata
+        // mismatches. All diagnostics stay on this background worker.
+        static std::atomic<ULONGLONG> last_status_diag{0};
+        const auto last=last_status_diag.load(std::memory_order_relaxed);
+        if(DebugLoggingEnabled() && (now<last || now-last>=20000)) {
+            last_status_diag.store(now,std::memory_order_relaxed);
+            std::size_t done=0,warn=0,missing=0;
+            for(const auto& item:results) {
+                if(item.status=="DONE")++done;
+                else if(item.status=="WARN")++warn;
+                else if(item.status.empty())++missing;
+            }
+            char summary[256];
+            std::snprintf(summary,sizeof(summary),
+                "classic disk match query_count=%llu indexed_files=%llu done=%llu warn=%llu none=%llu",
+                static_cast<unsigned long long>(queries.size()),
+                static_cast<unsigned long long>(files->size()),
+                static_cast<unsigned long long>(done),
+                static_cast<unsigned long long>(warn),
+                static_cast<unsigned long long>(missing));
+            HistoryLog(summary);
+            unsigned shown=0;
+            for(const auto& p:pending) {
+                if(p.matches!=0)continue;
+                if(shown++>=3)break;
+                std::wstring folded=p.query.title;
+                for(auto& c:folded)c=static_cast<wchar_t>(towlower(c));
+                unsigned title_candidates=0;
+                for(const auto& file:*files) {
+                    std::wstring rel=file.relative;
+                    for(auto& c:rel)c=static_cast<wchar_t>(towlower(c));
+                    if(!folded.empty() && rel.find(folded)!=std::wstring::npos)
+                        ++title_candidates;
+                }
+                const auto info="classic disk miss title="+Utf8(p.query.title)+
+                    " artist="+Utf8(p.query.artist)+" all="+Utf8(p.query.all_artists)+
+                    " matching_title_files="+std::to_string(title_candidates);
+                HistoryLog(info.substr(0,480).c_str());
+            }
         }
     }
     return results;
