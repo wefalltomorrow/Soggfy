@@ -3,6 +3,7 @@
 #include "playback_speed.h"
 #include "playback_speed_compat.h"
 #include "playback_speed_pcm_core.h"
+#include "playback_speed_policy.h"
 #include "playback_speed_probe.h"
 #include "history_settings.h"
 #include "hook_init_state.h"
@@ -146,8 +147,8 @@ static bool VerifyDecoder(HMODULE module,std::size_t image_size) {
 }
 
 static double RequestedSpeed() {
-    const double value=GetSettings().playback_speed;
-    return std::isfinite(value)&&value>=1.0&&value<=50.0?value:1.0;
+    const auto settings=GetSettings();
+    return ClassicEffectiveSpeed(settings.downloads,settings.playback_speed);
 }
 
 static DecodeResult* DecodeAudioHook(void* self,DecodeResult* output,
