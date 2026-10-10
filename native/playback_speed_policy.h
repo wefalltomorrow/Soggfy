@@ -9,3 +9,5 @@ inline double ClassicEffectiveSpeed(bool downloads,double configured,bool suppor
     if(!downloads||!supported||!std::isfinite(configured)||configured<1.0||configured>50.0)return 1.0;
     return configured;
 }
+
+} // namespace history
