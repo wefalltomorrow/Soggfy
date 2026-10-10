@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.61 — optional artwork no longer blocks downloads
+
+- Preserve complete audio when an optional Vorbis cover image is missing, oversized or unsupported.
+- Keep existing embedded artwork when no valid replacement image is available.
+- Apply text metadata while retaining strict Ogg CRC, sequence and EOS validation.
+- Extend tagging regression tests and preserve the RC60 1x–30x speed limit and queue skipping.
+- Correct the full release package/application version to RC61.
+
+
 ## 3.0.0-rc.60 — 1–30x playback-speed ceiling
 
 - Cap Classic UI slider and typed playback-speed input at 30x (remove 31–50x).

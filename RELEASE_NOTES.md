@@ -1,21 +1,27 @@
-# Soggfy v3.0.0-rc.60 — cap playback speed at 30x
+# Soggfy v3.0.0-rc.61 — optional cover artwork fix
 
-The user confirmed 30x works on Spotify 1.3.1.234 after certain tracks repeatedly stalled at 50x. This update makes **30x the maximum** while keeping playback speeds 1x through 30x available.
+RC61 builds on the 30x RC60 baseline. An earlier CI test archive contained a package still named RC60 because the version file was not bumped; this official release is correctly named **3.0.0-rc.61**.
 
-## Changes
+## Fixed
 
-- The Classic playback-speed slider and numeric input now stop at **30x**.
-- Existing `Playback Speed=31` through `Playback Speed=50` settings automatically load as 30x instead of reverting to 1x.
-- The native settings setter rejects requests above 30x. The effective-speed policy and decoder hook also cap unexpected values.
-- The playback stall watchdog operates within the same supported speed range.
-- The build carries forward RC59's confirmed queue skipping and the separately tested multi-artist status matcher in PR61.
+- Vorbis/Ogg tagging no longer rejects an otherwise complete audio capture solely because cover artwork is missing, unsupported or larger than the permitted 4 MiB limit.
+- Valid new artwork is embedded normally. If no usable new image exists, any previously embedded source artwork is preserved.
+- Other text metadata remains available. Ogg integrity, sequence, CRC and end-of-stream checks remain strict; invalid or incomplete audio is still rejected.
 
-## Testing
+## Preserved
 
-C++ tests cover decoder PCM thinning and acceleration policy at 30x and the legacy higher values. JavaScript tests verify that UI synchronisation and native outbound speed messages cannot exceed 30x. The pre-existing queue, status, capture and recovery suites continue to run in CI.
+- Accelerated playback limited to **1x–30x** for Spotify Windows x64 **1.3.1.234**; normal 1x listening when Downloads is disabled.
+- Original Soggfy-style UI, green checkmarks, automatic queue skipping for downloaded songs, multi-artist filename recognition and MP3 320K conversion.
+- The existing SpotX workflow for ads and Spotify update blocking.
 
-The user confirmed 30x on the earlier build; the newly capped build still needs its own live check.
+## Verification and known limitation
 
-## Installation
+GitHub Actions runs the native regression suite, including new coverless/invalid/oversized artwork tests, and creates one verified Windows x64 release ZIP.
 
-Close Spotify, install the Windows x64 package over the current Soggfy version and restart Spotify. The playback speed slider will show **1x–30x**. Existing 50x preferences should load at 30x. Playback remains 1x whenever Downloads is disabled.
+Live re-testing is recommended for **7L – Murder-Death-Kill** and **Martin Solveig – Intoxicated (Radio Edit)**, which previously reported `invalid Vorbis comments or artwork`.
+
+The occasional stalled playback/decoder issue at 30x (e.g., Echosmith – Cool Kids) is **not fixed by this update** and is being investigated separately.
+
+## Install
+
+Close Spotify fully, download the Windows x64 ZIP, extract it and run `Scripts\Install.ps1`. The application and package both identify as **3.0.0-rc.61**.
