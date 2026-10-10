@@ -55,6 +55,10 @@ assert.equal(fakeWindow.__soggfyVerifiedPlayerAPI,undefined,'No cached player be
 // The native metadata collector's real traversal must find a PlayerAPI in its
 // Map-backed service registry even if optional metadata enrichment is off.
 evaluate('native/metadata_collector.js');
+// The collector intentionally walks only ~4ms of React cache per tick.
+// Real Spotify invokes it every second; let the same cursor progress here.
+for(let i=0;i<40&&!fakeWindow.__soggfyVerifiedPlayerAPI;i++)
+  fakeWindow.__floggfyPoll();
 assert.equal(fakeWindow.__soggfyVerifiedPlayerAPI,player,
   'Collector must expose the verified cached PlayerAPI despite metadata disabled');
 (async()=>{
