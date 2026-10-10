@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.56
+
+- Restored original Soggfy's `queue_update → data.nextUp → on-disk status lookup → Player.removeFromQueue` sequence for downloaded songs, adapted to modern Spotify queue sources.
+- Fixed RC55 reading the wrong `getQueue().queued` list and caching a queue as checked before native file lookup completed.
+- Kept per-track URI cache only for successful status responses, protected retries after timeouts, and supported UID-aware duplicate entries and queues over 128 items.
+- Preserved original filesystem-derived green checks, 1× normal listening with downloads off, and the existing status UI/decoder/recovery code.
+
+
 ## 3.0.0-rc.55
 
 - Removed the RC54 `SoggfyTrackStatus.tsv` status journal and all related persistence code; no new database is created or read.
