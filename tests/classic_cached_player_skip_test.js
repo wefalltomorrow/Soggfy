@@ -65,7 +65,7 @@ assert.equal(fakeWindow.__soggfyVerifiedPlayerAPI,player,
  await sgf.initPlayer();
  assert.equal(sgf.player,player,'Classic UI must use actual cached Spotify player');
  assert.equal(typeof events.queue_update,'function','Original queue_update listener installed');
- assert.ok(output.some(s=>s.includes('queue player ready source=verified-cached-player skipDownloaded=1')),
+ assert.ok(output.some(s=>decodeURIComponent(s).includes('queue player ready source=verified-cached-player skipDownloaded=1')),
    'Readiness diagnostics must show the actual source and enabled skip toggle');
  const future={
    uri:queueUri,uid:'queue-entry-1',
