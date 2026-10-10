@@ -121,6 +121,13 @@ sgf.getPlatform = async () => {
   for(;;){
     const exposed=window.Spicetify?.Platform;
     if(typeof exposed?.getPlayerAPI==='function')return exposed;
+    // The native metadata collector already finds and validates PlayerAPI
+    // in Spotify's cached React service registry on modern 1.3.x builds.
+    // Reuse that *actual* player object instead of trying to reconstruct
+    // Platform from an older React props shape indefinitely.
+    const cached=window.__soggfyVerifiedPlayerAPI;
+    if(typeof cached?.getState==='function'&&typeof cached?.getEvents==='function')
+      return {getPlayerAPI:()=>cached,__soggfySource:'verified-cached-player'};
     const main=document.querySelector('#main');
     if(main){
       const key=Object.keys(main).find(k=>k.startsWith('__reactContainer$'));
@@ -297,7 +304,8 @@ sgf.initPlayer = async () => {
     if(sgf.state.debug)sgf.send('status_diag','queue platform found but getPlayerAPI unavailable; retrying');
     await new Promise(resolve=>setTimeout(resolve,500));
   }
-  if(sgf.state.debug)sgf.send('status_diag','queue player ready skipDownloaded='+
+  if(sgf.state.debug)sgf.send('status_diag','queue player ready source='+
+    (sgf.platform?.__soggfySource||'platform')+' skipDownloaded='+
     Number(!!sgf.state.skipDownloaded)+' skipIgnored='+
     Number(!!sgf.state.skipIgnored));
   try{
