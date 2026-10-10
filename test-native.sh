@@ -64,6 +64,7 @@ node tests/classic_player_discovery_test.js
 node tests/classic_cached_player_skip_test.js
 node tests/classic_recovery_test.js
 node tests/classic_recovery_native_state_test.js
+node tests/classic_recovery_pause_safety_test.js
 
 python3 tests/create_cache_fixtures.py build/cache-fixtures
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/cached_metadata_test.cpp native/cached_metadata.cpp native/rich_metadata.cpp -o build/cached-metadata-test

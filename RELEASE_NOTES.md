@@ -1,27 +1,23 @@
-# Soggfy v3.0.0-rc.61 — optional cover artwork fix
+# Soggfy v3.0.0-rc.62 — pause-safe recovery and diagnostics
 
-RC61 builds on the 30x RC60 baseline. An earlier CI test archive contained a package still named RC60 because the version file was not bumped; this official release is correctly named **3.0.0-rc.61**.
+RC62 is a targeted pause/recovery safety update built on the RC61 baseline. This does **not** claim to eliminate all decoder stalls.
 
-## Fixed
+## Changes
 
-- Vorbis/Ogg tagging no longer rejects an otherwise complete audio capture solely because cover artwork is missing, unsupported or larger than the permitted 4 MiB limit.
-- Valid new artwork is embedded normally. If no usable new image exists, any previously embedded source artwork is preserved.
-- Other text metadata remains available. Ogg integrity, sequence, CRC and end-of-stream checks remain strict; invalid or incomplete audio is still rejected.
+- Logs `pause_observed` and `resume_observed` only when Spotify reports a state transition, and includes the source of the state (PlayerAPI flags or transport-button fallback). It never guesses whether a pause was manual or automatic.
+- Before a stalled-track retry or fallback skip, rechecks the current track identity **and** playback mode. A track reported as paused or unknown is left alone.
+- If an asynchronous failed retry leaves Spotify paused, the fallback skip is safely aborted.
+- Clears stale retry counts on pause and restarts the full grace period on resume.
+- Preserves RC61's optional artwork tagging fix and RC60's 30x maximum, original status/checkmarks, skip-downloaded queue and MP3 320K output.
 
-## Preserved
+## Test and limits
 
-- Accelerated playback limited to **1x–30x** for Spotify Windows x64 **1.3.1.234**; normal 1x listening when Downloads is disabled.
-- Original Soggfy-style UI, green checkmarks, automatic queue skipping for downloaded songs, multi-artist filename recognition and MP3 320K conversion.
-- The existing SpotX workflow for ads and Spotify update blocking.
+The native/JavaScript regression suite now includes a pause arriving between watchdog samples and recovery, a failed reset leaving Spotify paused, contradictory player flags, and proper timing after resume.
 
-## Verification and known limitation
+The RC61 log's **Simon Posford – Wish You Weren't Here** had `playing=0` after progressing to ~45 seconds. It is **not known** whether the pause was manual, remote or automatic; this version adds the missing diagnostic observations without overriding the pause.
 
-GitHub Actions runs the native regression suite, including new coverless/invalid/oversized artwork tests, and creates one verified Windows x64 release ZIP.
-
-Live re-testing is recommended for **7L – Murder-Death-Kill** and **Martin Solveig – Intoxicated (Radio Edit)**, which previously reported `invalid Vorbis comments or artwork`.
-
-The occasional stalled playback/decoder issue at 30x (e.g., Echosmith – Cool Kids) is **not fixed by this update** and is being investigated separately.
+A track can still stop decoding while Spotify reports `playing=1` at 30x (for example, **Echosmith – Cool Kids** in an older RC59 log). Do not interpret this RC62 update as a decoder/fetch fix; that remains separate.
 
 ## Install
 
-Close Spotify fully, download the Windows x64 ZIP, extract it and run `Scripts\Install.ps1`. The application and package both identify as **3.0.0-rc.61**.
+Close Spotify fully, extract the Windows x64 ZIP and install over RC61. Enable Debug logging for a new stall reproduction and provide the resulting Soggfy.log.

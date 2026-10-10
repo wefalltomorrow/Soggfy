@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.62 — pause-safe recovery and diagnostic logging
+
+- Log actual pause/resume state transitions during accelerated capture, including state evidence (player flags versus UI fallback). Never infer the cause of the pause.
+- Recheck track identity **and playback mode** immediately before retry and skip; abort if the player became paused or its state unknown.
+- Reset the retry budget on pause and reset the wall-clock watchdog grace period on resume, preventing delayed skips due to earlier pauses.
+- Add automated tests for a pause arriving during a watchdog tick, an asynchronous failed reset that leaves the player paused, and contradictory PlayerAPI flags.
+- Leave the validated 1x–30x cap, native decoder, MP3 post-processing, on-disk green ticks and Spotify queue skipping unchanged.
+
+
 ## 3.0.0-rc.61 — optional artwork no longer blocks downloads
 
 - Preserve complete audio when an optional Vorbis cover image is missing, oversized or unsupported.
