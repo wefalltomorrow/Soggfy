@@ -82,22 +82,61 @@ std::shared_ptr<const std::vector<IndexedFile>> FileIndex(const std::wstring& co
 
     std::vector<IndexedFile> built;
     built.reserve(4096);
-    std::error_code ec;
-    const auto root=std::filesystem::path(WindowsPath(configured_root));
-    if(std::filesystem::exists(root,ec)&&!ec) {
-        std::filesystem::recursive_directory_iterator it(
-            root,std::filesystem::directory_options::skip_permission_denied,ec),end;
-        for(;it!=end&&!ec&&built.size()<100000;it.increment(ec)) {
-            if(ec)break;
-            if(it.depth()>12){it.disable_recursion_pending();continue;}
-            if(!it->is_regular_file(ec)||ec){ec.clear();continue;}
-            const auto full=it->path().wstring();
-            const auto base=root.wstring();
-            if(full.size()<=base.size())continue;
-            size_t offset=base.size();
-            if(full[offset]==L'\\'||full[offset]==L'/')++offset;
-            built.push_back({full.substr(offset),DisplayPath(it->path())});
+    // Original Soggfy walks the actual output folder; our previous MinGW
+    // std::filesystem walker silently ignored Windows enumeration failures.
+    // Use the Win32 Unicode FindFirstFileW API that works with both ordinary
+    // and extended-length paths, while preserving the same recursive lookup.
+    std::wstring root=configured_root;
+    while(root.size()>3 && (root.back()==L'\\' || root.back()==L'/'))root.pop_back();
+    struct Dir { std::wstring relative; unsigned depth; };
+    std::vector<Dir> stack;
+    DWORD scan_error=ERROR_SUCCESS;
+    std::size_t visited_dirs=0;
+    const DWORD root_attrs=root.empty()?INVALID_FILE_ATTRIBUTES:
+        GetFileAttributesW(WindowsPath(root).c_str());
+    if(root_attrs!=INVALID_FILE_ATTRIBUTES && (root_attrs&FILE_ATTRIBUTE_DIRECTORY))
+        stack.push_back({L"",0});
+    else
+        scan_error=GetLastError();
+    while(!stack.empty() && built.size()<100000) {
+        auto dir=std::move(stack.back());stack.pop_back();
+        const std::wstring folder=root+(dir.relative.empty()?L"":L"\\"+dir.relative);
+        const auto search=WindowsPath(folder+L"\\*");
+        WIN32_FIND_DATAW data{};
+        HANDLE finder=FindFirstFileW(search.c_str(),&data);
+        if(finder==INVALID_HANDLE_VALUE) {
+            const DWORD error=GetLastError();
+            if(error!=ERROR_FILE_NOT_FOUND && error!=ERROR_PATH_NOT_FOUND && scan_error==ERROR_SUCCESS)
+                scan_error=error;
+            continue;
         }
+        ++visited_dirs;
+        do {
+            const std::wstring name(data.cFileName);
+            if(name==L"." || name==L"..")continue;
+            const auto relative=dir.relative.empty()?name:dir.relative+L"\\"+name;
+            if(data.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY) {
+                if(!(data.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)&&dir.depth<12)
+                    stack.push_back({relative,dir.depth+1});
+            } else if(built.size()<100000) {
+                built.push_back({relative,root+L"\\"+relative});
+            }
+        } while(FindNextFileW(finder,&data) && built.size()<100000);
+        const DWORD error=GetLastError();
+        if(error!=ERROR_NO_MORE_FILES && error!=ERROR_SUCCESS && scan_error==ERROR_SUCCESS)
+            scan_error=error;
+        FindClose(finder);
+    }
+    if(DebugLoggingEnabled()) {
+        char log[320];
+        std::snprintf(log,sizeof(log),
+            "classic disk index file_count=%llu directory_count=%llu root_exists=%d root_attributes=0x%lx last_error=%lu",
+            static_cast<unsigned long long>(built.size()),
+            static_cast<unsigned long long>(visited_dirs),
+            root_attrs!=INVALID_FILE_ATTRIBUTES && (root_attrs&FILE_ATTRIBUTE_DIRECTORY)?1:0,
+            static_cast<unsigned long>(root_attrs),
+            static_cast<unsigned long>(scan_error));
+        HistoryLog(log);
     }
 
     AcquireSRWLockExclusive(&index_lock);
