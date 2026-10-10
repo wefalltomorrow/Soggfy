@@ -1,23 +1,30 @@
-# Soggfy v3.0.0-rc.52
+# Soggfy v3.0.0-rc.53 — decoder stall diagnostic
 
-RC52 addresses the intermittent 50× playback stall still occurring on RC51, while preserving RC51's now-working playlist status indicators and MP3 publication.
+**RC53 is a diagnostic build, not another playback retry or speed fix.** RC52 sometimes stops receiving compressed audio and PCM decoder callbacks at 50× while the Spotify session still reports playing. A synthetic position at the song duration is not evidence that the audio was captured.
 
-## Verified RC51 diagnostic
+## Why this instrumentation
 
-The supplied `Soggfy(10).log` shows Alex K — *Pretty Green Eyes - Album Edit* selected at 02:12:43 UTC. The synthetic media position reached its full 197.903 s by approximately 02:12:48 while the Spotify source position stayed at 0.000. The captured decoder-call and page counts remained frozen at 28,474 / 22,661 for over 100 seconds. No `classic playback recovery` attempts occurred. Prior tracks successfully exported MP3s.
+Original Rafiuth/Soggfy hooks the compressed-audio decoder and adjusts a PCM output span (remaining bytes and pointer) in older x86 Spotify. The current fork hooks the validated x64 `snd-decoder` dispatcher and changes the reported sample count. These ABIs are different; copying pointer arithmetic from the original would be unsafe without a complete x64 ABI analysis.
 
-## Recovery issue
+The old Soggfy source also notes that Spotify can stop at speeds >=30× and listens for `playback_stuck`. Our logs show the callback/page counters freezing without that event. We need evidence of where the pipeline stops instead of adding more skip loops.
 
-RC49's watchdog required `state.item.uri` and camelCase flags `state.isPaused` / `state.isPlaying`, but Spotify's internal player state can expose `track.uri`, `is_paused`, `is_playing`. With a missing identity or missing play flag, the watchdog silently reset its timer instead of recovering.
+## What's new
 
-## Changes
+When `DebugLog=1`, the history worker writes a bounded `decoder_probe` line approximately every two seconds while capture is enabled. It records:
 
-- Normalize native snake_case and legacy camelCase player state for URI, play/pause flags and duration.
-- Accept the Spotify transport Pause/Play button only as a fallback if the player state has no explicit play flag. Explicit manual pauses remain respected.
-- Remove an unnecessary `speedImmediate` gating condition; native speed support and accelerated downloads are still required.
-- Make the retry helper recognize a native `track.uri`, parse snake_case position/speed fields, and await Spotify's queue snapshot.
-- Fall back to Spicetify's Next control if the native player's skip method isn't exposed.
-- Log watchdog initialization and infrequent missing/unknown-state diagnostic markers.
-- Test a synthetic replica of the RC51 197.903 s/50× stall against snake_case Spotify state, including two retries, final bounded skip, pause/resume safety, camelCase compatibility and UI play-button fallback.
+- `enter`, `exit`, `inflight` and per-window `enter_delta`/`exit_delta`: distinguishes no calls from an original decoder call that entered but never returned.
+- `last_exit_age_ms`: duration since the last completed decode call.
+- `pcm_decoded_delta`/`pcm_kept_delta`: raw vs compressed PCM output from the existing 50× hook.
+- `encoded_reported_delta`, `no_encoded_delta`: the decoder ABI's *reported encoded-count difference*, not a verified network byte count.
+- `ogg_calls_delta`, `ogg_pages_delta`: independent compressed-audio capture activity over the same window.
+- Last input/output counts, capacity and flags, plus the current track title and an **observational**, not causal, classification.
 
-This is a recovery fix rather than a verified cure for the underlying decoder stall. The native PCM decoder, Ogg/FLAC capture, MP3 output, SpotX integration and RC51 status icons are unchanged. In-app testing is still required.
+The classification may be `no_new_calls`, `call_unreturned_5s`, `calls_no_pcm`, `pcm_no_reported_input_delta` or `decode_progress`. Neither `no_new_calls` nor a zero encoded-count delta alone proves network starvation. Spotify's player/transport scheduler, decode thread, and cached-buffer internals are not instrumented yet.
+
+**The decoder hook uses only lock-free atomic counters—no new hooks, heap allocation, locks, file I/O or UI actions in the audio callback.** All logging is on Soggfy's existing background history worker. The probe is off by default and enabled by the current DebugLog setting.
+
+The RC52 recovery watchdog, 50× PCM manipulation, MP3 publication, SpotX integration, and RC51 playlist status UI remain unchanged.
+
+## How to test
+
+Keep your current Spotify 1.3.1.234 setup, enable `DebugLog=1` in `SpotifyHistory.ini` if it isn't already enabled, and reproduce a stalled song at 50×. Let it sit for 10–20 seconds, then provide `Soggfy.log`, including the `decoder_probe` lines before and during the stall. We can then decide whether to investigate a blocked decode call, Spotify no longer requesting decoding, or decoder calls that return without audio. The logging itself may slightly affect timing, so compare against RC52 before claiming a root cause.

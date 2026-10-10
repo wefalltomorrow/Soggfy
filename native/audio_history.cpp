@@ -379,7 +379,9 @@ static DWORD WINAPI Worker(LPVOID) {
     std::vector<std::unique_ptr<Capture>> ready;
     std::vector<Heard> heard;
     Listen listen; MediaReader reader; Media current; PlaybackQualityTracker quality; std::string client_quality;
-    double next_media=0,next_log=0;
+    double next_media=0,next_log=0,next_probe=0;
+    DecodeProbeSnapshot previous_probe{};
+    LONG previous_ogg_calls=0,previous_ogg_pages=0;
     unsigned generation=~0u,epoch=~0u; bool enabled=false,current_ignored=false;
     try {
         while(workers_running.load(std::memory_order_acquire)) {
@@ -410,6 +412,14 @@ static DWORD WINAPI Worker(LPVOID) {
                     PlaybackSpeedSupported(),playback_rate,preset.c_str(),
                     ffmpeg.empty()?"<auto>":ffmpeg.c_str(),root.c_str(),preferences.debug_log);
                 LogActivity("config",line);
+                // Configure telemetry on the worker thread. Decoder callbacks
+                // only update relaxed counters, never format diagnostic lines.
+                SetPlaybackSpeedProbeEnabled(preferences.debug_log);
+                previous_probe=ReadPlaybackSpeedProbe();
+                previous_ogg_calls=calls;previous_ogg_pages=pages;
+                next_probe=now+2.0;
+                if(preferences.debug_log)
+                    Log("decoder_probe activated: passive enter/return/input/PCM counters; audio unchanged");
             }
             if(!enabled && !quality_enabled.load(std::memory_order_relaxed)) {
                 PublishPlaybackQuality({});
@@ -687,6 +697,51 @@ static DWORD WINAPI Worker(LPVOID) {
             ready.erase(std::remove_if(ready.begin(),ready.end(),[now](const auto& c){return now-c->finished>600;}),ready.end());
             for(auto it=active.begin();it!=active.end();) {
                 if(now-it->second->born>21600) it=active.erase(it); else ++it;
+            }
+            // Periodic, read-only source-of-stall probe on existing worker.
+            if(enabled && preferences.debug_log && now>=next_probe) {
+                const auto snap=ReadPlaybackSpeedProbe();
+                const auto tick=static_cast<std::uint64_t>(GetTickCount64());
+                const auto delta=[](std::uint64_t a,std::uint64_t b) {
+                    return a>=b ? a-b : std::uint64_t{0};
+                };
+                const auto age=snap.last_exit_ms && tick>=snap.last_exit_ms ?
+                    static_cast<long long>(tick-snap.last_exit_ms) : -1ll;
+                const LONG ogg_calls=calls,ogg_pages=pages;
+                const auto inflight=delta(snap.enters,snap.exits);
+                char probe_line[1400];
+                std::snprintf(probe_line,sizeof(probe_line),
+                    "decoder_probe observation=%s title=%s enter=%llu exit=%llu inflight=%llu enter_delta=%llu exit_delta=%llu "
+                    "last_exit_age_ms=%lld pcm_decoded_delta=%llu pcm_kept_delta=%llu encoded_reported_delta=%llu "
+                    "zero_pcm_delta=%llu no_encoded_delta=%llu bad_output_delta=%llu "
+                    "ogg_calls_delta=%ld ogg_pages_delta=%ld last_capacity=%llu last_pcm=%llu last_kept=%llu "
+                    "last_encoded_before=%llu last_encoded_after=%llu last_flags=%llu",
+                    DescribeDecodeProbe(previous_probe,snap,tick),Utf8(current.title).c_str(),
+                    static_cast<unsigned long long>(snap.enters),
+                    static_cast<unsigned long long>(snap.exits),
+                    static_cast<unsigned long long>(inflight),
+                    static_cast<unsigned long long>(delta(snap.enters,previous_probe.enters)),
+                    static_cast<unsigned long long>(delta(snap.exits,previous_probe.exits)),
+                    age,
+                    static_cast<unsigned long long>(delta(snap.decoded_samples,previous_probe.decoded_samples)),
+                    static_cast<unsigned long long>(delta(snap.reported_samples,previous_probe.reported_samples)),
+                    static_cast<unsigned long long>(delta(snap.compressed_units,previous_probe.compressed_units)),
+                    static_cast<unsigned long long>(delta(snap.no_pcm_calls,previous_probe.no_pcm_calls)),
+                    static_cast<unsigned long long>(delta(snap.no_input_change_calls,previous_probe.no_input_change_calls)),
+                    static_cast<unsigned long long>(delta(snap.invalid_output_calls,previous_probe.invalid_output_calls)),
+                    static_cast<long>(ogg_calls-previous_ogg_calls),
+                    static_cast<long>(ogg_pages-previous_ogg_pages),
+                    static_cast<unsigned long long>(snap.last_capacity),
+                    static_cast<unsigned long long>(snap.last_produced),
+                    static_cast<unsigned long long>(snap.last_kept),
+                    static_cast<unsigned long long>(snap.last_encoded_before),
+                    static_cast<unsigned long long>(snap.last_encoded_after),
+                    static_cast<unsigned long long>(snap.last_flags));
+                Log(probe_line);
+                previous_probe=snap;
+                previous_ogg_calls=ogg_calls;
+                previous_ogg_pages=ogg_pages;
+                next_probe=now+2.0;
             }
             if(now>=next_log) {
                 size_t buffered=0;
