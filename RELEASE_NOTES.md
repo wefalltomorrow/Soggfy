@@ -1,23 +1,23 @@
-# Soggfy v3.0.0-rc.51
+# Soggfy v3.0.0-rc.52
 
-RC51 fixes two remaining playlist status problems in RC50: only the first track was receiving a status icon, and an old blue downloading icon could remain after completion or failure.
+RC52 addresses the intermittent 50× playback stall still occurring on RC51, while preserving RC51's now-working playlist status indicators and MP3 publication.
 
-## Cause
+## Verified RC51 diagnostic
 
-RC50's fallback scanned an entire React Fiber subtree for a Spotify URI. It could retrieve the first playlist track's URI for unrelated rows; the per-URI deduplication then discarded those rows entirely. Rows without a visible Spotify URI could also be ignored, even when their song title and artist were available.
+The supplied `Soggfy(10).log` shows Alex K — *Pretty Green Eyes - Album Edit* selected at 02:12:43 UTC. The synthetic media position reached its full 197.903 s by approximately 02:12:48 while the Spotify source position stayed at 0.000. The captured decoder-call and page counts remained frozen at 28,474 / 22,661 for over 100 seconds. No `classic playback recovery` attempts occurred. Prior tracks successfully exported MP3s.
 
-In addition, a playlist row with no album field was being assigned the *playlist title* as its album. The backend required an exact album match for recent live states, which could prevent an `IN_PROGRESS` state from being replaced by `DONE` or `ERROR` after a native capture.
+## Recovery issue
+
+RC49's watchdog required `state.item.uri` and camelCase flags `state.isPaused` / `state.isPlaying`, but Spotify's internal player state can expose `track.uri`, `is_paused`, `is_playing`. With a missing identity or missing play flag, the watchdog silently reset its timer instead of recovering.
 
 ## Changes
 
-- Resolve each track using its own Spotify href or original upstream Soggfy-style row-scoped React menu props. Never recursively scan an unrelated Fiber tree.
-- When a real track-list row does not expose its URI, create a stable filename/status lookup identity from its title, artist and album; never do this for home tiles or sidebar elements.
-- Preserve duplicate occurrences of the same song as separate visible DOM rows.
-- Read the album from the row's album cell; do not substitute the playlist name. Permit native recent-status matching when a row omits the album entirely.
-- Refresh status every three seconds, and log a compact `classic status rows=... responses=... states=...` diagnostic every 20 seconds when debug logging is enabled.
-- Add a multi-row regression test covering five rows, distinct identities, Spotify's React props, local fallback, duplicate songs, and updates from blue downloading to green downloaded.
-- Preserve original Rafiuth/Soggfy indicator rules (green check for DONE, red X for actual ERROR, blue for IN_PROGRESS, no icon for unknown/missing statuses) and track-only placement from RC50.
+- Normalize native snake_case and legacy camelCase player state for URI, play/pause flags and duration.
+- Accept the Spotify transport Pause/Play button only as a fallback if the player state has no explicit play flag. Explicit manual pauses remain respected.
+- Remove an unnecessary `speedImmediate` gating condition; native speed support and accelerated downloads are still required.
+- Make the retry helper recognize a native `track.uri`, parse snake_case position/speed fields, and await Spotify's queue snapshot.
+- Fall back to Spicetify's Next control if the native player's skip method isn't exposed.
+- Log watchdog initialization and infrequent missing/unknown-state diagnostic markers.
+- Test a synthetic replica of the RC51 197.903 s/50× stall against snake_case Spotify state, including two retries, final bounded skip, pause/resume safety, camelCase compatibility and UI play-button fallback.
 
-The RC46 decoder, RC47 playback clock, RC49 stall recovery, MP3 export settings, SpotX, and capture pipeline are unchanged.
-
-This is a test release; confirm visual status updates within Spotify, because CI cannot simulate every live DOM variant.
+This is a recovery fix rather than a verified cure for the underlying decoder stall. The native PCM decoder, Ogg/FLAC capture, MP3 output, SpotX integration and RC51 status icons are unchanged. In-app testing is still required.
