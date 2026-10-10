@@ -1,28 +1,21 @@
-# Soggfy v3.0.0-rc.59 — use Spotify's verified cached PlayerAPI
+# Soggfy v3.0.0-rc.60 — cap playback speed at 30x
 
-## What the RC58 user log proves
+The user confirmed 30x works on Spotify 1.3.1.234 after certain tracks repeatedly stalled at 50x. This update makes **30x the maximum** while keeping playback speeds 1x through 30x available.
 
-- `Skip Downloaded Tracks=1` in SpotifyHistory.ini and native config, so the toggle is working.
-- `classic disk index file_count=2214` / `2215`, with `DONE` statuses in the playlist, so saved-audio lookup and checkmark generation work.
-- At 05:35:42, the **existing read-only metadata collector** reports `FLOGGFY_STATUS:cached player found`.
-- Meanwhile the Classic UI logs `queue platform pending attempts=1/150/300/450` without any `queue player ready` or `queue removed` entry. That means the original queue listener never starts; we should not touch the file matcher again.
+## Changes
 
-## Source-level cause
+- The Classic playback-speed slider and numeric input now stop at **30x**.
+- Existing `Playback Speed=31` through `Playback Speed=50` settings automatically load as 30x instead of reverting to 1x.
+- The native settings setter rejects requests above 30x. The effective-speed policy and decoder hook also cap unexpected values.
+- The playback stall watchdog operates within the same supported speed range.
+- The build carries forward RC59's confirmed queue skipping and the separately tested multi-artist status matcher in PR61.
 
-Our `native/metadata_collector.js` already scans the live React service registry (including Map-held PlayerAPI instances), verifies a `getState()` snapshot with a Spotify URI and `getEvents()`, and uses that exact player for live metadata. The Classic UI's `getPlatform()` instead only searched for a `platform` object via older React-props paths, which modern Spotify did not expose in this run. RC58 improved traversal but did not reuse the confirmed player found by the collector.
+## Testing
 
-## RC59 fix
+C++ tests cover decoder PCM thinning and acceleration policy at 30x and the legacy higher values. JavaScript tests verify that UI synchronisation and native outbound speed messages cannot exceed 30x. The pre-existing queue, status, capture and recovery suites continue to run in CI.
 
-- The collector shares its **already-verified real Spotify PlayerAPI object** as `window.__soggfyVerifiedPlayerAPI` in the same injected page context. No duplicate service construction, network requests, or synthetic playback APIs.
-- The original-style Soggfy PlayerAPI initializer uses a real exposed `Spicetify.Platform` when available, otherwise reuses the verified cached player, while retaining its existing React Platform search for clients where that still works.
-- Discover the cached player even with optional metadata enrichment turned off: queue skipping must be independent of metadata decoration.
-- Extend the existing debug readiness line with `source=verified-cached-player` or `source=platform` so the next `Soggfy.log` proves listener startup and shows existing queue sources/removal attempts.
-- Keep `Player.getEvents().addListener('queue_update', ...)`, on-disk `DONE` detection, `Player.removeFromQueue`, and the existing per-URI cache identical to RC58 / original Soggfy. **No new database, no skipping of currently playing audio, and no changes to the working checkmarks.**
+The user confirmed 30x on the earlier build; the newly capped build still needs its own live check.
 
-## Regression coverage
+## Installation
 
-`tests/classic_cached_player_skip_test.js` provides a modern Spotify-like cached service registry with no global `Spicetify.Platform`. It loads both the real collector and Classic UI modules, verifies the collector shares a PlayerAPI even if metadata enrichment is off, asserts the original queue-update listener is attached, and proves that a queued song confirmed `DONE` calls `Player.removeFromQueue()` with the original queued UID. The RC58 PlayerAPI search regression and RC56 queue contract tests still run.
-
-## Installation / verification
-
-Install over RC58, restart Spotify with Debug Log enabled, play a playlist with already-downloaded tracks and verify they are removed from the **upcoming queue**, not the current track. The new log should have `queue player ready source=verified-cached-player skipDownloaded=1`; then `queue source=...` or `queue removed=N` will identify the next stage if live Spotify's queue schema differs. Native CI success alone cannot guarantee queue removal in the live application.
+Close Spotify, install the Windows x64 package over the current Soggfy version and restart Spotify. The playback speed slider will show **1x–30x**. Existing 50x preferences should load at 30x. Playback remains 1x whenever Downloads is disabled.
