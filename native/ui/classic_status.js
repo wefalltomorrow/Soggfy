@@ -265,43 +265,110 @@ sgf.refreshVisibleStatuses=()=>{
   },120);
 };
 
-async function queueSnapshot(){
+// Upstream Soggfy (Sprinkles/src/player-state-tracker.ts) operates on
+// the queue_update event's data.nextUp. The event is authoritative: do
+// not silently replace its tracks with a separate/stale queued snapshot.
+// Spotify 1.3.x can also expose nextTracks and next_tracks.
+async function queueSnapshot(eventData){
+  const candidates=[
+    ['event.nextUp',eventData?.nextUp],
+    ['event.queue.nextUp',eventData?.queue?.nextUp],
+    ['event.nextTracks',eventData?.nextTracks],
+    ['Spicetify.Queue.nextTracks',window.Spicetify?.Queue?.nextTracks],
+    ['player.next_tracks',sgf.currentState?.()?.next_tracks]
+  ];
+  for(const [source,list] of candidates)
+    if(Array.isArray(list))return {list,source};
   try{
-    const q=await sgf.player?._queue?.getQueue?.();
-    const list=q?.queued||q?.nextUp||q?.next||[];
-    return Array.isArray(list)?list:[];
-  }catch{return [];}
+    const snapshot=await sgf.player?._queue?.getQueue?.();
+    for(const key of ['nextUp','nextTracks','queued','next']){
+      if(Array.isArray(snapshot?.[key]))
+        return {list:snapshot[key],source:'getQueue.'+key};
+    }
+  }catch(e){
+    if(sgf.state.debug)sgf.send('status_diag','queue snapshot error '+String(e).slice(0,100));
+  }
+  return {list:null,source:'unavailable'};
 }
-function queuedInfo(track){
-  const uri=track?.uri||track?.contextTrack?.uri||'';
-  const title=track?.name||track?.metadata?.title||track?.contextTrack?.metadata?.title||'';
-  const artists=(track?.artists||track?.album?.artists||[]).map?.(a=>a?.name).filter?.(Boolean)||[];
-  const artist=artists[0]||track?.metadata?.artist_name||'';
+function queuedInfo(entry){
+  // A modern ProvidedTrack is a ContextTrack with metadata, whereas an
+  // older queue_update entry includes name, artists and album objects.
+  const track=entry?.contextTrack||entry?.track||entry?.item||entry;
+  const meta=track?.metadata||entry?.metadata||{};
+  const uri=track?.uri||entry?.uri||'';
+  const title=track?.name||entry?.name||meta.title||'';
+  const artistRecords=track?.artists||entry?.artists||track?.album?.artists||[];
+  const artists=Array.isArray(artistRecords)?
+    artistRecords.map(a=>typeof a==='string'?a:a?.name).filter(Boolean):[];
+  const artist=artists[0]||meta.artist_name||meta.album_artist_name||'';
   const allArtists=artists.join(', ')||artist;
-  const album=track?.album?.name||track?.metadata?.album_title||'';
-  return {uri,title,artist,allArtists,album,track};
+  const album=track?.album?.name||entry?.album?.name||meta.album_title||'';
+  const uid=entry?.uid??track?.uid;
+  return {uri,title,artist,allArtists,album,
+    // Original Soggfy removes actual queued tracks via PlayerAPI, not a
+    // newly constructed playback request. Preserve UID for duplicates.
+    track:uid==null?{uri}:{uri,uid}};
 }
-let queueBusy=false,lastQueueSig='';
-sgf.checkQueue=async()=>{
+// Cache only completed lookup results per queued URI (as upstream does),
+// and drop entries after the URI leaves the upcoming queue. Unlike RC55,
+// never mark a queue checked before the native status response arrives.
+const queueStatusCache=new Map();
+let queueBusy=false,lastQueueDiagnostic=0;
+function queueDiagnostic(details,force=false){
+  const now=Date.now();
+  if(!sgf.state.debug||(!force&&now-lastQueueDiagnostic<20000))return;
+  lastQueueDiagnostic=now;
+  sgf.send('status_diag','queue '+details.slice(0,430));
+}
+sgf.checkQueue=async eventData=>{
   if(queueBusy||(!sgf.state.skipDownloaded&&!sgf.state.skipIgnored)||!sgf.player)return;
   queueBusy=true;
   try{
-    const list=await queueSnapshot();
-    const infos=list.map(queuedInfo).filter(x=>x.uri&&x.title);
-    const sig=infos.map(x=>x.uri).join('|')+'|'+Number(sgf.state.skipDownloaded)+'|'+Number(sgf.state.skipIgnored);
-    if(sig===lastQueueSig){queueBusy=false;return;}
-    lastQueueSig=sig;
-    let statuses=new Map();
-    if(sgf.state.skipDownloaded)statuses=await sgf.requestStatuses(infos);
-    const remove=infos.filter(x=>(sgf.state.skipIgnored&&sgf.isTrackIgnored(x.track))||
-      (sgf.state.skipDownloaded&&statuses.get(x.uri)?.status==='DONE')).map(x=>x.track);
-    if(remove.length){
-      if(typeof sgf.player.removeFromQueue==='function')await sgf.player.removeFromQueue(remove);
-      else if(typeof sgf.player._queue?.removeFromQueue==='function')await sgf.player._queue.removeFromQueue(remove);
-      lastQueueSig='';
+    const {list,source}=await queueSnapshot(eventData);
+    // A missing snapshot is not an empty queue: retry on the next event/poll.
+    if(!list){queueDiagnostic('source=unavailable');return;}
+    const infos=list.map(queuedInfo).filter(info=>info.uri);
+    const uris=new Set(infos.map(info=>info.uri));
+    for(const uri of queueStatusCache.keys())if(!uris.has(uri))queueStatusCache.delete(uri);
+    const unique=new Map();
+    for(const info of infos)
+      if(info.title&&info.artist&&info.album&&!unique.has(info.uri))unique.set(info.uri,info);
+    if(sgf.state.skipDownloaded){
+      const pending=[...unique.values()].filter(info=>!queueStatusCache.has(info.uri));
+      // The native status batch format has a 128-track limit.
+      for(let i=0;i<pending.length;i+=128){
+        const page=pending.slice(i,i+128);
+        const statuses=await sgf.requestStatuses(page);
+        for(const info of page){
+          // A timeout/partial response must not poison the queue cache.
+          if(statuses.has(info.uri))
+            queueStatusCache.set(info.uri,statuses.get(info.uri)?.status==='DONE');
+        }
+      }
     }
-  }catch(e){console.warn('Soggfy queue skip failed',e);}
-  finally{queueBusy=false;}
+    const remove=infos.filter(info=>
+      (sgf.state.skipIgnored&&sgf.isTrackIgnored(info.track))||
+      (sgf.state.skipDownloaded&&queueStatusCache.get(info.uri)===true))
+      .map(info=>info.track);
+    if(remove.length){
+      const removeFn=sgf.player.removeFromQueue||sgf.player._queue?.removeFromQueue;
+      if(typeof removeFn==='function'){
+        await removeFn.call(
+          typeof sgf.player.removeFromQueue==='function'?sgf.player:sgf.player._queue,
+          remove);
+        queueDiagnostic('removed='+remove.length+' source='+source,true);
+      }else{
+        queueDiagnostic('removeFromQueue unavailable source='+source,true);
+      }
+    }else{
+      queueDiagnostic('source='+source+' upcoming='+infos.length+
+        ' queryable='+unique.size+' matched='+[...queueStatusCache.values()].filter(Boolean).length+
+        ' unresolved='+[...unique.keys()].filter(uri=>!queueStatusCache.has(uri)).length);
+    }
+  }catch(e){
+    queueDiagnostic('failed '+String(e).slice(0,160),true);
+    console.warn('Soggfy queue skip failed',e);
+  }finally{queueBusy=false;}
 };
 
 sgf.installPlayerListeners=()=>{
@@ -314,7 +381,7 @@ sgf.installPlayerListeners=()=>{
         setTimeout(()=>sgf.refreshVisibleStatuses(),80);
       }
     });
-    events?.addListener?.('queue_update',()=>sgf.checkQueue());
+    events?.addListener?.('queue_update',({data}={})=>sgf.checkQueue(data));
 
     // Match original Soggfy: only rebuild a track when Spotify itself reports
     // playback_stuck. Do not reset every natural transition.
