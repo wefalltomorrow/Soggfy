@@ -51,6 +51,43 @@ int main(int argc,char** argv) {
     }
     check(packets==4 && title && picture,"embedded tags and artwork recoverable");
     ogg_stream_clear(&stream); ogg_sync_clear(&sync);
+
+    // The Spotify metadata cache does not always have cover art. Missing,
+    // oversized or unsupported artwork must not discard an otherwise valid
+    // complete Ogg capture (the downstream MP3 conversion needs that audio).
+    const auto tagged_with_picture=output;
+    history::Tags no_picture;
+    no_picture.fields={{"TITLE","Without cover"},{"ARTIST","Test artist"}};
+    check(history::TagOgg(source,no_picture,output,error),
+          "complete capture with missing cover is still tagged");
+    std::string without_cover(output.begin(),output.end());
+    check(without_cover.find("TITLE=Without cover")!=std::string::npos &&
+          without_cover.find("METADATA_BLOCK_PICTURE=")==std::string::npos,
+          "text tags written without synthesizing an empty picture");
+
+    history::Tags invalid_cover=no_picture;
+    invalid_cover.cover.assign(64,'x');invalid_cover.mime="image/gif";
+    check(history::TagOgg(source,invalid_cover,output,error),
+          "unsupported artwork does not discard complete audio");
+    std::string unsupported(output.begin(),output.end());
+    check(unsupported.find("METADATA_BLOCK_PICTURE=")==std::string::npos,
+          "unsupported artwork is omitted");
+
+    history::Tags oversized_cover=no_picture;
+    oversized_cover.cover.resize(4*1024*1024+1,'x');
+    oversized_cover.mime="image/jpeg";
+    check(history::TagOgg(source,oversized_cover,output,error),
+          "oversized cached artwork does not discard complete audio");
+
+    // When the source already carries an embedded picture, don't erase it
+    // unless a valid new one is available.
+    check(history::TagOgg(tagged_with_picture,no_picture,output,error),
+          "complete stream can be retagged without replacement artwork");
+    std::string preserved(output.begin(),output.end());
+    check(preserved.find("TITLE=Without cover")!=std::string::npos &&
+          preserved.find("METADATA_BLOCK_PICTURE=")!=std::string::npos,
+          "existing source picture survives missing replacement artwork");
+
     auto corrupt=source; corrupt.back()^=1;
     check(!history::TagOgg(corrupt,tags,output,error),"damaged source cannot be tagged");
     if(argc==4) {
