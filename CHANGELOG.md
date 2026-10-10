@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.57
+
+- Fixed a suspected silent MinGW/Windows filesystem enumeration problem by indexing saved audio files using native Unicode `FindFirstFileW`/`FindNextFileW`, preserving original Soggfy read-only file-based status detection.
+- Added bounded `classic disk index` and `classic disk match/miss` debug entries to distinguish inaccessible folders, missing files, and artist/title mismatches.
+- Regressed the exact user library filenames `Shpongle - Empty Branes.mp3`, `Shpongle - The Magumba State.mp3` and `Oasis - Wonderwall.mp3` against the configured `{all_artist_names} - {track_name}.{ext}` template.
+- Did not touch the skip queue, status UI, playback speed, MP3 output, or original no-database behaviour.
+
+
 ## 3.0.0-rc.56
 
 - Restored original Soggfy's `queue_update → data.nextUp → on-disk status lookup → Player.removeFromQueue` sequence for downloaded songs, adapted to modern Spotify queue sources.
