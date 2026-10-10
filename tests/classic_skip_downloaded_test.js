@@ -33,6 +33,8 @@ const context={
 vm.runInNewContext(fs.readFileSync('native/ui/classic_status.js','utf8'),context,
   {filename:'classic_status.js'});
 sgf.installPlayerListeners();
+// Override after loading: classic_status.js installs the actual ignore matcher.
+sgf.isTrackIgnored=item=>!!item?.album?.ignored;
 const uri=n=>'spotify:track:'+String(n).padStart(22,'A');
 const original=(n,{downloaded=true,uid='uid-'+n}={})=>({
  uri:uri(n),uid,name:'Song '+n,
