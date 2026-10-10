@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.59
+
+- Fixed downloaded-track skipping never starting in Spotify 1.3.x by reusing the already verified PlayerAPI from the native metadata collector's cached service-registry traversal.
+- Kept PlayerAPI discovery active independently of optional metadata enrichment and logged the actual player source at queue startup.
+- Added an integration regression from cached Map-held PlayerAPI to the original `queue_update` listener and `removeFromQueue` with a confirmed on-disk DONE result.
+- Preserved RC57's working file-based checks and RC58's original queue-skip algorithm, 1x/50x listening/capture, and MP3 output.
+
+
 ## 3.0.0-rc.58
 
 - Fixed React Fiber PlayerAPI search getting trapped in first-child/parent cycles and never traversing sibling branches on modern Spotify.

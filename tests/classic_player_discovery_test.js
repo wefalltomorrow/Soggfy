@@ -62,7 +62,7 @@ function setRoot(node){root=node;main['__reactContainer$test']=node;}
   await sgf.initPlayer();
   assert.equal(sgf.player,player);
   assert.equal(listenerCalls,1);
-  assert.ok(output.some(x=>x.includes('queue player ready skipDownloaded=1')),
+  assert.ok(output.some(x=>x.includes('queue player ready source=platform skipDownloaded=1')),
     'Log PlayerAPI readiness and configured skip toggle');
   assert.ok(output.some(x=>x.includes('queue platform pending')),
     'Log PlayerAPI search without silently returning null');

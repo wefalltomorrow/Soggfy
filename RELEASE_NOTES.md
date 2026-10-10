@@ -1,28 +1,28 @@
-# Soggfy v3.0.0-rc.58 — upstream-style PlayerAPI discovery
+# Soggfy v3.0.0-rc.59 — use Spotify's verified cached PlayerAPI
 
-This release investigates why downloaded-track status icons now work in RC57 but **Skip downloaded tracks** does not. The supplied RC57 log confirms `classic disk index file_count=2214` and `classic status rows=57 responses=57 states={"DONE":56,"NONE":1}`, but contains **no `queue ...` or `queue player ready` events** from our queue-skip logic.
+## What the RC58 user log proves
 
-## Why this differs from original Soggfy
+- `Skip Downloaded Tracks=1` in SpotifyHistory.ini and native config, so the toggle is working.
+- `classic disk index file_count=2214` / `2215`, with `DONE` statuses in the playlist, so saved-audio lookup and checkmark generation work.
+- At 05:35:42, the **existing read-only metadata collector** reports `FLOGGFY_STATUS:cached player found`.
+- Meanwhile the Classic UI logs `queue platform pending attempts=1/150/300/450` without any `queue player ready` or `queue removed` entry. That means the original queue listener never starts; we should not touch the file matcher again.
 
-Original `Rafiuth/Soggfy/Sprinkles/src/spotify-apis.ts` keeps polling the React root until `Platform.getPlayerAPI()` is available, then `player-state-tracker.ts` attaches its `queue_update` listener and calls `Player.removeFromQueue` for upcoming songs confirmed downloaded on disk.
+## Source-level cause
 
-In RC57 the fallback React Fiber traversal advances via `node.child || node.sibling || node.return`. After entering the first child this can bounce between a leaf and its parent indefinitely, never examining other siblings. The loop gives up after 200 attempts (~10 seconds). If no Player API is found, the entire queue listener/periodic skip subsystem is never installed, explaining the complete absence of queue logs despite working status icons.
+Our `native/metadata_collector.js` already scans the live React service registry (including Map-held PlayerAPI instances), verifies a `getState()` snapshot with a Spotify URI and `getEvents()`, and uses that exact player for live metadata. The Classic UI's `getPlatform()` instead only searched for a `platform` object via older React-props paths, which modern Spotify did not expose in this run. RC58 improved traversal but did not reuse the confirmed player found by the collector.
 
-## Change
+## RC59 fix
 
-- Traverse React child **and sibling** fibers with a bounded stack and a visited set, prioritising the original upstream child path but covering alternate Spotify 1.3.x tree branches. Do not repeatedly revisit the parent of the first leaf.
-- Keep searching for Platform beyond the old fixed timeout, as the original Soggfy did.
-- After Platform exists, retry `getPlayerAPI()` until it actually becomes available before installing queue listeners.
-- When `DebugLog=1`, log sparse `classic queue platform pending` messages and `classic queue player ready skipDownloaded=N skipIgnored=N`. Existing queue diagnostics will then indicate queue source, matched downloads and removal attempts.
+- The collector shares its **already-verified real Spotify PlayerAPI object** as `window.__soggfyVerifiedPlayerAPI` in the same injected page context. No duplicate service construction, network requests, or synthetic playback APIs.
+- The original-style Soggfy PlayerAPI initializer uses a real exposed `Spicetify.Platform` when available, otherwise reuses the verified cached player, while retaining its existing React Platform search for clients where that still works.
+- Discover the cached player even with optional metadata enrichment turned off: queue skipping must be independent of metadata decoration.
+- Extend the existing debug readiness line with `source=verified-cached-player` or `source=platform` so the next `Soggfy.log` proves listener startup and shows existing queue sources/removal attempts.
+- Keep `Player.getEvents().addListener('queue_update', ...)`, on-disk `DONE` detection, `Player.removeFromQueue`, and the existing per-URI cache identical to RC58 / original Soggfy. **No new database, no skipping of currently playing audio, and no changes to the working checkmarks.**
 
-No changes to original file-based download checks, queue match/removal logic, playback-speed hooks, capture, MP3 conversion, user files or any new status database.
+## Regression coverage
 
-## Tests
+`tests/classic_cached_player_skip_test.js` provides a modern Spotify-like cached service registry with no global `Spicetify.Platform`. It loads both the real collector and Classic UI modules, verifies the collector shares a PlayerAPI even if metadata enrichment is off, asserts the original queue-update listener is attached, and proves that a queued song confirmed `DONE` calls `Player.removeFromQueue()` with the original queued UID. The RC58 PlayerAPI search regression and RC56 queue contract tests still run.
 
-The new `tests/classic_player_discovery_test.js` reproduces the RC57 first-child traversal cycle, forces Platform to appear **after the old 200-attempt cutoff**, and asserts successful PlayerAPI initialization and queue-listener installation with diagnostics. Existing original Soggfy queue/removal tests run unchanged.
+## Installation / verification
 
-We still need in-app confirmation of actual Spotify queue events and removals; the log will now distinguish 'never found Player API' from 'queue data unsupported'.
-
-## Test instructions
-
-Start Spotify with Skip downloaded tracks enabled, play the Tunes playlist, and inspect the next Soggfy.log. The `queue player ready skipDownloaded=1` entry should appear, followed by `queue source=...` or `queue removed=...`. If it remains pending, the next investigation should target the exact modern Spotify Platform exposure rather than guessing at the filename matcher again.
+Install over RC58, restart Spotify with Debug Log enabled, play a playlist with already-downloaded tracks and verify they are removed from the **upcoming queue**, not the current track. The new log should have `queue player ready source=verified-cached-player skipDownloaded=1`; then `queue source=...` or `queue removed=N` will identify the next stage if live Spotify's queue schema differs. Native CI success alone cannot guarantee queue removal in the live application.
