@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.0-rc.53
+
+- Added passive lock-free entry/return, input and PCM counters to the existing Spotify x64 decoder hook (DebugLog only).
+- Logged decoder and independent Ogg capture deltas every ~2 seconds on the existing history worker, with observational classifications for stalls.
+- Added probe classification tests; kept RC52 50× decoder behavior, recovery watchdog, MP3 exports and RC51 status UI unchanged.
+
+
 ## 3.0.0-rc.52
 
 - Fixed accelerated playback watchdog failing to arm on Spotify's native `track.uri`, `is_paused` and `is_playing` state fields.
