@@ -110,7 +110,7 @@ sgf.requestStatuses=async infos=>{
  await sgf.checkQueue({nextUp:[g,g2]});
  const duplicates=removed.at(-1);
  assert.strictEqual(duplicates.length,2);
- assert.deepStrictEqual(duplicates.map(t=>t.uid),[g.uid,g2.uid]);
+ assert.deepStrictEqual(Array.from(duplicates,t=>t.uid),[g.uid,g2.uid]);
 
  // Ignore-list selection uses the original full queue metadata.
  sgf.state.skipDownloaded=false;sgf.state.skipIgnored=true;
