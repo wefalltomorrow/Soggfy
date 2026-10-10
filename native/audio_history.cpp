@@ -11,6 +11,7 @@
 #include "post_process.h"
 #include "playback_quality.h"
 #include "playback_speed.h"
+#include "playback_speed_policy.h"
 #include "async_log.h"
 #include "bounded_queue.h"
 #include <atomic>
@@ -387,8 +388,8 @@ static DWORD WINAPI Worker(LPVOID) {
         while(workers_running.load(std::memory_order_acquire)) {
             double now=Now();
             auto preferences=GetSettings();
-            const double playback_rate=PlaybackSpeedSupported()
-                ? std::max(1.0,preferences.playback_speed) : 1.0;
+            const double playback_rate=ClassicEffectiveSpeed(
+                preferences.downloads,preferences.playback_speed,PlaybackSpeedSupported());
             if(preferences.generation!=generation) {
                 bool initial=generation==~0u;
                 generation=preferences.generation;
