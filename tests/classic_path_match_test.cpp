@@ -94,5 +94,54 @@ int main(){
     check(!ClassicPathMatches(L"Shpongle - Empty Branes.mp3",shpongle,
            flat_template,L"mp3",true,L"unicode",true),
           "File identity must distinguish different songs by same artist");
+    // RC59 live Windows file inventory: the native metadata publisher joins
+    // contributing artists with "; ", while Spotify playlist rows use ", ".
+    // Both formats must locate the same track without title-only false hits.
+    ClassicPathQuery alexK{L"Pretty Green Eyes - Album Edit",L"Alex K",
+        L"Legacy",L"Alex K, Ultrabeat"};
+    check(ClassicPathMatches(
+        L"Alex K; Ultrabeat - Pretty Green Eyes - Album Edit.mp3",
+        alexK,flat_template,L"mp3",true,L"unicode",true),
+        "RC59 multi-artist native MP3 matched by configured template");
+    check(ClassicLegacyFlatPathMatches(
+        L"Alex K; Ultrabeat - Pretty Green Eyes - Album Edit.mp3",alexK),
+        "RC59 multi-artist MP3 found by legacy flat search");
+    check(ClassicPathMatches(
+        L"Alex K, Ultrabeat - Pretty Green Eyes - Album Edit.mp3",
+        alexK,flat_template,L"mp3",true,L"unicode",true),
+        "Upstream comma-separated filenames remain supported");
+
+    ClassicPathQuery luvstruck{
+        L"Angel in My Heart - Luvstruck vs Amen & Alex K",L"Luvstruck",
+        L"Angel in My Heart (Luvstruck vs Amen & Alex K)",
+        L"Luvstruck, Amen, Alex K"};
+    check(ClassicPathMatches(
+        L"Luvstruck; Amen; Alex K - Angel in My Heart - Luvstruck vs Amen & Alex K.mp3",
+        luvstruck,flat_template,L"mp3",true,L"unicode",true),
+        "RC59 three-artist download found after restart");
+    check(ClassicLegacyFlatPathMatches(
+        L"Luvstruck; Amen; Alex K - Angel in My Heart - Luvstruck vs Amen & Alex K.mp3",
+        luvstruck), "RC59 three-artist legacy file found after restart");
+    check(!ClassicPathMatches(
+        L"Other; Amen; Alex K - Angel in My Heart - Luvstruck vs Amen & Alex K.mp3",
+        luvstruck,flat_template,L"mp3",true,L"unicode",true),
+        "Different first artist cannot match same-title track");
+    check(!ClassicLegacyFlatPathMatches(
+        L"Luvstruck; Different; Alex K - Angel in My Heart - Luvstruck vs Amen & Alex K.mp3",
+        luvstruck), "Different contributing artist cannot match same-title track");
+
+    // Artist names with internal commas must not be split in the first artist.
+    ClassicPathQuery tyler{L"EARFQUAKE",L"Tyler, The Creator",L"IGOR",
+        L"Tyler, The Creator, Playboi Carti"};
+    check(ClassicPathMatches(
+        L"Tyler, The Creator; Playboi Carti - EARFQUAKE.mp3",
+        tyler,flat_template,L"mp3",true,L"unicode",true),
+        "Comma in primary artist is preserved during separator translation");
+    ClassicPathQuery solo{L"EARFQUAKE",L"Tyler, The Creator",L"IGOR",
+        L"Tyler, The Creator"};
+    check(!ClassicLegacyFlatPathMatches(
+        L"Tyler; The Creator - EARFQUAKE.mp3",solo),
+        "Single-artist comma never converts into a false multi-artist match");
+
     std::puts("PASS: RC56 screenshot sample MP3 names and original on-disk matching");
 }
