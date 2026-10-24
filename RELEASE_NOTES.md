@@ -11,6 +11,7 @@ The watchdog continues observing state transitions while a queue operation is pe
 The 30x maximum, Downloads-off effective 1x behavior, Classic interface, file-based status, cached PlayerAPI queue skipping, optional artwork tagging and strict capture-integrity validation are preserved.
 
 The Windows DLL build explicitly links MinGW's supplied floating-point environment object to resolve a missing runtime symbol with the updated CI toolchain. The existing msvcrt target is preserved.
+The optional launcher now statically links its MinGW runtime dependencies as well. Both binaries are checked for unwanted external MinGW DLL dependencies during CI and release packaging.
 
 ## Validation and limits
 

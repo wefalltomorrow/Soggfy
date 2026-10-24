@@ -8,6 +8,7 @@
 - Reset the retry budget on cancellation and give resumed playback a fresh grace period.
 - Add integration regressions using the real reset helper and deliberately delayed queue promises. These changes do not claim to fix decoder stalls or missing stream association.
 - Link MinGW's supplied floating-point environment object explicitly to resolve the Windows DLL link failure with the updated CI runtime. Keep the existing msvcrt target.
+- Statically link the launcher's MinGW runtime dependencies and check both binaries in CI/release packaging, preventing a missing libwinpthread-1.dll dependency in the all-in-one ZIP.
 
 ## 3.0.0-rc.62 — pause-safe recovery and diagnostic logging
 

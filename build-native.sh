@@ -111,7 +111,7 @@ fi
 SOURCE_DATE_EPOCH=1 "$STRIP" --strip-unneeded build/version.dll
 
 "$CXX" -std=c++17 -O2 -Wall -Wextra -Werror -municode -mwindows \
-    -static-libgcc -static-libstdc++ -Wl,--no-insert-timestamp,--dynamicbase,--nxcompat \
+    -static -static-libgcc -static-libstdc++ -Wl,--no-insert-timestamp,--dynamicbase,--nxcompat \
     native/soggfy_launcher.cpp native/startup_launcher.cpp -o build/Soggfy.exe
 SOURCE_DATE_EPOCH=1 "$STRIP" --strip-unneeded build/Soggfy.exe
 
