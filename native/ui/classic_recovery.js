@@ -48,10 +48,11 @@ sgf.readRecoveryState=st=>{
 sgf.createPlaybackRecoveryMonitor=(opts={})=>{
   let uri='',since=0,attempts=0,busy=false,finished=false,lastDiagnostic=-Infinity;
   let lastMode='unknown';
+  let generation=0;
   const clock=opts.now||(()=>Date.now());
   const state=opts.getState||(()=>sgf.currentState?.());
   const read=opts.read||sgf.readRecoveryState;
-  const reset=opts.reset||(()=>sgf.resetCurrentTrack?.(false));
+  const reset=opts.reset||(canContinue=>sgf.resetCurrentTrack?.(false,canContinue));
   const skip=opts.skip||(()=>sgf.player?.skipToNext?.()||window.Spicetify?.Player?.next?.());
   const report=opts.report||((action,name,age,details='')=>{
     sgf.send('playback_recovery',action+' title='+name+' elapsed_ms='+Math.round(age)+
@@ -60,16 +61,28 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
   const allowed=opts.allowed||(()=>sgf.state.downloads&&sgf.state.speedSupported&&
        sgf.state.playbackSpeed>=5);
   const speed=opts.speed||(()=>Number(sgf.state.playbackSpeed)||1);
-  const clear=()=>{uri='';since=0;attempts=0;busy=false;finished=false;lastMode='unknown';};
+  // Invalidate pending work without releasing its lock before it settles.
+  const clear=()=>{generation++;uri='';since=0;attempts=0;finished=false;lastMode='unknown';};
   const diagnostic=(now,reason,name)=>{
     if(now-lastDiagnostic<30000)return;
     lastDiagnostic=now;
     report('watchdog_'+reason,name||'unknown',0);
   };
+  const observeMode=(st,now)=>{
+    if(st.mode===lastMode)return;
+    const previous=lastMode;
+    lastMode=st.mode;
+    const details='from='+previous+' to='+st.mode+' source='+st.source+
+      ' position_ms='+Math.round(st.positionMs)+' duration_ms='+Math.round(st.durationMs);
+    if(st.mode==='paused')report('pause_observed',uri,now-since,details);
+    else if(st.mode==='playing'){
+      report('resume_observed',uri,now-since,details);
+      since=now;
+    }else diagnostic(now,'unknown_state',uri);
+  };
   return {
     clear,
     async tick(){
-      if(busy)return;
       if(!allowed()){clear();return;}
       const now=clock();
       if(!Number.isFinite(now))return;
@@ -77,6 +90,7 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
       const current=st?.uri||'';
       if(!current){clear();diagnostic(now,'no_track','');return;}
       if(current!==uri){
+        generation++;
         uri=current;since=now;attempts=0;finished=false;lastMode=st.mode;
         if(st.mode==='paused')
           report('track_started_paused',current,0,'source='+st.source+
@@ -87,29 +101,20 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
 
       // Transport state does not reveal why playback paused. Record a
       // transition once, without guessing whether it was user-initiated.
-      if(st.mode!==lastMode){
-        const previous=lastMode;
-        lastMode=st.mode;
-        const details='from='+previous+' to='+st.mode+' source='+st.source+
-          ' position_ms='+Math.round(st.positionMs)+' duration_ms='+Math.round(st.durationMs);
-        if(st.mode==='paused')report('pause_observed',current,now-since,details);
-        else if(st.mode==='playing'){
-          report('resume_observed',current,now-since,details);
-          // A resumed player earns a fresh full grace period: paused time
-          // cannot count towards a "stalled while playing" deadline.
-          since=now;
-        }
-        else diagnostic(now,'unknown_state',current);
-      }
+      observeMode(st,now);
 
       // Do not override Play/Pause, remote playback or unknown transport state.
       if(st.mode!=='playing'){
+        generation++;
         since=now;
         // A future resume must not inherit the old retry/skip budget.
         attempts=0;
         if(st.mode==='unknown')diagnostic(now,'unknown_state',current);
         return;
       }
+      // Keep observing transitions while queue operations are pending, but
+      // never begin another recovery until the first operation settles.
+      if(busy)return;
       const rate=Math.max(1,Math.min(sgf.MAX_PLAYBACK_SPEED||30,speed()));
       const length=st.durationMs;
       const expected=length>0?length/rate:0;
@@ -118,21 +123,34 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
       if(age<deadline)return;
 
       busy=true;
+      const startedGeneration=generation,player=sgf.player;
+      let aborted=false;
+      const canContinue=(phase='during_retry')=>{
+        if(aborted)return false;
+        const live=read(state());
+        if(startedGeneration===generation&&allowed()&&sgf.player===player&&
+           live.uri===current&&live.mode==='playing')return true;
+        aborted=true;
+        report('recovery_aborted_state_changed',current,clock()-since,
+          'phase='+phase+' mode='+live.mode+' source='+live.source+
+          ' allowed='+Number(!!allowed())+' generation_changed='+Number(startedGeneration!==generation));
+        if(startedGeneration===generation){
+          if(live.uri===uri)observeMode(live,clock());
+          generation++;attempts=0;since=clock();
+        }
+        return false;
+      };
       try {
         // A user can press Pause after our first sample but before recovery.
         // Check both identity and state before retry, and again before skip.
-        const live=read(state());
-        if(live.uri!==current||live.mode!=='playing'){
-          report('recovery_aborted_state_changed',current,age,
-            'phase=before_retry mode='+live.mode+' source='+live.source);
-          since=clock();return;
-        }
+        if(!canContinue('before_retry'))return;
         if(attempts<2){
           attempts++;
           report('retry_'+attempts,current,age,
-            'mode='+live.mode+' source='+live.source);
+            'mode='+st.mode+' source='+st.source);
           let ok=false;
-          try{ok=(await reset())===true;}catch(e){console.warn('Soggfy recovery retry failed',e);}
+          try{ok=(await reset(canContinue))===true;}catch(e){console.warn('Soggfy recovery retry failed',e);}
+          if(!canContinue('before_skip'))return;
           if(ok) {
             since=clock();
             return;
@@ -142,14 +160,9 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
           attempts=2;
         }
 
-        const beforeSkip=read(state());
-        if(beforeSkip.uri!==current||beforeSkip.mode!=='playing'){
-          report('recovery_aborted_state_changed',current,age,
-            'phase=before_skip mode='+beforeSkip.mode+' source='+beforeSkip.source);
-          since=clock();return;
-        }
+        if(!canContinue('before_skip'))return;
         report('skip_stalled',current,age,
-          'mode='+beforeSkip.mode+' source='+beforeSkip.source);
+          'mode='+st.mode+' source='+st.source);
         // Only one skip per stalled identity. If skip fails, leave the player
         // alone rather than endlessly rebuilding the queue.
         finished=true;

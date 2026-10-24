@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.63 — cancel recovery across asynchronous queue operations (test build)
+
+- Recheck playback state after the real queue lookup and insertion, before a watchdog retry advances playback. A pause during either operation now cancels the pending skip.
+- Cancel pending recovery when Downloads is disabled, accelerated recovery becomes unsupported, the track changes, or the PlayerAPI instance changes.
+- Observe pause/resume and track changes while queue operations are pending; invalidate old recovery work and preserve the single-operation lock until it settles.
+- Reset the retry budget on cancellation and give resumed playback a fresh grace period.
+- Add integration regressions using the real reset helper and deliberately delayed queue promises. These changes do not claim to fix decoder stalls or missing stream association.
+
 ## 3.0.0-rc.62 — pause-safe recovery and diagnostic logging
 
 - Log actual pause/resume state transitions during accelerated capture, including state evidence (player flags versus UI fallback). Never infer the cause of the pause.
