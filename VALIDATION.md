@@ -1,4 +1,27 @@
-## Automated checks
+## RC64 candidate scope
+
+RC64 targets Spotify **1.3.1.234.g59d6bf59, Windows x64**. Older live-test
+accounts below are historical evidence, not validation of RC64 or a change of
+the chosen Spotify baseline. This candidate needs live testing before merge or release.
+
+`bash test-media-observer-windows.sh` runs a focused Windows regression against
+the production snapshot reader with an injected provider. The provider is held
+for more than three seconds while a consumer continues polling and draining a
+bounded queue. Tests cover the original sample timestamp, failures/exceptions,
+invalid/future samples, oversized artwork, duplicate/skipped sequences,
+generation/rate/epoch/artwork changes (including A-B-A), nonblocking stop and
+single-worker restart with monotonic sequences. This is a boundary test, not
+a live Spotify or full capture-worker integration test. CI and release workflows
+run it explicitly on Windows before packaging; the broader historical Windows
+test script is not implicitly covered by that step.
+
+The portable position-clock suite adds 30x coverage, variable delivery latency,
+pause/resume, effective-1x clock transitions and rejection of real observation
+gaps. Existing strict stream-integrity and eleven JavaScript suites remain gates.
+No test here establishes the cause or elimination of Spotify's random pauses,
+decoder stalls or late stream-association failures.
+
+## Automated checks (historical baseline and continuing suites)
 
 `bash test-native.sh` covers Ogg integrity/complete listens, native artwork/tags,
 FLAC metadata and contiguous frame coverage, fixed RAM block budgets, requested

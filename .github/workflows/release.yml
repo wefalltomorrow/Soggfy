@@ -73,6 +73,12 @@ jobs:
           print(f"Accepted release toolchain: GCC {gcc}, binutils {ld}")
           PY
 
+      - name: Test Windows media observer boundary
+        shell: msys2 {0}
+        env:
+          CXX: g++
+        run: bash test-media-observer-windows.sh
+
       - name: Build Windows x64 DLL
         shell: msys2 {0}
         env:

@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.64 — isolate Windows media reads from capture (test build)
+
+- Move blocking Windows media and artwork reads onto a dedicated observer. The capture worker consumes bounded, sequenced snapshots through a short try-lock.
+- Preserve sample timestamps taken before artwork retrieval, the accelerated position clock, selected 1x–30x speed and Downloads-off effective 1x behavior.
+- Reject stale, invalid, skipped and obsolete-settings observations; a missing observation still invalidates listen coverage after three seconds. Stop does not wait on Windows and a stopping observer cannot be replaced until it finishes.
+- Add a Windows test with a deliberately blocked provider, configuration revision changes and stop/restart checks. Run this focused test in CI and release builds. Add portable 30x timing, delayed-delivery and pause/resume regressions.
+- Selectively adapt Floggfy's observer boundary without importing its normal-speed timeline assumptions, network defaults or late-capture/repeat state changes. RC63 recovery fixes remain included. Random pauses and missing-stream association still require investigation and live testing.
+
 ## 3.0.0-rc.63 — cancel recovery across asynchronous queue operations (test build)
 
 - Recheck playback state after the real queue lookup and insertion, before a watchdog retry advances playback. A pause during either operation now cancels the pending skip.

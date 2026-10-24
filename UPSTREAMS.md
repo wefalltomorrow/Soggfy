@@ -22,10 +22,25 @@ Community work reviewed while building this fork:
 
 Not every patch was copied literally. Fixes tied to the obsolete x86 installer/hook architecture were reimplemented only where they still apply to the modern x64 design.
 
-Floggfy v1.1.0's optional explicit launcher and episode current-item identity fixes are included. The launcher is packaged separately from automatic `version.dll` mode, matching upstream's one-mode-at-a-time design.
+Floggfy v1.1.0's optional explicit launcher and episode current-item identity fixes are included. The all-in-one ZIP includes the launcher in `Launcher/` alongside automatic `version.dll` mode. Use one mode at a time.
 
 Soggfy's capture core intentionally remains ahead of Floggfy v1.1.0 in a few places: replayed Ogg pages are tolerated without duplicate writes, complete-listen validation is aware of accelerated playback, and the Classic UI/path/post-processing layers remain Soggfy-specific. A wholesale rebase would regress those fixes, so upstream changes are merged selectively.
 
+
+## RC64 selective observer adaptation
+
+Reviewed Mainkill1/Floggfy v1.2.4 (`cf72f18b65afc24ed3c5a4899c80d2ff68b75d74`)
+and v1.2.5-RC1 (`15e4b764c7d78bd5ecfe67d6414def505a4410c5`). RC64 adapts
+the dedicated media-reader and sequenced-snapshot boundary from commits
+`4953c0a3874ec3178a6462183bb43739a22d132c` and
+`72a4160c4cf6b26ae3fe759b76f673dd886af275`, with configuration revision fencing,
+pre-artwork observation timestamps and Soggfy's existing accelerated clock.
+The gated Windows test follows upstream's blocked-provider test approach.
+
+Normal-speed timeline continuity rules, late-capture retention, repeat/delayed
+identity handling and RC1's opt-in NetworkPatch defaults are not included in
+this candidate. They require separate compatibility work. RC1 itself does not
+claim that random pauses are solved.
 
 ## Compatibility references
 

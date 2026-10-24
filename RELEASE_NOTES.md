@@ -1,8 +1,20 @@
-# Soggfy v3.0.0-rc.63 — asynchronous recovery safety (test build)
+# Soggfy v3.0.0-rc.64 — keep capture moving during Windows media reads (test build)
 
-RC63 extends the RC62 pause-safety work on the RC61 baseline. It fixes a reproduced recovery race; it does **not** claim to eliminate decoder stalls or missing-stream failures. PR #64 remains a test candidate pending live Spotify validation.
+RC64 moves Windows media reads off the capture worker and includes RC63's recovery-safety fixes. PR #64 remains a test candidate pending live validation on Spotify **1.3.1.234.g59d6bf59, Windows x64**. It does **not** claim to eliminate decoder stalls, random pauses or missing-stream failures.
 
-## Changes
+## RC64 changes
+
+The capture worker previously called Windows media APIs and optional artwork retrieval synchronously. A slow call could prevent it from draining captured audio during that wait. A dedicated observer now performs those reads, while capture polls bounded snapshots from memory. This is a concrete blocking path in the source; it has not been established as the cause of the historical Spotify stalls.
+
+Each snapshot carries its original observation time, sequence and settings revision. Changes to speed, Downloads/capture epoch or settings reject outstanding results, including settings that change away and back before Windows responds. The accelerated position clock is retained, and an obsolete result cannot advance that clock.
+
+Samples older than three seconds, invalid samples and skipped observations fail closed. Missing observations still invalidate listen coverage; keeping capture responsive does not waive complete-listen or Ogg/FLAC integrity checks. Optional artwork can delay the observer, but no longer the capture worker. If that delay exceeds coverage limits the listen remains ineligible.
+
+The Windows regression uses a deliberately blocked provider to check continued polling/queue draining, stale or failed reads, settings changes and stop/restart behavior. Portable tests check 30x timing, pause/resume and variable delivery delays. These are automated boundary tests, not a live Spotify reproduction.
+
+This selectively adapts Floggfy's observer boundary. Network defaults, late-capture retention, repeat handling and normal-speed timeline rewrites are not part of RC64.
+
+## Included RC63 changes
 
 RC62 checked playback state before starting a retry, but its real reset helper then waited for Spotify's queue lookup and insertion. A pause during those waits could still be followed by a skip. RC63 rechecks state after each queue operation and cancels pending recovery if playback is paused or unknown, Downloads is disabled, accelerated recovery is no longer enabled, the track changes, or the PlayerAPI instance changes.
 
@@ -23,10 +35,11 @@ Historical evidence remains limited: Simon Posford - Wish You Weren't Here repor
 
 ## Live test
 
-1. Close Spotify fully, extract the RC63 Windows x64 ZIP and install using Scripts/Install.ps1. Confirm the package VERSION and version.dll file properties identify 3.0.0-rc.63. Enable Debug logging.
+1. Close Spotify fully, extract the RC64 Windows x64 ZIP and install using Scripts/Install.ps1. Confirm the package VERSION and version.dll file properties identify 3.0.0-rc.64. Enable Debug logging.
 2. With Downloads enabled at 30x, check normal complete MP3 output and skipping of existing Unicode/multi-artist files.
 3. Pause during a stalled track or recovery attempt. Leave it paused past the recovery deadline; it should stay paused. Resume and confirm there is a fresh grace period before any further recovery.
 4. Disable Downloads during a stall/retry and check that playback returns to effective 1x without losing the selected speed. Re-enable Downloads to restore it.
 5. Retest Cool Kids, Wish You Weren't Here, Murder-Death-Kill and Intoxicated (Radio Edit). Send the resulting Soggfy.log and note whether pauses were deliberate, whether any duplicate queued track remained, and whether the saved MP3s play through.
+6. Compare a short 1x run and several natural transitions at 30x. Include tracks with artwork; change speed and toggle Downloads while playback is active. Watch for repeated `media snapshot unavailable or stale` entries, lost start detection or premature green checks. Existing valid files should still be recognized from disk.
 
 Relevant diagnostics include pause_observed, resume_observed, recovery_aborted_state_changed, retry_1/retry_2, skip_stalled, decoder_probe, listen_complete, publish_done and failed. A publish_done entry alone does not prove a newly converted MP3, since existing files can follow a reuse path.

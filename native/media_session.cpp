@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cwctype>
 #include <cmath>
+#include <atomic>
 namespace history {
 // These slots are the public WinRT COM ABI, copied from Windows SDK 26100.
 // No Spotify UI internals, generated projections or runtime helpers are used.
@@ -92,6 +93,9 @@ MediaReader::~MediaReader() {
     Release(manager_); if(initialized_) RoUninitialize();
 }
 bool MediaReader::Read(Media& out,bool include_artwork,double playback_rate) {
+    double observed=0;return Read(out,observed,include_artwork,playback_rate);
+}
+bool MediaReader::Read(Media& out,double& observed_at,bool include_artwork,double playback_rate) {
     if(!initialized_) {
         HRESULT hr=RoInitialize(RO_INIT_MULTITHREADED);
         if(FAILED(hr)) return false;
@@ -156,13 +160,134 @@ bool MediaReader::Read(Media& out,bool include_artwork,double playback_rate) {
     // Spotify refreshes the public SMTC timestamp at 1x regardless of
     // decoder acceleration. Re-anchoring each poll falsely rewinds a 50x
     // listen, causing otherwise complete Ogg streams not to be published.
+    // Timestamp the playback sample before optional artwork can block.
+    const double observed=double(GetTickCount64())/1000.0;
     media.position=position_clock_.Observe(media.Key(),media.position,media.duration,
-        media.playing,playback_rate,double(GetTickCount64())/1000.0);
+        media.playing,playback_rate,observed);
     if(include_artwork) {
         if(media.Key()==cached_.Key() && !cached_.cover.empty()) {
             media.cover=cached_.cover; media.cover_extension=cached_.cover_extension;
         } else Artwork(properties.p,media);
     }
-    cached_=media; out=std::move(media); return true;
+    cached_=media; out=std::move(media); observed_at=observed;return true;
+}
+
+// Adapted from Floggfy v1.2.4's sequenced observer. Soggfy retains its
+// accelerated clock and artwork, and fences every configuration revision.
+struct MediaSnapshotReader::State {
+    struct Result {
+        Media media;double observed=0;
+        uint64_t sequence=0,revision=0;bool valid=false;
+    };
+    SRWLOCK lock=SRWLOCK_INIT;
+    MediaReadOptions options;
+    uint64_t revision=1;
+    std::shared_ptr<const Result> result;
+    std::atomic<bool> running{true},finished{false};
+    std::atomic<uint64_t> sequence{0};
+    HANDLE wake=nullptr;Fetch fetch=nullptr;void* context=nullptr;
+    ~State(){if(wake)CloseHandle(wake);}
+};
+static bool BoundedMedia(const Media& media) {
+    return !media.title.empty() && media.title.size()<=4096 && media.artist.size()<=4096 &&
+        media.album.size()<=4096 && media.album_artist.size()<=4096 && media.app.size()<=4096 &&
+        media.genre.size()<=10280 && media.cover.size()<=4*1024*1024 && media.cover_extension.size()<=8 &&
+        std::isfinite(media.position) && std::isfinite(media.duration) &&
+        std::isfinite(media.raw_position) && std::isfinite(media.timeline_age) &&
+        media.duration>0 && media.duration<=86400 && media.position>=0 && media.position<=media.duration;
+}
+MediaSnapshotReader::MediaSnapshotReader(Fetch fetch,void* context) noexcept:fetch_(fetch),context_(context) {}
+MediaSnapshotReader::~MediaSnapshotReader(){Stop();}
+bool MediaSnapshotReader::Start(const MediaReadOptions& options) noexcept {
+    try {
+        uint64_t previous=0;
+        if(state_) {
+            if(!state_->finished.load(std::memory_order_acquire))
+                return state_->running.load(std::memory_order_acquire);
+            previous=state_->sequence.load(std::memory_order_acquire);
+        }
+        auto next=std::make_shared<State>();
+        next->options=options;next->fetch=fetch_;next->context=context_;next->sequence=previous;
+        next->wake=CreateEventW(nullptr,FALSE,FALSE,nullptr);if(!next->wake)return false;
+        auto* argument=new std::shared_ptr<State>(next);
+        HANDLE thread=CreateThread(nullptr,0,Run,argument,0,nullptr);
+        if(!thread){delete argument;return false;}
+        CloseHandle(thread);state_=std::move(next);return true;
+    }catch(...){return false;}
+}
+void MediaSnapshotReader::Stop() noexcept {
+    if(state_){state_->running.store(false,std::memory_order_release);SetEvent(state_->wake);}
+}
+bool MediaSnapshotReader::IsStopped() const noexcept {
+    return !state_ || state_->finished.load(std::memory_order_acquire);
+}
+MediaRead MediaSnapshotReader::TryRead(Media& out,double& observed_at,uint64_t& sequence,
+                                        const MediaReadOptions& options) noexcept {
+    try {
+        if(!state_ || !state_->running.load(std::memory_order_acquire) ||
+           !TryAcquireSRWLockExclusive(&state_->lock))return MediaRead::Pending;
+        const bool changed=!(state_->options==options);
+        if(changed){state_->options=options;++state_->revision;}
+        const auto revision=state_->revision;
+        const auto result=state_->result;
+        ReleaseSRWLockExclusive(&state_->lock);
+        if(changed)SetEvent(state_->wake);
+        if(!result || result->revision!=revision || result->sequence==sequence)return MediaRead::Pending;
+        const double now=double(GetTickCount64())/1000.0;
+        // A missed observation might hide a pause/identity change. Never join
+        // listening coverage across a skipped sequence, even if time is fresh.
+        const bool missed=sequence && result->sequence!=sequence+1;
+        sequence=result->sequence;observed_at=result->observed;
+        if(!result->valid || missed || now-result->observed>3 || result->observed>now)
+            return MediaRead::Failed;
+        auto ready=result->media;out=std::move(ready);return MediaRead::Ready;
+    }catch(...){return MediaRead::Failed;}
+}
+DWORD WINAPI MediaSnapshotReader::Run(void* argument) {
+    std::unique_ptr<std::shared_ptr<State>> owner(static_cast<std::shared_ptr<State>*>(argument));
+    const auto state=*owner;owner.reset();
+    SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL);
+    {
+        MediaReader reader;MediaReadOptions previous;bool configured=false;
+        while(state->running.load(std::memory_order_acquire)) {
+            try {
+                MediaReadOptions options;uint64_t revision;
+                AcquireSRWLockShared(&state->lock);
+                options=state->options;revision=state->revision;
+                ReleaseSRWLockShared(&state->lock);
+                // An epoch changes the listen. A speed change alone preserves
+                // established position and uses the clock's previous-rate rule.
+                if(!configured || options.capture_epoch!=previous.capture_epoch)reader.ResetPosition();
+                previous=options;configured=true;
+                const auto prior_clock=reader.position_clock_;
+                auto result=std::make_shared<State::Result>();result->revision=revision;
+                bool ready=false;
+                try {
+                    ready=state->fetch?state->fetch(result->media,result->observed,options,state->context):
+                        reader.Read(result->media,result->observed,options.artwork,options.playback_rate);
+                }catch(...){/* A provider exception is an explicit failed observation. */}
+                const double completed=double(GetTickCount64())/1000.0;
+                result->valid=ready && BoundedMedia(result->media) && std::isfinite(result->observed) &&
+                    result->observed>0 && result->observed<=completed;
+                if(!result->valid){result->media={};result->observed=completed;}
+                std::shared_ptr<const State::Result> retired;
+                bool published=false;
+                AcquireSRWLockExclusive(&state->lock);
+                if(state->running.load(std::memory_order_acquire) && state->revision==revision) {
+                    result->sequence=state->sequence.fetch_add(1,std::memory_order_relaxed)+1;
+                    retired.swap(state->result);state->result=std::move(result);
+                    published=true;
+                }
+                ReleaseSRWLockExclusive(&state->lock);
+                // An obsolete result must not advance the accelerated clock
+                // that will be used for the next accepted configuration.
+                if(!published)reader.position_clock_=prior_clock;
+                // Copies, destruction, artwork and all Windows media calls
+                // are outside the short snapshot/configuration lock.
+            }catch(...){/* Consumer detects a missing observation after three seconds. */}
+            if(state->running.load(std::memory_order_acquire))WaitForSingleObject(state->wake,500);
+        }
+    }
+    state->finished.store(true,std::memory_order_release);return 0;
 }
 }

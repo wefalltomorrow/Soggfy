@@ -379,8 +379,9 @@ static DWORD WINAPI Worker(LPVOID) {
     std::map<uintptr_t,std::unique_ptr<Capture>> active;
     std::vector<std::unique_ptr<Capture>> ready;
     std::vector<Heard> heard;
-    Listen listen; MediaReader reader; Media current; PlaybackQualityTracker quality; std::string client_quality;
-    double next_media=0,next_log=0,next_probe=0;
+    Listen listen; MediaSnapshotReader reader; Media current; PlaybackQualityTracker quality; std::string client_quality;
+    double last_media=Now(),next_log=0,next_probe=0;
+    uint64_t media_sequence=0;bool observer_started=false,media_unavailable=false;
     DecodeProbeSnapshot previous_probe{};
     LONG previous_ogg_calls=0,previous_ogg_pages=0;
     unsigned generation=~0u,epoch=~0u; bool enabled=false,current_ignored=false;
@@ -396,7 +397,8 @@ static DWORD WINAPI Worker(LPVOID) {
                 output=preferences.root; memory_limit=size_t(preferences.max_buffered_mib)*1024*1024;
                 bool capture=preferences.downloads && (preferences.ogg || preferences.flac);
                 if(capture!=enabled || initial || preferences.capture_epoch!=epoch) {
-                    active.clear(); ready.clear(); heard.clear(); listen={}; current={}; next_media=0;
+                    active.clear(); ready.clear(); heard.clear(); listen={}; current={};
+                    last_media=now;media_unavailable=false;
                     if(!enabled && capture) saved_count=0;
                     enabled=capture;
                     Log(enabled ? "To Disk capture enabled" : "To Disk capture disabled");
@@ -423,6 +425,7 @@ static DWORD WINAPI Worker(LPVOID) {
                     Log("decoder_probe activated: passive enter/return/input/PCM counters; audio unchanged");
             }
             if(!enabled && !quality_enabled.load(std::memory_order_relaxed)) {
+                reader.Stop();observer_started=false;
                 PublishPlaybackQuality({});
                 Slot discard; while(Pop(discard)) {}
                 WaitForSingleObject(event,200); continue;
@@ -560,106 +563,108 @@ static DWORD WINAPI Worker(LPVOID) {
                     ready.push_back(std::move(found->second)); active.erase(found);
                 }
             }
-            if(!enabled) {
-                if(now>=next_media) {
-                    Media media;
-                    if(reader.Read(media,false,playback_rate)) {quality.Media(media.Key(),media.title,media.position,media.duration,Now(),media.playing);client_quality=ReadClientPlaybackQuality(media);}
-                    else {quality.Media({},L"",0,0,Now());client_quality.clear();}
-                    next_media=Now()+0.5;
+            const MediaReadOptions media_options{preferences.generation,epoch,playback_rate,enabled};
+            if(!observer_started)observer_started=reader.Start(media_options);
+            Media media;double observed_at=0;
+            const auto observation=observer_started
+                ?reader.TryRead(media,observed_at,media_sequence,media_options):MediaRead::Pending;
+            // Discard a result if settings changed concurrently with polling.
+            if(GetSettings().generation!=generation)continue;
+            if(observation==MediaRead::Ready) {
+                last_media=observed_at;media_unavailable=false;
+                quality.Media(media.Key(),media.title,media.position,media.duration,observed_at,media.playing);
+                client_quality=ReadClientPlaybackQuality(media);
+            }
+            if(enabled && observation==MediaRead::Ready) {
+                std::string previous=listen.identity; double previous_start=listen.start_time;
+                bool was_eligible=listen.eligible;const bool prior_playing=listen.playing;
+                double prior_position=listen.last_position,prior_duration=listen.duration,prior_time=listen.last_time;
+                if(DebugLoggingEnabled()) {
+                    char line[1200];snprintf(line,sizeof(line),
+                        "media_sample title=%s artist=%s key=%s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d prior=%.3f prior_duration=%.3f wall_delta=%.3f speed_config=%.3f speed_hook=%d rate=%.3f eligible=%d active=%zu ready=%zu",
+                        Utf8(media.title).c_str(),Utf8(media.artist).c_str(),media.Key().c_str(),media.position,media.raw_position,
+                        media.duration,media.timeline_age,media.playing,prior_position,prior_duration,observed_at-prior_time,
+                        preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,listen.eligible,active.size(),ready.size());
+                    Log(line);
                 }
+                std::string done=listen.Observe(media.Key(),media.position,media.duration,media.playing,observed_at,playback_rate);
+                if(was_eligible && !listen.eligible && done.empty()) {
+                    const auto identity=Utf8(current.artist)+" - "+Utf8(current.title);
+                    char line[1400]; snprintf(line,sizeof(line),
+                        "%s (incomplete listen reason=%s prior=%.3f/%.3f new=%.3f raw=%.3f/%.3f timeline_age=%.3f delta=%.3f expected=%.3f tolerance=%.3f rate=%.3f playing_before=%d playing_now=%d key_changed=%d)",
+                        identity.c_str(),ListenRejectName(listen.reject),prior_position,prior_duration,
+                        media.position,media.raw_position,media.duration,media.timeline_age,observed_at-prior_time,
+                        listen.last_expected,listen.last_tolerance,listen.last_rate,prior_playing,media.playing,
+                        previous!=listen.identity);
+                    LogActivity("failed",line);QueueDiagnostic(line);
+                }
+                if(!done.empty()) {
+                    if(current_ignored) {
+                        SetClassicTrackStatus(current,"IGNORED","Ignored");
+                        LogActivity("finished",Utf8(current.artist)+" - "+Utf8(current.title)+" (ignored)");
+                    } else {
+                        heard.push_back({current,previous_start,observed_at});
+                        char line[1024];snprintf(line,sizeof(line),
+                            "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f elapsed_wall=%.3f rate=%.3f ready=%zu active=%zu",
+                            Utf8(current.artist).c_str(),Utf8(current.title).c_str(),prior_position,current.raw_position,
+                            current.duration,current.timeline_age,observed_at-previous_start,playback_rate,ready.size(),active.size());
+                        LogActivity("listen_complete",line);QueueDiagnostic(line);
+                    }
+                }
+                if(previous!=listen.identity && listen.eligible) {
+                    current_ignored=ClassicCurrentIgnored();
+                    SetClassicTrackStatus(media,current_ignored?"IGNORED":"IN_PROGRESS",current_ignored?"Ignored":"Downloading...");
+                    char line[1400];snprintf(line,sizeof(line),
+                        "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d speed_config=%.3f speed_hook=%d speed_effective=%.3f start_window=%.3f active=%zu ready=%zu epoch=%u",
+                        Utf8(media.artist).c_str(),Utf8(media.title).c_str(),media.position,media.raw_position,media.duration,
+                        media.timeline_age,media.playing,preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,
+                        std::max(1.5,playback_rate*0.75),active.size(),ready.size(),epoch);
+                    LogActivity("started",line);QueueDiagnostic(line);
+                } else if(previous==listen.identity && listen.eligible) {
+                    current_ignored=ClassicCurrentIgnored();
+                }
+                if(was_eligible && !listen.eligible && done.empty()) {
+                    if(!current.title.empty())SetClassicTrackStatus(current,"ERROR",
+                        std::string("Canceled: ")+ListenRejectName(listen.reject));
+                }
+                if(previous!=listen.identity) {
+                    Log(("TRACK "+Utf8(media.artist)+" - "+Utf8(media.title)).c_str());
+                    {
+                        auto prior=[previous_start,start=listen.start_time](const auto& c) {
+                            return c->born>=previous_start-20 && c->born<=previous_start+3 && c->born<start-3;
+                        };
+                        // A fast Next may create the new decoder inside the
+                        // previous track's three-second start window. Keep
+                        // that candidate; duration association still rejects
+                        // ambiguous or skipped streams at publication.
+                        if(done.empty())
+                        ready.erase(std::remove_if(ready.begin(),ready.end(),prior),ready.end());
+                        for(auto it=active.begin();it!=active.end();) {
+                            if(prior(it->second)) it=active.erase(it); else ++it;
+                        }
+                    }
+                }
+                if(listen.transient) Log("timeline reset at natural end; waiting for matching title");
+                else current=std::move(media);
+            } else if(observation==MediaRead::Failed || Now()-last_media>3) {
+                const bool was_eligible=listen.eligible;
+                listen.eligible=false; quality.Media({},L"",0,0,Now());client_quality.clear();
+                if(was_eligible) {
+                    char line[768];snprintf(line,sizeof(line),
+                        "%s - %s (media snapshot unavailable or stale rate=%.3f active=%zu ready=%zu epoch=%u sequence=%llu state=%s last_sample_age=%.3f)",
+                        Utf8(current.artist).c_str(),Utf8(current.title).c_str(),playback_rate,active.size(),ready.size(),epoch,
+                        static_cast<unsigned long long>(media_sequence),observation==MediaRead::Failed?"failed":"pending",Now()-last_media);
+                    LogActivity("failed",line);QueueDiagnostic(line);
+                } else if(!media_unavailable)QueueDiagnostic("Spotify media snapshot unavailable or stale while no eligible listen was active");
+                media_unavailable=true;
+            }
+            if(!enabled) {
                 PublishPlaybackQuality(quality.Snapshot(client_quality));
                 WaitForSingleObject(event,50);continue;
             }
-            if(now>=next_media) {
-                Media media;
-                if(reader.Read(media,true,playback_rate)) {
-                    quality.Media(media.Key(),media.title,media.position,media.duration,Now(),media.playing);
-                    client_quality=ReadClientPlaybackQuality(media);
-                    std::string previous=listen.identity; double previous_start=listen.start_time;
-                    bool was_eligible=listen.eligible;
-                    double prior_position=listen.last_position,prior_duration=listen.duration,prior_time=listen.last_time;
-                    if(DebugLoggingEnabled()) {
-                        char line[1200];snprintf(line,sizeof(line),
-                            "media_sample title=%s artist=%s key=%s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d prior=%.3f prior_duration=%.3f wall_delta=%.3f speed_config=%.3f speed_hook=%d rate=%.3f eligible=%d active=%zu ready=%zu",
-                            Utf8(media.title).c_str(),Utf8(media.artist).c_str(),media.Key().c_str(),media.position,media.raw_position,
-                            media.duration,media.timeline_age,media.playing,prior_position,prior_duration,Now()-prior_time,
-                            preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,listen.eligible,active.size(),ready.size());
-                        Log(line);
-                    }
-                    std::string done=listen.Observe(media.Key(),media.position,media.duration,media.playing,Now(),playback_rate);
-                    if(was_eligible && !listen.eligible && done.empty()) {
-                        const auto identity=Utf8(current.artist)+" - "+Utf8(current.title);
-                        char line[1400]; snprintf(line,sizeof(line),
-                            "%s (incomplete listen reason=%s prior=%.3f/%.3f new=%.3f raw=%.3f/%.3f timeline_age=%.3f delta=%.3f expected=%.3f tolerance=%.3f rate=%.3f playing_before=%d playing_now=%d key_changed=%d)",
-                            identity.c_str(),ListenRejectName(listen.reject),prior_position,prior_duration,
-                            media.position,media.raw_position,media.duration,media.timeline_age,Now()-prior_time,
-                            listen.last_expected,listen.last_tolerance,listen.last_rate,listen.playing,media.playing,
-                            previous!=listen.identity);
-                        LogActivity("failed",line);QueueDiagnostic(line);
-                    }
-                    if(!done.empty()) {
-                        if(current_ignored) {
-                            SetClassicTrackStatus(current,"IGNORED","Ignored");
-                            LogActivity("finished",Utf8(current.artist)+" - "+Utf8(current.title)+" (ignored)");
-                        } else {
-                            heard.push_back({current,previous_start,Now()});
-                            char line[1024];snprintf(line,sizeof(line),
-                                "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f elapsed_wall=%.3f rate=%.3f ready=%zu active=%zu",
-                                Utf8(current.artist).c_str(),Utf8(current.title).c_str(),prior_position,current.raw_position,
-                                current.duration,current.timeline_age,Now()-previous_start,playback_rate,ready.size(),active.size());
-                            LogActivity("listen_complete",line);QueueDiagnostic(line);
-                        }
-                    }
-                    if(previous!=listen.identity && listen.eligible) {
-                        current_ignored=ClassicCurrentIgnored();
-                        SetClassicTrackStatus(media,current_ignored?"IGNORED":"IN_PROGRESS",current_ignored?"Ignored":"Downloading...");
-                        char line[1400];snprintf(line,sizeof(line),
-                            "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d speed_config=%.3f speed_hook=%d speed_effective=%.3f start_window=%.3f active=%zu ready=%zu epoch=%u",
-                            Utf8(media.artist).c_str(),Utf8(media.title).c_str(),media.position,media.raw_position,media.duration,
-                            media.timeline_age,media.playing,preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,
-                            std::max(1.5,playback_rate*0.75),active.size(),ready.size(),epoch);
-                        LogActivity("started",line);QueueDiagnostic(line);
-                    } else if(previous==listen.identity && listen.eligible) {
-                        current_ignored=ClassicCurrentIgnored();
-                    }
-                    if(was_eligible && !listen.eligible && done.empty()) {
-                        if(!current.title.empty())SetClassicTrackStatus(current,"ERROR",
-                            std::string("Canceled: ")+ListenRejectName(listen.reject));
-                    }
-                    if(previous!=listen.identity) {
-                        Log(("TRACK "+Utf8(media.artist)+" - "+Utf8(media.title)).c_str());
-                        {
-                            auto prior=[previous_start,start=listen.start_time](const auto& c) {
-                                return c->born>=previous_start-20 && c->born<=previous_start+3 && c->born<start-3;
-                            };
-                            // A fast Next may create the new decoder inside the
-                            // previous track's three-second start window. Keep
-                            // that candidate; duration association still rejects
-                            // ambiguous or skipped streams at publication.
-                            if(done.empty())
-                            ready.erase(std::remove_if(ready.begin(),ready.end(),prior),ready.end());
-                            for(auto it=active.begin();it!=active.end();) {
-                                if(prior(it->second)) it=active.erase(it); else ++it;
-                            }
-                        }
-                    }
-                    if(listen.transient) Log("timeline reset at natural end; waiting for matching title");
-                    else current=std::move(media);
-                } else {
-                    const bool was_eligible=listen.eligible;
-                    listen.eligible=false; quality.Media({},L"",0,0,Now());
-                    if(was_eligible) {
-                        char line[768];snprintf(line,sizeof(line),
-                            "%s - %s (media snapshot unavailable rate=%.3f active=%zu ready=%zu epoch=%u)",
-                            Utf8(current.artist).c_str(),Utf8(current.title).c_str(),playback_rate,active.size(),ready.size(),epoch);
-                        LogActivity("failed",line);QueueDiagnostic(line);
-                    } else QueueDiagnostic("Spotify media snapshot unavailable while no eligible listen was active");
-                }
-                next_media=Now()+0.5;
-            }
+            now=Now();
             PublishPlaybackQuality(quality.Snapshot(client_quality));
-            // A media-session read may block while the menu changes settings.
-            // Apply that generation before considering any publication.
+            // Apply concurrent menu changes before considering publication.
             if(GetSettings().generation!=generation) continue;
             for(auto h=heard.begin();h!=heard.end();) {
                 size_t match=ready.size(),matches=0;
@@ -757,6 +762,7 @@ static DWORD WINAPI Worker(LPVOID) {
             WaitForSingleObject(event,50);
         }
     } catch(...) { Log("history worker stopped after an exception; playback remains with original parser"); }
+    reader.Stop(); // Shared observer state outlives any outstanding COM call.
     PublishPlaybackQuality({});
     workers_running.store(false,std::memory_order_release);
     if(save_event) SetEvent(save_event);
