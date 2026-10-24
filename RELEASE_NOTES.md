@@ -10,6 +10,8 @@ The watchdog continues observing state transitions while a queue operation is pe
 
 The 30x maximum, Downloads-off effective 1x behavior, Classic interface, file-based status, cached PlayerAPI queue skipping, optional artwork tagging and strict capture-integrity validation are preserved.
 
+The Windows DLL build explicitly links MinGW's supplied floating-point environment object to resolve a missing runtime symbol with the updated CI toolchain. The existing msvcrt target is preserved.
+
 ## Validation and limits
 
 A new integration test loads both the real reset helper and recovery monitor, delaying queue promises to reproduce the RC62 failure. It covers pause/resume, setting changes, track/player changes, rejected operations, single-operation locking and normal successful recovery.
@@ -20,10 +22,10 @@ Historical evidence remains limited: Simon Posford - Wish You Weren't Here repor
 
 ## Live test
 
-1. Close Spotify fully, extract the RC63 Windows x64 ZIP and install using Scripts/Install.ps1. Enable Debug logging and confirm the startup log identifies 3.0.0-rc.63.
+1. Close Spotify fully, extract the RC63 Windows x64 ZIP and install using Scripts/Install.ps1. Confirm the package VERSION and version.dll file properties identify 3.0.0-rc.63. Enable Debug logging.
 2. With Downloads enabled at 30x, check normal complete MP3 output and skipping of existing Unicode/multi-artist files.
 3. Pause during a stalled track or recovery attempt. Leave it paused past the recovery deadline; it should stay paused. Resume and confirm there is a fresh grace period before any further recovery.
 4. Disable Downloads during a stall/retry and check that playback returns to effective 1x without losing the selected speed. Re-enable Downloads to restore it.
 5. Retest Cool Kids, Wish You Weren't Here, Murder-Death-Kill and Intoxicated (Radio Edit). Send the resulting Soggfy.log and note whether pauses were deliberate, whether any duplicate queued track remained, and whether the saved MP3s play through.
 
-Relevant diagnostics include pause_observed, resume_observed, recovery_aborted_state_changed, retry_1/retry_2, skip_stalled, decoder_probe, listen_complete, publish_done and publish_failed. A publish_done entry alone does not prove a newly converted MP3, since existing files can follow a reuse path.
+Relevant diagnostics include pause_observed, resume_observed, recovery_aborted_state_changed, retry_1/retry_2, skip_stalled, decoder_probe, listen_complete, publish_done and failed. A publish_done entry alone does not prove a newly converted MP3, since existing files can follow a reuse path.

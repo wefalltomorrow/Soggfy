@@ -90,6 +90,15 @@ done
 "$CC" -std=c11 -O2 -I native/vendor/libogg/include \
     -c native/vendor/libogg/src/framing.c -o build/ogg-framing.o
 
+# Recent MinGW fesetenv references __mingw_fe_dfl_env, supplied by CRT_fp10.
+# DLL startup does not pull that object from libmingw32 before libmingwex is
+# scanned. Link the toolchain's own default environment, not a local ABI copy.
+fp_runtime="$("$CXX" -print-file-name=CRT_fp10.o)"
+if [[ ! -f "$fp_runtime" ]]; then
+    echo "Missing MinGW floating-point runtime object: $fp_runtime" >&2
+    exit 1
+fi
+
 "$CXX" -std=c++17 -O2 -Wall -Wextra -shared \
     -static -static-libgcc -static-libstdc++ \
     -Wl,--no-insert-timestamp,--dynamicbase,--nxcompat \
@@ -97,7 +106,7 @@ done
     native/media_session.cpp native/classic_path_match.cpp native/classic_ui_backend.cpp native/post_process.cpp native/ogg_tags.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/history_settings.cpp native/library_layout.cpp \
     native/existing_quality.cpp native/file_publication.cpp native/to_disk_menu.cpp native/rich_metadata.cpp native/cached_metadata.cpp native/cached_metadata_windows.cpp native/metadata_bridge.cpp native/async_log.cpp native/version_exports.S native/version.def \
     build/version-resource.o build/minhook-*.o build/ogg-framing.o -I native/vendor/libogg/include \
-    -o build/version.dll -lole32 -luuid -liphlpapi -lws2_32 -lruntimeobject -lshell32 -lwinhttp
+    "$fp_runtime" -o build/version.dll -lole32 -luuid -liphlpapi -lws2_32 -lruntimeobject -lshell32 -lwinhttp
 
 SOURCE_DATE_EPOCH=1 "$STRIP" --strip-unneeded build/version.dll
 

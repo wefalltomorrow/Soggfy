@@ -7,6 +7,7 @@
 - Observe pause/resume and track changes while queue operations are pending; invalidate old recovery work and preserve the single-operation lock until it settles.
 - Reset the retry budget on cancellation and give resumed playback a fresh grace period.
 - Add integration regressions using the real reset helper and deliberately delayed queue promises. These changes do not claim to fix decoder stalls or missing stream association.
+- Link MinGW's supplied floating-point environment object explicitly to resolve the Windows DLL link failure with the updated CI runtime. Keep the existing msvcrt target.
 
 ## 3.0.0-rc.62 — pause-safe recovery and diagnostic logging
 
