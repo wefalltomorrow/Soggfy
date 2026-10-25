@@ -1,5 +1,6 @@
 #include "../native/post_process.h"
 #include "../native/existing_quality.h"
+#include "../native/conversion_source.h"
 #include <shellapi.h>
 #include <algorithm>
 #include <cassert>
@@ -12,6 +13,12 @@ using namespace history;
 static void write(const fs::path& p,const std::string& bytes){std::ofstream f(p,std::ios::binary);f<<bytes;assert(f.good());}
 static std::string read(const fs::path& p){std::ifstream f(p,std::ios::binary);return {std::istreambuf_iterator<char>(f),{}};}
 static std::wstring env(const wchar_t* name){wchar_t b[32768]{};GetEnvironmentVariableW(name,b,32768);return b;}
+static void hang(const std::wstring& exe) {
+    std::wstring command=L"\""+exe+L"\" child";STARTUPINFOW si{};si.cb=sizeof(si);PROCESS_INFORMATION pi{};
+    assert(CreateProcessW(exe.c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&si,&pi));
+    write(fs::path(env(L"SGF_TEST_PID")),std::to_string(pi.dwProcessId));CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
+    Sleep(60000);
+}
 // Identification header for the controlled converter, not a playable fixture.
 // Real codec fixtures are generated and fully decoded in the FFmpeg section.
 static std::string identifiedFlac() {
@@ -33,6 +40,7 @@ int main() {
     std::vector<std::wstring> args(argv,argv+argc);LocalFree(argv);
     if(argc>1&&args[1]==L"child"){Sleep(60000);return 0;}
     if(argc>1&&args[1]==L"-hide_banner") {
+        if(env(L"SGF_TEST_MODE")==L"validation-hang")hang(args[0]);
         auto input=std::find(args.begin(),args.end(),L"-i");assert(input!=args.end());
         const auto bytes=read(fs::path(*++input));
         return bytes=="valid-audio"||bytes==identifiedFlac()?0:2;
@@ -40,12 +48,16 @@ int main() {
     if(argc>1&&args[1]==L"-y") {
         assert(std::find(args.begin(),args.end(),L"-xerror")!=args.end());
         const auto mode=env(L"SGF_TEST_MODE");
+        if(mode==L"source-lock") {
+            auto input=std::find(args.begin(),args.end(),L"-i");assert(input!=args.end());
+            const auto path=*++input;
+            HANDLE writer=CreateFileW(path.c_str(),GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,0,nullptr);
+            assert(writer==INVALID_HANDLE_VALUE&&GetLastError()==ERROR_SHARING_VIOLATION);
+            assert(!MoveFileExW(path.c_str(),(path+L".replaced").c_str(),0));
+        }
         if(mode==L"no-fdk"&&std::find(args.begin(),args.end(),L"libfdk_aac")!=args.end())return 1;
         if(mode==L"hang"||mode==L"cancel") {
-            std::wstring command=L"\""+args[0]+L"\" child";STARTUPINFOW si{};si.cb=sizeof(si);PROCESS_INFORMATION pi{};
-            assert(CreateProcessW(args[0].c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&si,&pi));
-            write(fs::path(env(L"SGF_TEST_PID")),std::to_string(pi.dwProcessId));CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
-            Sleep(60000);return 0;
+            write(fs::path(args.back()),"partial");hang(args[0]);return 0;
         }
         if(mode==L"fail")return 1;
         if(mode==L"race")write(fs::path(env(L"SGF_TEST_FINAL")),"other-file");
@@ -62,6 +74,17 @@ int main() {
     wchar_t executable[32768]{};GetModuleFileNameW(nullptr,executable,32768);
     const auto base=fs::temp_directory_path()/(L"soggfy-conversion-test-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64()));
     assert(fs::create_directory(base));
+    // Exercise the close/reopen deletion gap deterministically.
+    const auto identity=base/L"identity.flac",moved=base/L"moved.flac";
+    for(bool replace:{true,false}) {
+        write(identity,"original");
+        post_process_detail::SourceLock source(identity.wstring());
+        assert(source.handle!=INVALID_HANDLE_VALUE);source.Close();
+        if(replace)fs::rename(identity,moved);
+        write(identity,"replacement-bytes");
+        assert(!source.DeleteValidated(identity.wstring()));source.Close();
+        assert(read(identity)=="replacement-bytes");
+    }
     Settings s;s.output_ext=L"mp3";s.output_preset=L"MP3 320k";s.ffmpeg_path=executable;s.keep_native_original=false;
     const auto native=base/L"capture.wav",final=base/L"capture.mp3",pidfile=base/L"child.pid";
     SetEnvironmentVariableW(L"SGF_TEST_PID",pidfile.c_str());SetEnvironmentVariableW(L"SGF_TEST_FINAL",final.c_str());
@@ -79,6 +102,12 @@ int main() {
         for(const auto& entry:fs::directory_iterator(base))assert(entry.path().filename().wstring().find(L"soggfy-converting-")==std::wstring::npos);
         return result;
     };
+    reset();
+    locked=CreateFileW(native.c_str(),GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr);
+    assert(locked!=INVALID_HANDLE_VALUE);
+    assert(run(L"ok").state==PostProcessResult::State::Failed);
+    CloseHandle(locked);assert(read(native)=="native-original"&&!fs::exists(final));
+    reset();assert(run(L"source-lock").state==PostProcessResult::State::Converted);assert(!fs::exists(native));
     for(unsigned existing=0;existing<5;++existing) {
         reset();HANDLE locked=INVALID_HANDLE_VALUE;
         if(existing==0)fs::create_directory(final);
@@ -88,7 +117,7 @@ int main() {
         assert(result.state==(existing==3?PostProcessResult::State::Skipped:PostProcessResult::State::Failed));
         assert(read(native)=="native-original");if(locked!=INVALID_HANDLE_VALUE)CloseHandle(locked);
     }
-    for(auto mode:{L"fail",L"empty",L"corrupt",L"race",L"hang",L"cancel"}) {
+    for(auto mode:{L"fail",L"empty",L"corrupt",L"race",L"hang",L"validation-hang",L"cancel"}) {
         reset();fs::remove(pidfile);PostProcessControl control;control.timeout_ms=1500;
         const auto started=GetTickCount64();
         if(std::wstring(mode)==L"cancel")control.canceled=[&]{return GetTickCount64()-started>700;};
@@ -97,11 +126,11 @@ int main() {
         assert(GetTickCount64()-started<6000);
         if(std::wstring(mode)==L"race")assert(read(final)=="other-file");
         else assert(!fs::exists(final));
-        if(std::wstring(mode)==L"hang"||std::wstring(mode)==L"cancel") {
+        if(std::wstring(mode)==L"hang"||std::wstring(mode)==L"validation-hang"||std::wstring(mode)==L"cancel") {
             assert(fs::exists(pidfile));const DWORD pid=DWORD(std::stoul(read(pidfile)));
             HANDLE child=OpenProcess(SYNCHRONIZE,FALSE,pid);
             if(child){assert(WaitForSingleObject(child,2000)==WAIT_OBJECT_0);CloseHandle(child);}
-            assert(result.error.find(std::wstring(mode)==L"hang"?"timed out":"canceled")!=std::string::npos);
+            assert(result.error.find(std::wstring(mode)==L"cancel"?"canceled":"timed out")!=std::string::npos);
         }
     }
     reset();assert(run(L"ok").state==PostProcessResult::State::Converted);assert(!fs::exists(native));assert(read(final)=="valid-audio");

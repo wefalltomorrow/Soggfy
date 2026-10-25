@@ -4,11 +4,13 @@
 #include "post_process.h"
 #include "existing_quality.h"
 #include "history_settings.h"
+#include "conversion_source.h"
 #include <algorithm>
 #include <filesystem>
 
 namespace history {
 namespace {
+using post_process_detail::SourceLock;
 std::wstring Lower(std::wstring value) {
     for(auto& c:value)c=wchar_t(towlower(c));
     return value;
@@ -148,8 +150,16 @@ static PostProcessResult ProcessFile(const std::wstring& native_path,const Setti
     final.replace_extension(ext);
     result.path=final.wstring();
 
-    uint64_t native_bytes=0;
-    ReadableAudioCandidate(native_path,&native_bytes);
+    // Keep fresh captures and retry sources stable throughout encode/validation.
+    SourceLock source(native_path);
+    Quality quality;
+    if(source.handle==INVALID_HANDLE_VALUE || (existing &&
+       (!ReadQuality(native_path,quality)||(quality.codec!=Codec::Flac&&quality.codec!=Codec::Vorbis)))) {
+        result.state=PostProcessResult::State::Failed;
+        result.error="Native source is busy, unreadable or unverified; original retained";
+        return result;
+    }
+    const uint64_t native_bytes=(uint64_t(source.original.nFileSizeHigh)<<32)|source.original.nFileSizeLow;
     // Five minutes plus one second per 64 KiB, capped at six hours for long media.
     const auto budget=control.timeout_ms?uint64_t(control.timeout_ms):
         std::min<uint64_t>(6*60*60*1000,300000+(native_bytes/65536)*1000);
@@ -247,8 +257,9 @@ static PostProcessResult ProcessFile(const std::wstring& native_path,const Setti
         return result;
     }
 
-    if(!settings.keep_native_original && !Canceled(control) && _wcsicmp(native_path.c_str(),result.path.c_str())!=0)
-        DeleteFileW(WindowsPath(native_path).c_str());
+    if(!settings.keep_native_original && !Canceled(control) && _wcsicmp(native_path.c_str(),result.path.c_str())!=0) {
+        if(!source.DeleteValidated(native_path))result.error="Output saved, but native source changed or could not be deleted; original retained";
+    }
 
     result.state=PostProcessResult::State::Converted;
     return result;
@@ -259,15 +270,6 @@ PostProcessResult PostProcessPublishedFile(const std::wstring& native_path,const
 }
 PostProcessResult RetryPostProcessExistingFile(const std::wstring& native_path,const Settings& settings,const PostProcessControl& control) {
     if(!ConversionRequested(settings,native_path))return {PostProcessResult::State::Native,native_path,{}};
-    struct SourceLock {
-        HANDLE handle=INVALID_HANDLE_VALUE;
-        ~SourceLock(){if(handle!=INVALID_HANDLE_VALUE)CloseHandle(handle);}
-    } source;
-    source.handle=CreateFileW(WindowsPath(native_path).c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
-    Quality quality;
-    if(source.handle==INVALID_HANDLE_VALUE||!ReadQuality(native_path,quality)||
-       (quality.codec!=Codec::Flac&&quality.codec!=Codec::Vorbis))
-        return {PostProcessResult::State::Failed,native_path,"Existing native file is unreadable or unverified; original retained"};
     auto retained=settings;retained.keep_native_original=true;
     return ProcessFile(native_path,retained,{},L"",control,true);
 }

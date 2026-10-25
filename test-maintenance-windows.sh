@@ -25,10 +25,14 @@ fi
     -lshell32 -lole32 -luuid -o build/post-process-test.exe
 build/post-process-test.exe
 "$maintenance_pwsh" -NoProfile -File tests/manual_post_process_test.ps1 -ConverterPath build/post-process-test.exe
+legacy_pwsh="$(cygpath -u "${WINDIR:-C:\Windows}")/System32/WindowsPowerShell/v1.0/powershell.exe"
+"$legacy_pwsh" -NoProfile -File tests/manual_post_process_test.ps1 -ConverterPath build/post-process-test.exe
 if [[ -n "${SGF_PYTHON_PATH:-}" ]]; then
     "$(cygpath -u "$SGF_PYTHON_PATH")" tests/manual_watch_test.py
+    "$(cygpath -u "$SGF_PYTHON_PATH")" tests/manual_process_test.py
 else
     python tests/manual_watch_test.py
+    python tests/manual_process_test.py
 fi
 "$CXX" -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static \
     tests/windows_classic_status_test.cpp native/classic_status_backend.cpp \

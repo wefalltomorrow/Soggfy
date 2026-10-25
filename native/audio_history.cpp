@@ -344,6 +344,10 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
         LogActivity("failed",detail);QueueDiagnostic(detail.c_str());
         return {Publication::Failed,post.path,post.error};
     }
+    if(!post.error.empty()) {
+        auto detail="post-processing warning: "+post.error+" native="+Utf8(destination);
+        LogActivity("warning",detail);QueueDiagnostic(detail.c_str());
+    }
     {
         auto final_path=post.path.empty()?destination:post.path;
         auto detail="publication complete native="+Utf8(destination)+" final="+Utf8(final_path);

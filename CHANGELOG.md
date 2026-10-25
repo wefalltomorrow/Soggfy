@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.0-rc.70 — bounded conversion and source protection (test build)
+
+- Bound manual encoding and validation with a shared configurable deadline; supervise
+  executable/wrapper descendants in a Windows job, including on parent exit.
+- Continue watch processing after a hung converter; preserve failed sources and
+  remove temporary outputs when normal timeout cleanup runs.
+- Lock fresh native sources throughout conversion, matching retry protection.
+- Recheck file identity, size and timestamps before optional deletion, then delete
+  by the opened handle in both manual and native conversion.
+- Require timeout, child cleanup, Unicode wrapper paths, watcher recovery, source
+  replacement and PowerShell 5.1/7 regression checks in CI and release builds.
+- Preserve earlier candidates. Live Spotify validation remains required.
+
 ## 3.0.0-rc.69 — conversion, queue and export reliability (test build)
 
 - Reject damaged-source encoding, support all built-in AAC fallback aliases, resolve relative manual inputs and reconcile/retry watched files.

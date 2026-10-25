@@ -6,7 +6,10 @@ param(
     [string]$Format = 'mp3',
     [switch]$DeleteOriginal,
     [switch]$Watch,
-    [string]$FFmpegPath = 'ffmpeg'
+    [string]$FFmpegPath = 'ffmpeg',
+    # One budget for encoding and validation. Zero selects a size-based budget.
+    [ValidateRange(0, 21600)]
+    [int]$TimeoutSeconds = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,6 +27,39 @@ if (-not (Test-Path -LiteralPath $InputPath)) {
 $InputPath = (Resolve-Path -LiteralPath $InputPath).ProviderPath
 if ($Watch -and -not (Test-Path -LiteralPath $InputPath -PathType Container)) {
     throw '-Watch requires a directory InputPath.'
+}
+if ($ffmpeg.CommandType -notin 'Application','ExternalScript' -or
+    [IO.Path]::GetExtension($ffmpeg.Source) -notin '.exe','.ps1') {
+    throw 'FFmpegPath must resolve to an executable (.exe) or PowerShell wrapper (.ps1).'
+}
+if (-not ('Soggfy.ConverterProcess' -as [type])) {
+    Add-Type -Path (Join-Path $PSScriptRoot 'ConverterProcess.cs')
+}
+
+function Invoke-Converter([string[]]$Arguments, [Diagnostics.Stopwatch]$Clock, [long]$BudgetMs) {
+    if ($Clock.ElapsedMilliseconds -ge $BudgetMs) { throw 'Conversion timed out; original retained.' }
+    $exe = $ffmpeg.Source
+    if ([IO.Path]::GetExtension($exe) -eq '.ps1') {
+        # EncodedCommand avoids cmd.exe and preserves literal Unicode, quotes,
+        # dollar signs and metacharacters when invoking a PowerShell wrapper.
+        $tokens = @($exe) + $Arguments | ForEach-Object { "'" + $_.Replace("'", "''") + "'" }
+        $command = '$ErrorActionPreference = ''Stop''; $global:LASTEXITCODE = 0; & ' + ($tokens -join ' ') + '; exit $LASTEXITCODE'
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+        $exe = Join-Path $PSHOME 'pwsh.exe'
+        if (-not (Test-Path -LiteralPath $exe)) { $exe = Join-Path $PSHOME 'powershell.exe' }
+        $Arguments = @('-NoProfile','-NonInteractive','-EncodedCommand',$encoded)
+    }
+    $child = $null
+    try {
+        $child = [Soggfy.ConverterProcess]::new($exe, $Arguments, (Get-Location).ProviderPath)
+        while (-not $child.Wait(100)) {
+            if ($Clock.ElapsedMilliseconds -ge $BudgetMs) { throw 'Conversion timed out; original retained.' }
+        }
+        if ($Clock.ElapsedMilliseconds -ge $BudgetMs) { throw 'Conversion timed out; original retained.' }
+        return $child.ExitCode
+    } finally {
+        if ($null -ne $child) { $child.Dispose() }
+    }
 }
 
 function Convert-One([string]$Path) {
@@ -61,22 +97,28 @@ function Convert-One([string]$Path) {
     $sourceLock = $null
     try {
         # Permit FFmpeg to read, but prevent concurrent writers during conversion.
-        $sourceLock = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        $sourceLock = [Soggfy.ConversionSource]::new($Path)
         if ($sourceLock.Length -eq 0) { throw "Source is empty: '$Path'." }
-        & $ffmpeg.Source @args
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $temp -PathType Leaf) -or
-            (Get-Item -LiteralPath $temp).Length -eq 0) {
-            throw "FFmpeg failed or produced empty output for '$Path'; original retained."
+        $budget = if ($TimeoutSeconds) { [long]$TimeoutSeconds * 1000 } else {
+            [long][Math]::Min(21600000, 300000 + [Math]::Floor($sourceLock.Length / 65536) * 1000)
         }
-        & $ffmpeg.Source -hide_banner -loglevel error -xerror -abort_on empty_output -nostdin -i $temp -map 0:a:0 -f null -
-        if ($LASTEXITCODE -ne 0 -or (Get-Item -LiteralPath $temp).Length -eq 0) {
-            throw "Converted audio validation failed for '$Path'; original retained."
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        $exitCode = Invoke-Converter $args $clock $budget
+        if ($exitCode -ne 0 -or -not (Test-Path -LiteralPath $temp -PathType Leaf) -or
+            (Get-Item -LiteralPath $temp).Length -eq 0) {
+            throw "FFmpeg failed (exit $exitCode) or produced empty output for '$Path'; original retained."
+        }
+        $exitCode = Invoke-Converter @('-hide_banner','-loglevel','error','-xerror','-abort_on','empty_output','-nostdin','-i',$temp,'-map','0:a:0','-f','null','-') $clock $budget
+        if ($exitCode -ne 0 -or (Get-Item -LiteralPath $temp).Length -eq 0) {
+            throw "Converted audio validation failed (exit $exitCode) for '$Path'; original retained."
         }
         # File.Move never overwrites or moves the output inside a raced directory.
         [IO.File]::Move($temp, $dest)
-        $sourceLock.Dispose(); $sourceLock = $null
         Write-Host "$Path -> $dest"
-        if ($DeleteOriginal) { Remove-Item -LiteralPath $Path -Force }
+        if ($DeleteOriginal) {
+            try { $sourceLock.DeleteValidatedSource() }
+            catch { Write-Warning "Output saved, but source was retained: $($_.Exception.Message)" }
+        }
     } finally {
         if ($null -ne $sourceLock) { $sourceLock.Dispose() }
         if (Test-Path -LiteralPath $temp -PathType Leaf) {

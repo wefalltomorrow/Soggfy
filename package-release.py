@@ -57,6 +57,7 @@ files = [
     ("Scripts/Install.ps1", root / "Scripts" / "Install.ps1"),
     ("Scripts/Uninstall.ps1", root / "Scripts" / "Uninstall.ps1"),
     ("Scripts/PostProcess.ps1", root / "Scripts" / "PostProcess.ps1"),
+    ("Scripts/ConverterProcess.cs", root / "Scripts" / "ConverterProcess.cs"),
     ("Scripts/Diagnose.ps1", root / "Scripts" / "Diagnose.ps1"),
     ("Launcher/Soggfy.exe", launcher_exe),
     ("Launcher/Soggfy.dll", launcher_dll),

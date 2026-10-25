@@ -1,4 +1,22 @@
-## RC69 candidate scope
+## RC70 candidate scope
+
+RC70 follows up three conversion gaps from RC69: manual FFmpeg could hang forever,
+fresh native sources were not locked throughout conversion, and optional deletion
+could target a replaced file. Regression coverage now includes encode/validation
+timeouts and child cleanup, one shared deadline, watcher recovery after a hang,
+parent-exit descendant cleanup, literal Unicode/metacharacter wrapper arguments,
+native/manual source locks, and deterministic replacement/change at deletion.
+The manual controlled suite runs under Windows PowerShell 5.1 and PowerShell 7.
+The new C# helper must ship with the script; both workflows check for it.
+
+The final candidate still requires successful full MinGW CI and package verification.
+Preserve RC63–RC69; no live installation, merge or official release before separate
+Spotify validation. Recurring full watch scans and installer/uninstaller transaction
+and ownership design remain outstanding. A forced PowerShell termination kills
+the converter tree but may leave a temporary output. Historical pauses and decoder
+stalls remain unresolved; these maintenance changes do not prove live stability.
+
+## RC69 candidate scope (historical)
 
 RC69 includes RC63–RC68. The maintenance audit covers the Classic UI/queue/export
 paths, native status/cache/publication/conversion, settings/logging/metadata, capture

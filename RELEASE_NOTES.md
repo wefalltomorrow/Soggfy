@@ -1,6 +1,30 @@
-# Soggfy v3.0.0-rc.69 — conversion, queue and export reliability (test build)
+# Soggfy v3.0.0-rc.70 — bounded conversion and source protection (test build)
 
-RC69 includes RC63–RC68 and the broader maintenance audit. The target remains Spotify **1.3.1.234.g59d6bf59, Windows x64**. Live validation is still required; historical random pauses and decoder stalls are not established as fixed.
+RC70 includes RC63–RC69 and follows up the conversion limits from the maintenance audit. The target remains Spotify **1.3.1.234.g59d6bf59, Windows x64**. Live validation is still required; historical random pauses and decoder stalls are not established as fixed.
+
+## RC70 changes
+
+Manual encoding and validation now share a configurable deadline. The default is
+five minutes plus one second per 64 KiB of input, capped at six hours; use
+-TimeoutSeconds to override it. Executables and PowerShell wrappers start suspended
+and join a supervised Windows job before running, so their descendants are stopped
+on timeout or when the parent PowerShell process ends. The watcher can continue
+after a hung converter. Normal timeout cleanup removes partial output and retains
+the original; forcibly killing PowerShell can leave a temporary output.
+
+Fresh native conversion now holds the same read protection as retries, preventing
+writers or replacements throughout encoding and validation. Both conversion paths
+reopen sources for deletion, compare file identity, size and timestamps, and delete
+through that handle. A replacement or changed source is retained.
+
+Tests cover encoding and validation hangs, descendant cleanup, the shared deadline,
+Unicode/metacharacter wrapper paths, watcher recovery, locked sources and replacement
+at deletion. Both Windows PowerShell 5.1 and PowerShell 7 run the manual suite.
+Scripts/ConverterProcess.cs is included and required beside PostProcess.ps1.
+
+Preserve RC63–RC69. Recurring full watch scans, nontransactional installer writes,
+uninstaller ownership after external DLL replacement, and live playback/API behavior
+remain limits. No live installation, merge or official release is part of RC70.
 
 ## RC69 changes
 
@@ -18,7 +42,9 @@ Settings flush accepts a newer coalesced save instead of waiting forever for the
 
 Installation checks the DLL before stopping Spotify or starting SpotX. Packaging preserves older archives and replaces a same-version ZIP only after the new archive finishes successfully. Windows publication/settings/logging/metadata/quality checks now run in both CI and release workflows; regression tests cover the new fixes.
 
-Automated checks are not live Spotify validation. Watch mode performs recurring full scans and manual FFmpeg calls have no deadline. Concurrent external replacement of a source around optional deletion is not fully protected. Historical pauses/decoder stalls and live API variants remain unverified; preserve RC63–RC68 and do not install, merge or release before the separate live gate.
+At RC69, manual FFmpeg had no deadline and source deletion had a replacement window;
+RC70 addresses those limits. Automated checks are not live Spotify validation.
+Historical pauses/decoder stalls and live API variants remain unverified.
 
 ## RC68 changes
 
@@ -99,7 +125,7 @@ Historical evidence remains limited: Simon Posford - Wish You Weren't Here repor
 
 ## Live test
 
-1. Close Spotify fully, extract the RC67 Windows x64 ZIP and install using Scripts/Install.ps1. Confirm the package VERSION and version.dll file properties identify 3.0.0-rc.67. Enable Debug logging.
+1. When the separate live test is authorized, close Spotify fully, extract the RC70 Windows x64 ZIP and install using Scripts/Install.ps1. Confirm the package VERSION and version.dll file properties identify 3.0.0-rc.70. Enable Debug logging.
 2. With Downloads enabled at 30x, check normal complete MP3 output and skipping of existing Unicode/multi-artist files.
 3. Pause during a stalled track or recovery attempt. Leave it paused past the recovery deadline; it should stay paused. Resume and confirm there is a fresh grace period before any further recovery.
 4. Disable Downloads during a stall/retry and check that playback returns to effective 1x without losing the selected speed. Re-enable Downloads to restore it.

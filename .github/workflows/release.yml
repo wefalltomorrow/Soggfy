@@ -145,6 +145,7 @@ jobs:
               "Scripts/Install.ps1",
               "Scripts/Uninstall.ps1",
               "Scripts/PostProcess.ps1",
+              "Scripts/ConverterProcess.cs",
               "Scripts/Diagnose.ps1",
           }
           with zipfile.ZipFile(sys.argv[1]) as z:
