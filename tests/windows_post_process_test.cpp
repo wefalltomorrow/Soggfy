@@ -12,6 +12,15 @@ using namespace history;
 static void write(const fs::path& p,const std::string& bytes){std::ofstream f(p,std::ios::binary);f<<bytes;assert(f.good());}
 static std::string read(const fs::path& p){std::ifstream f(p,std::ios::binary);return {std::istreambuf_iterator<char>(f),{}};}
 static std::wstring env(const wchar_t* name){wchar_t b[32768]{};GetEnvironmentVariableW(name,b,32768);return b;}
+// Identification header for the controlled converter, not a playable fixture.
+// Real codec fixtures are generated and fully decoded in the FFmpeg section.
+static std::string identifiedFlac() {
+    std::string b(42,'\0');b.replace(0,4,"fLaC");b[4]=char(128);b[7]=34;
+    b[8]=b[10]=16;
+    const uint64_t packed=(uint64_t(44100)<<44)|(uint64_t(1)<<41)|(uint64_t(15)<<36)|44100;
+    for(unsigned i=0;i<8;++i)b[18+i]=char(packed>>(56-8*i));
+    return b+"controlled-valid-audio";
+}
 static void wav(const fs::path& p) {
     std::string b(44+44100*2,'\0');
     auto put=[&](unsigned at,unsigned value,unsigned n){for(unsigned i=0;i<n;++i)b[at+i]=char(value>>(i*8));};
@@ -25,7 +34,8 @@ int main() {
     if(argc>1&&args[1]==L"child"){Sleep(60000);return 0;}
     if(argc>1&&args[1]==L"-hide_banner") {
         auto input=std::find(args.begin(),args.end(),L"-i");assert(input!=args.end());
-        return read(fs::path(*++input))=="valid-audio"?0:2;
+        const auto bytes=read(fs::path(*++input));
+        return bytes=="valid-audio"||bytes==identifiedFlac()?0:2;
     }
     if(argc>1&&args[1]==L"-y") {
         const auto mode=env(L"SGF_TEST_MODE");
@@ -37,6 +47,13 @@ int main() {
         }
         if(mode==L"fail")return 1;
         if(mode==L"race")write(fs::path(env(L"SGF_TEST_FINAL")),"other-file");
+        if(mode==L"directory")fs::create_directory(fs::path(env(L"SGF_TEST_FINAL")));
+        const auto log=env(L"SGF_TEST_ARGS");
+        if(!log.empty()) {
+            std::string joined;
+            for(const auto& arg:args){joined+=std::string(arg.begin(),arg.end());joined+='\n';}
+            write(fs::path(log),joined);
+        }
         write(fs::path(args.back()),mode==L"empty"?"":mode==L"corrupt"?"not-audio":"valid-audio");
         return 0;
     }
@@ -92,6 +109,29 @@ int main() {
     PostProcessControl canceled;canceled.canceled=[] {return true;};
     assert(run(L"ok",canceled).state==PostProcessResult::State::Failed);assert(fs::exists(native));
     s.output_ext=L".WAV";assert(!ConversionRequested(s,native.wstring()));s.output_ext=L"mp3";
+    // An existing native file must no longer bypass conversion after a failure.
+    // Keep its exact bytes even when keep_native_original is disabled: the
+    // existing file's identity cannot be inferred from its name alone.
+    reset();write(native,identifiedFlac());
+    assert(DecideSave(native.wstring(),Quality{Codec::Flac,44100,2,16,0})==SaveDecision::Skip);
+    SetEnvironmentVariableW(L"SGF_TEST_MODE",L"fail");
+    assert(RetryPostProcessExistingFile(native.wstring(),s).state==PostProcessResult::State::Failed);
+    assert(read(native)==identifiedFlac()&&!fs::exists(final));
+    SetEnvironmentVariableW(L"SGF_TEST_MODE",L"ok");
+    assert(RetryPostProcessExistingFile(native.wstring(),s).state==PostProcessResult::State::Converted);
+    assert(read(native)==identifiedFlac()&&read(final)=="valid-audio");
+    assert(RetryPostProcessExistingFile(native.wstring(),s).state==PostProcessResult::State::Skipped);
+    assert(read(native)==identifiedFlac());
+    fs::remove(final);write(native,identifiedFlac()+"corrupt");
+    assert(RetryPostProcessExistingFile(native.wstring(),s).state==PostProcessResult::State::Failed);
+    assert(!fs::exists(final)&&read(native)==identifiedFlac()+"corrupt");
+    write(native,"not-a-native-file");
+    assert(RetryPostProcessExistingFile(native.wstring(),s).state==PostProcessResult::State::Failed);
+    write(native,identifiedFlac());
+    assert(RetryPostProcessExistingFile(native.wstring(),s,canceled).state==PostProcessResult::State::Failed);
+    locked=CreateFileW(native.c_str(),GENERIC_READ,0,nullptr,OPEN_EXISTING,0,nullptr);assert(locked!=INVALID_HANDLE_VALUE);
+    assert(RetryPostProcessExistingFile(native.wstring(),s).state==PostProcessResult::State::Failed);CloseHandle(locked);
+    assert(read(native)==identifiedFlac()&&!fs::exists(final));
     const auto real=env(L"SGF_REAL_FFMPEG");
     if(!real.empty()) {
         reset();wav(native);s.ffmpeg_path=real;
@@ -103,7 +143,24 @@ int main() {
         wav(final);auto header=read(final).substr(0,44);header[4]=36;header[5]=header[6]=header[7]=0;
         for(unsigned i=40;i<44;++i)header[i]=0;
         write(final,header);assert(run(L"ok").state==PostProcessResult::State::Failed&&fs::exists(native));
-        std::printf("PASS: real FFmpeg MP3 320k encode/decode and existing-output verification (%llu ms)\n",GetTickCount64()-started);
+        for(const auto& codec:{L"flac",L"ogg"}) {
+            reset();wav(native);
+            auto generate=s;generate.output_ext=codec;generate.output_preset=L"Custom";
+            generate.output_args=std::wstring(codec)==L"flac"?L"-c:a flac":L"-c:a libvorbis";
+            const auto fixture=PostProcessPublishedFile(native.wstring(),generate,{},L"");
+            assert(fixture.state==PostProcessResult::State::Converted);
+            const auto original=read(fixture.path);Quality quality;assert(ReadQuality(fixture.path,quality));
+            auto broken=s;broken.output_preset=L"Custom";broken.output_args=L"-c:a nonexistent_soggfy_codec";
+            assert(RetryPostProcessExistingFile(fixture.path,broken).state==PostProcessResult::State::Failed);
+            assert(read(fixture.path)==original&&!fs::exists(final));
+            assert(RetryPostProcessExistingFile(fixture.path,s).state==PostProcessResult::State::Converted);
+            assert(read(fixture.path)==original&&fs::file_size(final)>0);
+            assert(RetryPostProcessExistingFile(fixture.path,s).state==PostProcessResult::State::Skipped);
+            fs::remove(final);write(fixture.path,original.substr(0,42));
+            assert(RetryPostProcessExistingFile(fixture.path,s).state==PostProcessResult::State::Failed);
+            assert(!fs::exists(final)&&fs::file_size(fixture.path)==42);fs::remove(fixture.path);
+        }
+        std::printf("PASS: real FFmpeg MP3 320k encode/decode, FLAC/Ogg retry and corrupt-source/output verification (%llu ms)\n",GetTickCount64()-started);
     }
     fs::remove_all(base);
     std::puts("PASS: conversion conflicts, validation, no-overwrite race, timeout/cancel, child cleanup and native retention");

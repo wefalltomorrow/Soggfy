@@ -1,4 +1,20 @@
-# Soggfy v3.0.0-rc.67 — conversion safety and status maintenance (test build)
+# Soggfy v3.0.0-rc.68 — large-library lookup and conversion retries (test build)
+
+RC68 addresses the six RC67 maintenance findings and includes RC63–RC67. The target remains Spotify **1.3.1.234.g59d6bf59, Windows x64**. Live validation is still required; historical random pauses and decoder stalls are not established as fixed.
+
+## RC68 changes
+
+Large-library status lookup filters impossible filenames before running the existing matching expressions. An unchanged directory rescan preserves cached matches, while deleted/locked files and unreadable matching candidates are rechecked. A local assertion-enabled diagnostic benchmark of 32,768 files and 128 misses fell from about 46 seconds in RC67 to 0.55–0.81 seconds, with zero regex checks and a sub-millisecond warm lookup. This measures synthetic misses on local storage, not live Spotify or every naming layout; title-free custom templates retain full matching.
+
+Directory traversal is bounded by 100,000 files, 10,000 scheduled directories and depth 12. Incomplete scans, unavailable roots and skipped reparse directories report uncertain status rather than downloaded/absent conclusions. New requests cancel obsolete native work; a seven-second cooperative deadline returns only completed queries. Blocking OS calls or a single regex call cannot be interrupted by that deadline. Positive status still means filename association and a readable nonempty file, not full audio verification.
+
+Visible rows are queried in sequential pages of 128, deduplicated by URI and prioritizing the viewport. Navigation, a new refresh or configuration invalidation stops obsolete pages. Pending queue events are tied to their player, settings epoch, skip policy and age. Events received while skipping is disabled or no player exists are discarded; replacement players use a fresh snapshot.
+
+The manual PostProcess script now requests MP3 320 kbps, validates nonempty output by full decoding, uses a unique temporary name and publishes without overwriting a raced file or directory. Failure preserves the original. Equal/higher-quality retained native files can retry conversion when a capture reaches the existing-file branch. Retry requires recognized Ogg/FLAC headers and full source decoding, preserves the existing original even when keep-original is off, and never overwrites a destination. This is not a background retry: Skip Downloaded can prevent that capture attempt; disable it for a replay or use the manual converter.
+
+Windows maintenance checks share one runner, require real FFmpeg codec tests in CI, and cover failed/recovered FLAC and Ogg conversion, corrupt source/output, manual conversion conflicts and original retention. Checked procedure-pointer loading replaces incompatible casts. Classic UI, 1–30x behavior, Downloads-off effective 1x, cached PlayerAPI/per-entry UIDs, Unicode/legacy/podcast layouts, strict capture validation and file-based status remain intact.
+
+## RC67 overview
 
 RC67 addresses the RC66 maintenance review and includes RC63–RC66. PR #64 remains a test candidate pending live validation on Spotify **1.3.1.234.g59d6bf59, Windows x64**. It does **not** claim to eliminate decoder stalls, random pauses or historical missing-stream failures.
 

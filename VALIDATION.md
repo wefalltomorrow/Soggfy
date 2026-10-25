@@ -1,4 +1,36 @@
-## RC67 candidate scope
+## RC68 candidate scope
+
+RC68 includes all earlier candidate changes. Local validation uses Zig 0.13 with
+assertions enabled (-UNDEBUG); shipped binaries still use MinGW CI. All twelve
+JavaScript suites cover paged rows, obsolete page cancellation and stale queue
+events, as well as existing pause/recovery and cached-player behavior.
+
+The Windows status suite checks 32,768 files and 128 misses with zero cold regex
+checks, 128 warm cache hits, unchanged-rescan reuse, added/deleted files,
+locked/unlocked candidates, ambiguity, title-free/nested-token custom templates,
+file/directory/depth limits, unavailable roots and cancellation during scan/match.
+Local cold lookup measured 547 ms and warm lookup 0 ms at millisecond resolution.
+The separate diagnostic measured 813 ms; RC67 measured about 46 seconds on that
+synthetic miss workload. These are not live Spotify performance measurements.
+
+Conversion tests use controlled failures and real FFmpeg: MP3 320 kbps full
+decode, generated FLAC/Ogg failure-then-retry, corrupt/truncated native sources,
+existing destinations, cancellation and original preservation. Manual-script
+tests cover empty/corrupt output, failed conversion, raced files/directories,
+320k arguments, explicit deletion only after validation and temporary cleanup.
+CI installs FFmpeg and requires the real-codec cases through the shared Windows
+maintenance runner. The fake converter tests control flow, not codec validity.
+
+Live validation remains outstanding on Spotify 1.3.1.234.g59d6bf59 Windows x64:
+check large playlists, changed save folders, skip policies/player replacement,
+retained-native conversion retry and normal 1x/30x capture/playback. Retry occurs
+only when capture reaches existing-file publication; it is not a background job.
+Incomplete/reparse-limited libraries show uncertainty. The cooperative lookup
+deadline cannot interrupt a blocked OS call or individual regex operation.
+Preserve RC63–RC67. Do not merge, publish an official release or install into
+live Spotify before the separate live-validation gate is satisfied.
+
+## RC67 candidate scope (included in RC68)
 
 RC67 targets Spotify **1.3.1.234.g59d6bf59, Windows x64** and includes RC63–RC66.
 The maintenance gate adds twelve total JavaScript suites and bounded existing-file

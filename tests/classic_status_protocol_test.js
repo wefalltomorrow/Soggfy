@@ -64,5 +64,39 @@ const tick=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
  r.sgf.invalidateStatusCache();const swap=r.sgf.checkQueue({nextUp:[queued('swap')]});await tick();
  r.sgf.player={async removeFromQueue(){throw Error('wrong player');}};
  resolve(new Map([[info('swap').uri,{status:'DONE'}]]));await swap;assert.strictEqual(r.removed.length,1);
+ // Disabled events cannot later be replayed against a new player.
+ const disabled=harness();disabled.sgf.state.skipDownloaded=false;
+ await disabled.sgf.checkQueue({nextUp:[queued('obsolete')]});
+ disabled.sgf.player={_queue:{getQueue:async()=>({nextUp:[queued('current')]})},
+   async removeFromQueue(items){disabled.removed.push(items);}};
+ disabled.sgf.state.skipDownloaded=true;
+ disabled.sgf.requestStatuses=async items=>new Map(items.map(i=>[i.uri,{status:'DONE'}]));
+ await disabled.sgf.checkQueue();assert.strictEqual(disabled.removed[0][0].uid,'uid-current');
+ // A pending event saved during active work must also belong to the player consuming it.
+ const owner=harness();let complete;
+ owner.sgf.requestStatuses=()=>new Promise(done=>{complete=done;});
+ const active=owner.sgf.checkQueue({nextUp:[queued('active')]});await tick();
+ await owner.sgf.checkQueue({nextUp:[queued('pending')]});
+ owner.sgf.player={_queue:{getQueue:async()=>({nextUp:[queued('replacement')]})},
+   async removeFromQueue(items){owner.removed.push(items);}};
+ complete(new Map());await active;
+ owner.sgf.requestStatuses=async items=>new Map(items.map(i=>[i.uri,{status:'DONE'}]));
+ await owner.sgf.checkQueue();assert.strictEqual(owner.removed[0][0].uid,'uid-replacement');
+ // All visible rows are paged, and duplicate URIs consume no extra slots.
+ const visible=harness(),infos=Array.from({length:257},(_,i)=>info('visible'+i));
+ visible.sgf.trackInfoFromRows=()=>[...infos,infos[0]];visible.sgf.renderVisibleStatuses=()=>{};
+ visible.sgf.refreshVisibleStatuses();
+ const refresh=[...visible.timers.values()].find(t=>t.ms===120).fn();
+ let pages=0;
+ while(visible.sgf.statusActive){
+   ++pages;const job=visible.sgf.statusActive;
+   visible.reply(visible.sent.at(-1)[1],job.infos.map(i=>row(i,'DONE')).join('\x1e'));await tick();
+ }
+ await refresh;assert.strictEqual(pages,3);assert.strictEqual(visible.sgf.statusMap.size,257);
+ // Invalidation between pages cancels the rest of the obsolete refresh.
+ visible.sgf.refreshVisibleStatuses();
+ const obsoleteRefresh=[...visible.timers.values()].filter(t=>t.ms===120).at(-1).fn();
+ const sends=visible.sent.length;visible.sgf.invalidateStatusCache();await obsoleteRefresh;
+ assert.strictEqual(visible.sent.length,sends);
  console.log('PASS: correlated replies, bounds/coalescing, timeout/send/empty handling, cache expiry, invalidation, removal retry and queue/player races');
 })().catch(e=>{console.error(e);process.exitCode=1;});

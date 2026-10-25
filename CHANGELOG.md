@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.68 — large-library lookup and conversion retries (test build)
+
+- Filter impossible filenames before regex matching, retain match caches across unchanged rescans, and recheck unreadable candidates. Extend the benchmark to 32,768 files and 128 queries.
+- Bound directory traversal and cooperatively cancel obsolete/expired requests. Report incomplete scans as uncertain instead of authoritative downloaded/missing status.
+- Page visible rows beyond 128 and discard obsolete pages. Bind pending queue events to their player, settings, policy and age.
+- Validate manual conversion output before original deletion; use MP3 320 kbps, unique temporary files and publication without overwrite.
+- Retry conversion of recognized, fully decoded existing Ogg/FLAC files when capture reaches an existing-file branch. Preserve those originals and conflicting destinations.
+- Require real FFmpeg tests in the shared Windows maintenance runner and use checked procedure-pointer loading. Preserve RC63–RC67 and the separate live-validation gate.
+
 ## 3.0.0-rc.67 — conversion safety and status maintenance (test build)
 
 - Protect native audio when an existing conversion destination is invalid, unreadable or a directory. Fully decode new output before publication and optional original deletion. Retain originals even when a pre-existing output decodes, since its capture identity is unproven.

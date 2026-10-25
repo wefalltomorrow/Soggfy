@@ -19,4 +19,8 @@ bool ConversionRequested(const Settings& settings,const std::wstring& native_pat
 PostProcessResult PostProcessPublishedFile(const std::wstring& native_path,const Settings& settings,
                                            const std::vector<unsigned char>& cover,
                                            const std::wstring& cover_extension,const PostProcessControl& control={});
+// Retry only from a locked, identified and fully decoded existing native file.
+// Existing files are always retained, independently of the new-capture option.
+PostProcessResult RetryPostProcessExistingFile(const std::wstring& native_path,const Settings& settings,
+                                              const PostProcessControl& control={});
 }

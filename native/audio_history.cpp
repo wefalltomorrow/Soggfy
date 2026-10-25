@@ -244,12 +244,29 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
         LogActivity("publish_path",line);QueueDiagnostic(line);
     }
     Quality quality=c.Encoding(),lossless;
+    const auto retry_existing=[&](const std::wstring& path)->PublicationResult {
+        PostProcessControl control;
+        control.canceled=[generation=settings.generation,epoch=settings.capture_epoch] {
+            return !workers_running.load(std::memory_order_acquire)||CaptureEpoch()!=epoch||GetSettings().generation!=generation;
+        };
+        if(control.canceled())return {Publication::Skipped,path,"settings changed"};
+        const auto post=RetryPostProcessExistingFile(path,settings,control);
+        if(post.state==PostProcessResult::State::Failed) {
+            LogActivity("conversion_retry_failed",post.error);
+            return {Publication::Failed,path,post.error};
+        }
+        if(post.state==PostProcessResult::State::Converted) {
+            LogActivity("conversion_retry_done",Utf8(post.path));
+            return {Publication::Saved,post.path,{}};
+        }
+        return {Publication::Skipped,post.path.empty()?path:post.path,"Already downloaded"};
+    };
     if(!c.lossless && ReadQuality(flac,lossless) && lossless.codec==Codec::Flac) {
-        Log(("SKIP existing lossless file "+Utf8(flac)).c_str()); return {Publication::Skipped,flac,"Already downloaded"};
+        Log(("KEEP existing lossless file "+Utf8(flac)).c_str()); return retry_existing(flac);
     }
     SaveDecision decision=DecideSave(destination,quality);
     if(decision==SaveDecision::Skip) {
-        Log(("SKIP existing equal, higher or unverified quality "+Utf8(destination)).c_str()); return {Publication::Skipped,destination,"Already downloaded"};
+        Log(("KEEP existing equal, higher or unverified quality "+Utf8(destination)).c_str()); return retry_existing(destination);
     }
     Tags tags;
     tags.fields={{"TITLE",Utf8(heard.media.title)},{"ARTIST",Utf8(heard.media.artist)},
@@ -286,10 +303,10 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
     auto latest=GetSettings();
     if(latest.generation!=settings.generation || !latest.downloads || !(c.lossless ? latest.flac : latest.ogg)) return {Publication::Skipped,{},"settings changed"};
     if(!Directories(destination.substr(0,destination.find_last_of(L'\\')))) return {Publication::Failed,{},"output directory could not be created"};
-    // First and only audio disk write: the complete, tagged file. No scratch
-    // paths, sidecars, per-song directories, decoder or encoder are involved.
+    // Publish the complete tagged native capture before optional sidecars and
+    // conversion. Conflicts preserve the existing file and may retry conversion.
     auto publication=PublishBytes(destination,quality,tagged.data(),tagged.size());
-    if(publication==FilePublication::Skipped) return {Publication::Skipped,destination,"Already downloaded"};
+    if(publication==FilePublication::Skipped) return retry_existing(destination);
     if(publication==FilePublication::Failed) {
         Log("final publication failed; existing file retained");
         return {Publication::Failed,{},"final publication failed"};

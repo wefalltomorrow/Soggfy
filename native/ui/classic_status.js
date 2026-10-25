@@ -189,6 +189,7 @@ function finishStatus(job,map){
 }
 sgf.invalidateStatusCache=()=>{
   ++statusEpoch;
+  pendingQueueEvent=null;
   sgf.statusMap.clear();queueStatusCache.clear();
   if(sgf.statusActive)finishStatus(sgf.statusActive,new Map());
   for(const job of sgf.statusQueue.splice(0))finishStatus(job,new Map());
@@ -285,14 +286,24 @@ sgf.renderVisibleStatuses=()=>{
     target.prepend(n);t.row.__sgf_status_ind=n;
   }
 };
-let refreshTimer=0,lastStatusDiag=0;
+let refreshTimer=0,lastStatusDiag=0,visibleRevision=0;
 sgf.refreshVisibleStatuses=()=>{
+  const revision=++visibleRevision;
   clearTimeout(refreshTimer);
   refreshTimer=setTimeout(async()=>{
-    const infos=sgf.trackInfoFromRows();
-    const epoch=statusEpoch;
-    const statuses=await sgf.requestStatuses(infos);
-    if(epoch!==statusEpoch)return;
+    const rows=sgf.trackInfoFromRows();
+    // Resolve each URI once, starting with the viewport when row geometry is available.
+    const inView=info=>{const r=info.row?.getBoundingClientRect?.();return !r||
+      (r.bottom>=0&&r.top<=(window.innerHeight||Infinity));};
+    const infos=[...new Map([...rows.filter(inView),...rows.filter(i=>!inView(i))]
+      .filter(i=>i?.uri&&i?.title).map(i=>[i.uri,i])).values()];
+    const epoch=statusEpoch,path=location.pathname,statuses=new Map();
+    for(let i=0;i<infos.length;i+=STATUS_LIMITS.batch){
+      if(epoch!==statusEpoch||revision!==visibleRevision||path!==location.pathname)return;
+      const page=await sgf.requestStatuses(infos.slice(i,i+STATUS_LIMITS.batch));
+      if(epoch!==statusEpoch||revision!==visibleRevision||path!==location.pathname)return;
+      for(const [uri,value] of page)statuses.set(uri,value);
+    }
     sgf.renderVisibleStatuses();
     // A low-frequency diagnostic makes it possible to distinguish failed
     // row discovery from a stale or unreturned native status response.
@@ -362,9 +373,19 @@ function queueDiagnostic(details,force=false){
   sgf.send('status_diag','queue '+details.slice(0,430));
 }
 sgf.checkQueue=async eventData=>{
-  if(eventData!==undefined){++queueRevision;pendingQueueEvent={data:eventData};}
-  if(queueBusy||(!sgf.state.skipDownloaded&&!sgf.state.skipIgnored)||!sgf.player)return;
-  if(pendingQueueEvent){eventData=pendingQueueEvent.data;pendingQueueEvent=null;}
+  const policy=()=>[!!sgf.state.skipDownloaded,!!sgf.state.skipIgnored].join(',');
+  if(eventData!==undefined){
+    ++queueRevision;
+    pendingQueueEvent={data:eventData,player:sgf.player,epoch:statusEpoch,policy:policy(),time:Date.now()};
+  }
+  if((!sgf.state.skipDownloaded&&!sgf.state.skipIgnored)||!sgf.player){pendingQueueEvent=null;return;}
+  if(queueBusy)return;
+  if(pendingQueueEvent){
+    const pending=pendingQueueEvent;pendingQueueEvent=null;
+    const age=Date.now()-pending.time;
+    eventData=pending.player===sgf.player&&pending.epoch===statusEpoch&&pending.policy===policy()&&
+      age>=0&&age<STATUS_LIMITS.doneAge?pending.data:undefined;
+  }
   queueBusy=true;
   const epoch=statusEpoch,player=sgf.player,revision=queueRevision;
   try{

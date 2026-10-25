@@ -24,6 +24,14 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
 
+RC68 improves large-library status lookup and pages long visible track lists.
+Incomplete library scans show a warning. Conversion retries can reuse a validated
+retained Ogg/FLAC file while preserving it; retries occur when a capture reaches
+publication, so Skip Downloaded may need to be disabled for a replay. The manual
+PostProcess script validates output before deleting an original and uses MP3
+320 kbps. See RELEASE_NOTES.md and VALIDATION.md for candidate test results and
+the remaining live Spotify validation requirement.
+
 ## Install
 
 **RC40 targets Spotify Windows x64 1.3.1.234.** That is the runtime-validated baseline for Soggfy's native 1-30x playback-speed hook. The Spotify 1.3.3.264 experiment line has been rolled back rather than carried into this build. Existing saved speeds above 30x are automatically limited to 30x. Other Spotify versions fail closed for native playback speed. Microsoft Store installs remain unvalidated.

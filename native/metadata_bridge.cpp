@@ -13,6 +13,7 @@
 #include "vendor/minhook/include/MinHook.h"
 #include "../build/metadata_script.h"
 #include "../build/soggfy_ui_script.h"
+#include "procedure_cast.h"
 #include <atomic>
 #include <algorithm>
 #include <array>
@@ -258,6 +259,7 @@ struct Message { ULONGLONG time=0; char data[131073];size_t length=0;};
 static std::array<Message,4> messages;static size_t head=0,tail=0,count=0;static HANDLE message_event=nullptr;
 static SRWLOCK ui_status_lock=SRWLOCK_INIT;
 static std::string ui_status_request,ui_status_response;
+static std::atomic<uint64_t> ui_status_sequence{0};
 static HANDLE status_event=nullptr;
 static constexpr size_t kClassicStatusBatchLimit=128;
 
@@ -295,20 +297,23 @@ static std::string SerializeClassicStatuses(const std::vector<ClassicTrackResult
  return out;
 }
 static void QueueClassicStatusRequest(const std::string& request) {
- AcquireSRWLockExclusive(&ui_status_lock);ui_status_request=request;ReleaseSRWLockExclusive(&ui_status_lock);
+ AcquireSRWLockExclusive(&ui_status_lock);ui_status_request=request;++ui_status_sequence;ReleaseSRWLockExclusive(&ui_status_lock);
  if(status_event)SetEvent(status_event);
 }
 static void ProcessClassicStatusRequest() {
  std::string request;
- AcquireSRWLockExclusive(&ui_status_lock);request.swap(ui_status_request);ReleaseSRWLockExclusive(&ui_status_lock);
+ AcquireSRWLockExclusive(&ui_status_lock);request.swap(ui_status_request);const auto sequence=ui_status_sequence.load();ReleaseSRWLockExclusive(&ui_status_lock);
  if(request.empty())return;
  const auto separator=request.find(char(0x1d));
  if(separator==std::string::npos||separator==0||separator>96)return;
  const auto id=request.substr(0,separator);
  if(id.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.")!=std::string::npos)return;
  std::string result=id+char(0x1d);
- try {result+=SerializeClassicStatuses(QueryClassicTrackStatuses(ParseClassicStatusBatch(request.substr(separator+1))));}
+ ClassicStatusControl control;
+ control.canceled=[sequence]{return !metadata_running.load()||ui_status_sequence.load()!=sequence;};
+ try {result+=SerializeClassicStatuses(QueryClassicTrackStatuses(ParseClassicStatusBatch(request.substr(separator+1)),nullptr,control));}
  catch(...) {HistoryLog("classic status lookup failed; returning an empty correlated reply");}
+ if(control.canceled())return;
  AcquireSRWLockExclusive(&ui_status_lock);ui_status_response=std::move(result);ReleaseSRWLockExclusive(&ui_status_lock);
  SchedulePoll();
 }
@@ -679,12 +684,12 @@ void StartMetadataCollector(HMODULE cef) {
  if(!metadata_init.TryBegin(now))return;
  auto settings=GetSettings();
  if(!settings.metadata&&!settings.classic_ui){HistoryLog("CEF bridge disabled: Metadata=0 and Classic UI=0");metadata_init.MarkUnsupported();return;}
- auto address=GetProcAddress(cef,"cef_version_info");int(*version)(int)=nullptr;static_assert(sizeof(version)==sizeof(address));memcpy(&version,&address,sizeof(version));
+ auto version=ProcedureCast<int(*)(int)>(GetProcAddress(cef,"cef_version_info"));
  if(!version||!cef_compat::IsSupported({version(0),version(1),version(2),version(3)})){
   HistoryLog("metadata CEF identity unsupported; revision is not in the audited compatibility table");metadata_init.MarkUnsupported();return;
  }
- auto post_address=GetProcAddress(cef,"cef_post_task");memcpy(&post_task,&post_address,sizeof(post_task));
- auto browser_address=GetProcAddress(cef,"cef_browser_host_get_browser_by_identifier");memcpy(&get_browser_by_id,&browser_address,sizeof(get_browser_by_id));
+ post_task=ProcedureCast<decltype(post_task)>(GetProcAddress(cef,"cef_post_task"));
+ get_browser_by_id=ProcedureCast<decltype(get_browser_by_id)>(GetProcAddress(cef,"cef_browser_host_get_browser_by_identifier"));
  if(!post_task){HistoryLog("metadata collector unsupported: cef_post_task missing");metadata_init.MarkUnsupported();return;}
  browser_discovery_ready_at=GetTickCount64()+1500;
  if(!get_browser_by_id)HistoryLog("CEF post-start discovery export unavailable; browser-creation hooks only");

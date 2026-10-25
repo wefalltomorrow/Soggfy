@@ -3,6 +3,7 @@
 #include "classic_ui_backend.h"
 #include "classic_path_match.h"
 #include "history_settings.h"
+#include "library_layout.h"
 #include <array>
 #include <atomic>
 #include <algorithm>
@@ -17,8 +18,13 @@
 
 namespace history {
 namespace {
-constexpr ULONGLONG kIndexLifetime=10000,kRecentLifetime=120000;
-constexpr size_t kMaxIndexedFiles=100000,kPatternCacheSize=512;
+constexpr ULONGLONG kRecentLifetime=120000;
+constexpr size_t kPatternCacheSize=512;
+std::wstring Fold(std::wstring value) {
+    const auto& facet=std::use_facet<std::ctype<wchar_t>>(std::locale());
+    if(!value.empty())facet.tolower(&value[0],&value[0]+value.size());
+    return value;
+}
 std::atomic<unsigned> status_revision{0};
 std::mutex query_mutex;
 struct Recent {
@@ -71,8 +77,14 @@ bool InRoot(const std::wstring& path,const std::wstring& root) {
     } catch(...) {return false;}
 }
 struct IndexedFile {
-    std::wstring relative,display;
+    std::wstring relative,display,folded;
+    uint64_t size=0,modified=0;
+    bool operator==(const IndexedFile& other) const {
+        return relative==other.relative&&size==other.size&&modified==other.modified;
+    }
 };
+bool index_complete=false;
+ClassicStatusControl index_limits;
 std::wstring index_root;
 unsigned index_revision=0;
 uint64_t index_generation=0;
@@ -80,9 +92,12 @@ ULONGLONG index_time=0;
 std::shared_ptr<const std::vector<IndexedFile>> index_files=
     std::make_shared<const std::vector<IndexedFile>>();
 
-std::shared_ptr<const std::vector<IndexedFile>> FileIndex(const std::wstring& configured_root,ULONGLONG now,ClassicStatusMetrics& metrics) {
+std::shared_ptr<const std::vector<IndexedFile>> FileIndex(const std::wstring& configured_root,ULONGLONG now,ClassicStatusMetrics& metrics,
+    const ClassicStatusControl& control,const std::function<bool()>& stopped) {
     const unsigned revision=ClassicStatusRevision();
-    const bool fresh=index_root==configured_root&&index_revision==revision&&now>=index_time&&now-index_time<kIndexLifetime;
+    const bool same_limits=index_limits.max_files==control.max_files&&index_limits.max_directories==control.max_directories&&
+        index_limits.max_depth==control.max_depth;
+    const bool fresh=same_limits&&index_root==configured_root&&index_revision==revision&&now>=index_time&&now-index_time<control.index_lifetime_ms;
     if(fresh) {
         auto snapshot=index_files;
         return snapshot;
@@ -102,19 +117,25 @@ std::shared_ptr<const std::vector<IndexedFile>> FileIndex(const std::wstring& co
     std::vector<Dir> stack;
     DWORD scan_error=ERROR_SUCCESS;
     std::size_t visited_dirs=0;
+    size_t scheduled_dirs=1;
+    bool complete=true;
     const DWORD root_attrs=root.empty()?INVALID_FILE_ATTRIBUTES:
         GetFileAttributesW(WindowsPath(root).c_str());
     if(root_attrs!=INVALID_FILE_ATTRIBUTES && (root_attrs&FILE_ATTRIBUTE_DIRECTORY))
         stack.push_back({L"",0});
-    else
+    else {
         scan_error=GetLastError();
-    while(!stack.empty() && built.size()<kMaxIndexedFiles) {
+        complete=false;
+    }
+    while(!stack.empty() && built.size()<control.max_files) {
+        if(stopped()){complete=false;break;}
         auto dir=std::move(stack.back());stack.pop_back();
         const std::wstring folder=root+(dir.relative.empty()?L"":L"\\"+dir.relative);
         const auto search=WindowsPath(folder+L"\\*");
         WIN32_FIND_DATAW data{};
         HANDLE finder=FindFirstFileW(search.c_str(),&data);
         if(finder==INVALID_HANDLE_VALUE) {
+            complete=false;
             const DWORD error=GetLastError();
             if(error!=ERROR_FILE_NOT_FOUND && error!=ERROR_PATH_NOT_FOUND && scan_error==ERROR_SUCCESS)
                 scan_error=error;
@@ -122,38 +143,48 @@ std::shared_ptr<const std::vector<IndexedFile>> FileIndex(const std::wstring& co
         }
         ++visited_dirs;
         do {
+            if(stopped()){complete=false;break;}
             const std::wstring name(data.cFileName);
             if(name==L"." || name==L"..")continue;
             const auto relative=dir.relative.empty()?name:dir.relative+L"\\"+name;
             if(data.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY) {
-                if(!(data.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)&&dir.depth<12)
+                if(!(data.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)&&dir.depth<control.max_depth&&scheduled_dirs<control.max_directories) {
                     stack.push_back({relative,dir.depth+1});
-            } else if(built.size()<kMaxIndexedFiles) {
-                built.push_back({relative,root+L"\\"+relative});
+                    ++scheduled_dirs;
+                } else complete=false;
+            } else if(built.size()<control.max_files) {
+                built.push_back({relative,root+L"\\"+relative,Fold(relative),
+                    (uint64_t(data.nFileSizeHigh)<<32)|data.nFileSizeLow,
+                    (uint64_t(data.ftLastWriteTime.dwHighDateTime)<<32)|data.ftLastWriteTime.dwLowDateTime});
             }
-        } while(FindNextFileW(finder,&data) && built.size()<kMaxIndexedFiles);
+        } while(FindNextFileW(finder,&data) && built.size()<control.max_files);
         const DWORD error=GetLastError();
         if(error!=ERROR_NO_MORE_FILES && error!=ERROR_SUCCESS && scan_error==ERROR_SUCCESS)
             scan_error=error;
         FindClose(finder);
     }
+    if(!stack.empty()||built.size()>=control.max_files||scan_error!=ERROR_SUCCESS)complete=false;
     if(DebugLoggingEnabled()) {
         char log[320];
         std::snprintf(log,sizeof(log),
-            "classic disk index file_count=%llu directory_count=%llu root_exists=%d root_attributes=0x%lx last_error=%lu",
+            "classic disk index file_count=%llu directory_count=%llu root_exists=%d root_attributes=0x%lx last_error=%lu complete=%d",
             static_cast<unsigned long long>(built.size()),
             static_cast<unsigned long long>(visited_dirs),
             root_attrs!=INVALID_FILE_ATTRIBUTES && (root_attrs&FILE_ATTRIBUTE_DIRECTORY)?1:0,
             static_cast<unsigned long>(root_attrs),
-            static_cast<unsigned long>(scan_error));
+            static_cast<unsigned long>(scan_error),complete?1:0);
         HistoryLog(log);
     }
 
-    index_root=configured_root;
+    // A canceled scan must never replace the previous authoritative snapshot.
+    if(stopped())return {};
+    std::sort(built.begin(),built.end(),[](const IndexedFile& a,const IndexedFile& b){return a.relative<b.relative;});
+    if(index_root!=configured_root||index_revision!=revision||index_complete!=complete||!same_limits||built!=*index_files)
+        ++index_generation;
+    index_root=configured_root;index_complete=complete;index_limits=control;index_limits.canceled={};
     index_time=GetTickCount64();
     metrics.scan_ms+=index_time-scan_started;
     index_revision=revision;
-    ++index_generation;
     index_files=std::make_shared<const std::vector<IndexedFile>>(std::move(built));
     auto snapshot=index_files;
     return snapshot;
@@ -162,13 +193,30 @@ std::shared_ptr<const std::vector<IndexedFile>> FileIndex(const std::wstring& co
 struct Compiled {
     std::wregex current,flat,original;
     bool legacy=false;
+    bool unreadable_candidate=false;
     uint64_t generation=0;
     std::vector<std::wstring> matches;
+    std::wstring current_title,original_title;
+    std::vector<std::wstring> legacy_titles;
 };
 using CacheList=std::list<std::pair<std::wstring,Compiled>>;
 CacheList patterns;
 std::map<std::wstring,CacheList::iterator> pattern_lookup;
 std::wstring cached_configuration;
+bool RequiresTitle(const std::wstring& pattern) {
+    if(pattern.empty())return true;
+    bool found=false;
+    for(size_t at=0;(at=pattern.find(L'{',at))!=std::wstring::npos;) {
+        const auto close=pattern.find(L'}',at+1);
+        if(close==std::wstring::npos)break;
+        // Unknown/nested tokens are permissive in the path matcher. Avoid a
+        // mandatory literal for those templates, including multi-disc expansion.
+        if(pattern.find(L'{',at+1)<close)return false;
+        found=found||pattern.substr(at,close-at+1)==L"{track_name}";
+        at=close+1;
+    }
+    return found;
+}
 Compiled& Pattern(const ClassicTrackQuery& q,const Settings& s,ClassicStatusMetrics& metrics) {
     const auto key=Key({std::wstring(q.uri.begin(),q.uri.end()),q.title,q.artist,q.album,q.all_artists});
     const auto found=pattern_lookup.find(key);
@@ -180,6 +228,13 @@ Compiled& Pattern(const ClassicTrackQuery& q,const Settings& s,ClassicStatusMetr
     Compiled item;
     ClassicPathQuery query{q.title,q.artist,q.album,q.all_artists};
     const auto& path_template=q.uri.rfind("spotify:episode:",0)==0&&!s.podcast_template.empty()?s.podcast_template:s.path_template;
+    // These literals are necessary parts of their respective regex, not replacements
+    // for matching. Templates without a title token retain the complete fallback.
+    if(RequiresTitle(path_template))
+        item.current_title=Fold(EscapePathValue(q.title,path_template.empty()?L"-":s.invalid_char_repl,L"Untitled"));
+    item.original_title=Fold(EscapePathValue(q.title,L"unicode",L"Untitled"));
+    for(const auto& mode:{L"unicode",L"-",L"_",L""})
+        item.legacy_titles.push_back(Fold(EscapePathValue(q.title,mode,L"Untitled")));
     const auto flags=std::regex_constants::ECMAScript|std::regex_constants::icase;
     item.current=std::wregex(BuildClassicPathRegex(query,path_template,s.output_ext,
         s.normalize_artist_separators,s.invalid_char_repl,true),flags);
@@ -214,10 +269,12 @@ void SetClassicTrackStatus(const Media& media,const char* status,const std::stri
     }
     if(std::string(status)=="DONE")status_revision.fetch_add(1,std::memory_order_release);
 }
-std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<ClassicTrackQuery>& queries,ClassicStatusMetrics* output_metrics) {
+std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<ClassicTrackQuery>& queries,ClassicStatusMetrics* output_metrics,
+                                                        const ClassicStatusControl& control) {
     std::lock_guard<std::mutex> guard(query_mutex);
     ClassicStatusMetrics metrics;
     const auto started=GetTickCount64();
+    const auto stopped=[&]{return (control.canceled&&control.canceled())||GetTickCount64()-started>=control.timeout_ms;};
     const auto settings=GetSettings();const auto configuration=Configuration(settings);
     if(cached_configuration!=configuration){patterns.clear();pattern_lookup.clear();cached_configuration=configuration;}
     std::array<Recent,64> live;
@@ -225,6 +282,7 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
     std::shared_ptr<const std::vector<IndexedFile>> files;
     std::vector<ClassicTrackResult> results;results.reserve(queries.size());
     for(const auto& q:queries) {
+        if(stopped())break;
         ClassicTrackResult result;result.uri=q.uri;
         const Recent* newest=nullptr;
         for(const auto& entry:live) {
@@ -239,25 +297,36 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
         }
         try {
             auto& compiled=Pattern(q,settings,metrics);
-            if(!files)files=FileIndex(settings.root,started,metrics);
-            bool fresh=compiled.generation==index_generation;
+            if(!files)files=FileIndex(settings.root,started,metrics,control,stopped);
+            if(!files||stopped())break;
+            bool fresh=compiled.generation==index_generation&&!compiled.unreadable_candidate;
             if(fresh)for(const auto& path:compiled.matches)if(!FilePresent(path)){fresh=false;break;}
             if(fresh)++metrics.cache_hits;
             else {
                 const auto match_started=GetTickCount64();
                 compiled.matches.clear();
+                compiled.unreadable_candidate=false;
                 auto matches=[&](const std::wstring& path,const std::wregex& regex){++metrics.regex_checks;return std::regex_match(path,regex);};
                 for(const auto& file:*files) {
-                    if((matches(file.relative,compiled.current)||(compiled.legacy&&
-                       (matches(file.relative,compiled.flat)||matches(file.relative,compiled.original))))&&FilePresent(file.display)) {
+                    if(stopped())break;
+                    const auto contains=[&](const std::wstring& title){return file.folded.find(title)!=std::wstring::npos;};
+                    const bool current=contains(compiled.current_title);
+                    const bool legacy=compiled.legacy&&std::any_of(compiled.legacy_titles.begin(),compiled.legacy_titles.end(),contains);
+                    const bool original=compiled.legacy&&contains(compiled.original_title);
+                    if((current&&matches(file.relative,compiled.current))||
+                       (legacy&&matches(file.relative,compiled.flat))||
+                       (original&&matches(file.relative,compiled.original))) {
+                        if(!FilePresent(file.display)){compiled.unreadable_candidate=true;continue;}
                         compiled.matches.push_back(file.display);
                         if(compiled.matches.size()==2)break;
                     }
                 }
+                if(stopped()){compiled.matches.clear();compiled.generation=0;break;}
                 compiled.generation=index_generation;
                 metrics.match_ms+=GetTickCount64()-match_started;
             }
-            if(compiled.matches.size()==1){result.status="DONE";result.path=compiled.matches.front();}
+            if(!index_complete){result.status="WARN";result.message="Library scan incomplete; downloaded status is uncertain";}
+            else if(compiled.matches.size()==1){result.status="DONE";result.path=compiled.matches.front();}
             else if(compiled.matches.size()>1){result.status="WARN";result.message="Different tracks mapping to the same file name";}
             // A fresh publication may have richer naming metadata than a UI row.
             // Only use its real path after ordinary ambiguity checking, in this root.

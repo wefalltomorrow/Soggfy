@@ -5,13 +5,14 @@ param(
     [ValidateSet('mp3','aac','opus','flac')]
     [string]$Format = 'mp3',
     [switch]$DeleteOriginal,
-    [switch]$Watch
+    [switch]$Watch,
+    [string]$FFmpegPath = 'ffmpeg'
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$ffmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
+$ffmpeg = Get-Command $FFmpegPath -ErrorAction SilentlyContinue
 if (-not $ffmpeg) {
     throw 'FFmpeg was not found in PATH.'
 }
@@ -37,31 +38,45 @@ function Convert-One([string]$Path) {
 
     $directory = [IO.Path]::GetDirectoryName($dest)
     $baseName = [IO.Path]::GetFileNameWithoutExtension($dest)
-    $temp = Join-Path $directory "$baseName.soggfy-converting.$outputExtension"
+    $temp = Join-Path $directory "$baseName.soggfy-converting-$([guid]::NewGuid().ToString('N')).$outputExtension"
     $codec = switch ($Format) {
-        'mp3'  { @('-c:a','libmp3lame','-q:a','0') }
+        'mp3'  { @('-c:a','libmp3lame','-b:a','320k','-id3v2_version','3') }
         'aac'  { @('-c:a','aac','-b:a','256k') }
         'opus' { @('-c:a','libopus','-b:a','192k') }
         'flac' { @('-c:a','flac') }
     }
 
-    $args = @('-hide_banner','-loglevel','warning','-nostdin','-i',$Path,'-map','0:a:0','-map_metadata','0')
+    $args = @('-y','-hide_banner','-loglevel','warning','-nostdin','-i',$Path,'-map','0:a:0','-map_metadata','0')
     if ($Format -ne 'opus') {
         $args += @('-map','0:v?','-c:v','copy')
     }
     $args += $codec
-    $args += @('-y',$temp)
+    $args += $temp
 
-    & $ffmpeg.Source @args
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $temp)) {
-        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
-        throw "FFmpeg failed for '$Path'."
-    }
-
-    Move-Item -LiteralPath $temp -Destination $dest
-    Write-Host "$Path -> $dest"
-    if ($DeleteOriginal) {
-        Remove-Item -LiteralPath $Path -Force
+    $sourceLock = $null
+    try {
+        # Permit FFmpeg to read, but prevent concurrent writers during conversion.
+        $sourceLock = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        if ($sourceLock.Length -eq 0) { throw "Source is empty: '$Path'." }
+        & $ffmpeg.Source @args
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $temp -PathType Leaf) -or
+            (Get-Item -LiteralPath $temp).Length -eq 0) {
+            throw "FFmpeg failed or produced empty output for '$Path'; original retained."
+        }
+        & $ffmpeg.Source -hide_banner -loglevel error -xerror -abort_on empty_output -nostdin -i $temp -map 0:a:0 -f null -
+        if ($LASTEXITCODE -ne 0 -or (Get-Item -LiteralPath $temp).Length -eq 0) {
+            throw "Converted audio validation failed for '$Path'; original retained."
+        }
+        # File.Move never overwrites or moves the output inside a raced directory.
+        [IO.File]::Move($temp, $dest)
+        $sourceLock.Dispose(); $sourceLock = $null
+        Write-Host "$Path -> $dest"
+        if ($DeleteOriginal) { Remove-Item -LiteralPath $Path -Force }
+    } finally {
+        if ($null -ne $sourceLock) { $sourceLock.Dispose() }
+        if (Test-Path -LiteralPath $temp -PathType Leaf) {
+            Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 

@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <shlobj.h>
 #include "post_process.h"
+#include "existing_quality.h"
 #include "history_settings.h"
 #include <algorithm>
 #include <filesystem>
@@ -128,9 +129,9 @@ bool ConversionRequested(const Settings& settings,const std::wstring& native_pat
     return ext!=ExtensionOf(native_path);
 }
 
-PostProcessResult PostProcessPublishedFile(const std::wstring& native_path,const Settings& settings,
+static PostProcessResult ProcessFile(const std::wstring& native_path,const Settings& settings,
                                            const std::vector<unsigned char>& cover,
-                                           const std::wstring& cover_extension,const PostProcessControl& control) {
+                                           const std::wstring& cover_extension,const PostProcessControl& control,bool existing) {
     PostProcessResult result;result.path=native_path;
     if(!ConversionRequested(settings,native_path))return result;
 
@@ -169,6 +170,11 @@ PostProcessResult PostProcessPublishedFile(const std::wstring& native_path,const
         result.error="Cannot inspect output destination; native original retained";return result;
     }
 
+    if(existing&&!ValidateAudio(ffmpeg,native_path,control,deadline,result.error)) {
+        result.state=PostProcessResult::State::Failed;
+        result.error="Existing native validation failed: "+result.error+"; original retained";
+        return result;
+    }
     static volatile LONG seq=0;
     const LONG id=InterlockedIncrement(&seq);
     auto temp=final.parent_path()/
@@ -187,6 +193,8 @@ PostProcessResult PostProcessPublishedFile(const std::wstring& native_path,const
     const auto final_ext=ExtensionOf(result.path);
     if(!cover_path.empty() && (final_ext==L"mp3"||final_ext==L"m4a"||final_ext==L"mp4")) {
         command+=L" -i "+Quote(cover_path)+L" -map 0:a:0 -map 1:v:0 -map_metadata 0 -c:v copy -disposition:v attached_pic";
+    } else if(existing&&settings.embed_cover_art&&(final_ext==L"mp3"||final_ext==L"m4a"||final_ext==L"mp4")) {
+        command+=L" -map 0:a:0 -map 0:v? -map_metadata 0 -c:v copy -disposition:v attached_pic";
     } else {
         command+=L" -map 0:a:0 -map_metadata 0";
     }
@@ -204,7 +212,9 @@ PostProcessResult PostProcessPublishedFile(const std::wstring& native_path,const
         std::wstring fallback=L"-y -hide_banner -loglevel warning -nostdin -i "+Quote(native_path);
         if(!cover_path.empty()) {
             fallback+=L" -i "+Quote(cover_path)+L" -map 0:a:0 -map 1:v:0 -map_metadata 0 -c:v copy -disposition:v attached_pic";
-        } else fallback+=L" -map 0:a:0 -map_metadata 0";
+        } else if(existing&&settings.embed_cover_art)
+            fallback+=L" -map 0:a:0 -map 0:v? -map_metadata 0 -c:v copy -disposition:v attached_pic";
+        else fallback+=L" -map 0:a:0 -map_metadata 0";
         const auto preset=Lower(settings.output_preset);
         if(preset.find(L"224k vbr")!=std::wstring::npos)fallback+=L" -c:a aac -q:a 2";
         else if(preset.find(L"160k")!=std::wstring::npos)fallback+=L" -c:a aac -b:a 160k";
@@ -241,5 +251,23 @@ PostProcessResult PostProcessPublishedFile(const std::wstring& native_path,const
 
     result.state=PostProcessResult::State::Converted;
     return result;
+}
+PostProcessResult PostProcessPublishedFile(const std::wstring& native_path,const Settings& settings,
+    const std::vector<unsigned char>& cover,const std::wstring& cover_extension,const PostProcessControl& control) {
+    return ProcessFile(native_path,settings,cover,cover_extension,control,false);
+}
+PostProcessResult RetryPostProcessExistingFile(const std::wstring& native_path,const Settings& settings,const PostProcessControl& control) {
+    if(!ConversionRequested(settings,native_path))return {PostProcessResult::State::Native,native_path,{}};
+    struct SourceLock {
+        HANDLE handle=INVALID_HANDLE_VALUE;
+        ~SourceLock(){if(handle!=INVALID_HANDLE_VALUE)CloseHandle(handle);}
+    } source;
+    source.handle=CreateFileW(WindowsPath(native_path).c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+    Quality quality;
+    if(source.handle==INVALID_HANDLE_VALUE||!ReadQuality(native_path,quality)||
+       (quality.codec!=Codec::Flac&&quality.codec!=Codec::Vorbis))
+        return {PostProcessResult::State::Failed,native_path,"Existing native file is unreadable or unverified; original retained"};
+    auto retained=settings;retained.keep_native_original=true;
+    return ProcessFile(native_path,retained,{},L"",control,true);
 }
 }

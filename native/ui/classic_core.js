@@ -100,7 +100,7 @@ sgf.flag = (p,key,fallback) => {
 
 sgf.applyConfig = payload => {
   try {
-    const statusKey=()=>JSON.stringify(['root','template','podcastTemplate','invalidChars','outputExt','normalize'].map(key=>sgf.state[key]));
+    const statusKey=()=>JSON.stringify(['root','template','podcastTemplate','invalidChars','outputExt','normalize','skipDownloaded','skipIgnored'].map(key=>sgf.state[key]));
     const before=statusKey();
     const p=new URLSearchParams(payload||'');
     const bools=['downloads','ogg','flac','metadata','log','debug','normalize','skipDownloaded','skipIgnored','embedCover','saveCover','embedLyrics','saveLyrics','saveCanvas','blockTelemetry','liftQueue','keepNative'];
