@@ -3,15 +3,25 @@
 #include "file_publication.h"
 #include "history_settings.h"
 namespace history {
-static bool WriteNew(const std::wstring& path,const void* bytes,size_t size) {
+static bool WriteNew(const std::wstring& path,const void* bytes,size_t size,bool flush=false) {
     if(!size || size>MAXDWORD) return false;
     auto name=WindowsPath(path);
     HANDLE file=CreateFileW(name.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
     if(file==INVALID_HANDLE_VALUE) return false;
     DWORD written=0;
-    bool ok=WriteFile(file,bytes,DWORD(size),&written,nullptr) && written==size;
+    bool ok=WriteFile(file,bytes,DWORD(size),&written,nullptr) && written==size && (!flush||FlushFileBuffers(file));
     CloseHandle(file);
     if(!ok) DeleteFileW(name.c_str());
+    return ok;
+}
+bool ReplaceCompleteFile(const std::wstring& path,const void* bytes,size_t size) {
+    static volatile LONG sequence=0;
+    const auto staging=path+L".export-"+std::to_wstring(GetCurrentProcessId())+L"-"+
+        std::to_wstring(InterlockedIncrement(&sequence));
+    if(!WriteNew(staging,bytes,size,true))return false;
+    const bool ok=MoveFileExW(WindowsPath(staging).c_str(),WindowsPath(path).c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=0;
+    if(!ok)DeleteFileW(WindowsPath(staging).c_str());
     return ok;
 }
 FilePublication PublishBytes(const std::wstring& path,const Quality& quality,const void* bytes,size_t size) {

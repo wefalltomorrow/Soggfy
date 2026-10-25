@@ -21,6 +21,10 @@ $InputPath = [Environment]::ExpandEnvironmentVariables($InputPath)
 if (-not (Test-Path -LiteralPath $InputPath)) {
     throw "Input path does not exist: $InputPath"
 }
+$InputPath = (Resolve-Path -LiteralPath $InputPath).ProviderPath
+if ($Watch -and -not (Test-Path -LiteralPath $InputPath -PathType Container)) {
+    throw '-Watch requires a directory InputPath.'
+}
 
 function Convert-One([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
@@ -46,7 +50,8 @@ function Convert-One([string]$Path) {
         'flac' { @('-c:a','flac') }
     }
 
-    $args = @('-y','-hide_banner','-loglevel','warning','-nostdin','-i',$Path,'-map','0:a:0','-map_metadata','0')
+    # A playable output does not prove all input frames decoded successfully.
+    $args = @('-y','-hide_banner','-loglevel','warning','-xerror','-abort_on','empty_output','-nostdin','-i',$Path,'-map','0:a:0','-map_metadata','0')
     if ($Format -ne 'opus') {
         $args += @('-map','0:v?','-c:v','copy')
     }
@@ -80,24 +85,39 @@ function Convert-One([string]$Path) {
     }
 }
 
+$retry = @{}
 function Convert-Tree {
     param([string]$Root)
     if (Test-Path -LiteralPath $Root -PathType Leaf) {
         Convert-One $Root
     } else {
-        Get-ChildItem -LiteralPath $Root -File -Recurse |
+        Get-ChildItem -LiteralPath $Root -File -Recurse -ErrorAction Continue |
             Where-Object { $_.Extension -in '.ogg','.flac' } |
-            ForEach-Object { Convert-One $_.FullName }
+            ForEach-Object {
+                if (-not $Watch) { Convert-One $_.FullName; return }
+                $path = $_.FullName
+                $stamp = "$($_.Length):$($_.LastWriteTimeUtc.Ticks)"
+                $previous = $retry[$path]
+                if ($previous -and $previous.Stamp -eq $stamp -and [DateTime]::UtcNow -lt $previous.Next) { return }
+                try {
+                    Convert-One $path
+                    $retry.Remove($path)
+                } catch {
+                    # A stable file size does not mean its writer has closed.
+                    # Retry individual failures without stopping other conversions.
+                    $delay = if ($previous -and $previous.Stamp -eq $stamp) { [Math]::Min(60, $previous.Delay * 2) } else { 2 }
+                    if ($retry.Count -ge 4096 -and -not $retry.ContainsKey($path)) {
+                        $oldest = $retry.Keys | Sort-Object { $retry[$_].Next } | Select-Object -First 1
+                        $retry.Remove($oldest)
+                    }
+                    $retry[$path] = @{ Stamp = $stamp; Delay = $delay; Next = [DateTime]::UtcNow.AddSeconds($delay) }
+                    Write-Warning "Conversion deferred for '$path': $($_.Exception.Message)"
+                }
+            }
     }
 }
 
-Convert-Tree $InputPath
-
 if ($Watch) {
-    if (-not (Test-Path -LiteralPath $InputPath -PathType Container)) {
-        throw '-Watch requires a directory InputPath.'
-    }
-
     $watcher = [IO.FileSystemWatcher]::new($InputPath)
     $watcher.IncludeSubdirectories = $true
     $watcher.Filter = '*.*'
@@ -106,22 +126,18 @@ if ($Watch) {
     Write-Host "Watching $InputPath for completed Ogg/FLAC captures. Press Ctrl+C to stop."
     try {
         while ($true) {
-            $event = $watcher.WaitForChanged([IO.WatcherChangeTypes]'Created, Renamed', 1000)
-            if ($event.TimedOut) { continue }
-            $path = Join-Path $InputPath $event.Name
-            if ([IO.Path]::GetExtension($path).ToLowerInvariant() -notin '.ogg','.flac') { continue }
-
-            $last = -1L
-            for ($i = 0; $i -lt 20; $i++) {
-                Start-Sleep -Milliseconds 250
-                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
-                $size = (Get-Item -LiteralPath $path).Length
-                if ($size -gt 0 -and $size -eq $last) { break }
-                $last = $size
+            # Reconciliation is authoritative. Events only shorten the idle wait:
+            # events during encoding, overflow, startup and renamed directories
+            # are all recovered on the next pass, without an unbounded event queue.
+            Convert-Tree $InputPath
+            foreach ($path in @($retry.Keys)) {
+                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { $retry.Remove($path) }
             }
-            Convert-One $path
+            $null = $watcher.WaitForChanged([IO.WatcherChangeTypes]'Created, Renamed, Changed', 2000)
         }
     } finally {
         $watcher.Dispose()
     }
+} else {
+    Convert-Tree $InputPath
 }

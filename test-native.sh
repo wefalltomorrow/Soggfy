@@ -65,6 +65,8 @@ node tests/classic_status_icons_test.js
 node tests/classic_row_binding_test.js
 node tests/classic_skip_downloaded_test.js
 node tests/classic_status_protocol_test.js
+node tests/classic_m3u_test.js
+python3 tests/package_release_test.py
 node tests/classic_speed_limit_test.js
 node tests/classic_player_discovery_test.js
 node tests/classic_cached_player_skip_test.js

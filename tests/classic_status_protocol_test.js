@@ -19,7 +19,7 @@ function harness(){
 const info=n=>({uri:'spotify:track:'+n,title:'Song '+n,artist:'Artist',album:'Album',allArtists:'Artist'});
 const row=(i,status)=>[i.uri,status,'path',''].join('\x1f');
 const queued=n=>({uri:info(n).uri,uid:'uid-'+n,name:info(n).title,artists:[{name:'Artist'}],album:{name:'Album'}});
-const tick=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
+const tick=async()=>{for(let i=0;i<24;i++)await Promise.resolve();};
 (async()=>{
  const h=harness(),{sgf}=h,a=info('A'),b=info('B');
  const pa=sgf.requestStatuses([a]),first=h.sent[0][1];
@@ -98,5 +98,35 @@ const tick=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
  const obsoleteRefresh=[...visible.timers.values()].filter(t=>t.ms===120).at(-1).fn();
  const sends=visible.sent.length;visible.sgf.invalidateStatusCache();await obsoleteRefresh;
  assert.strictEqual(visible.sent.length,sends);
- console.log('PASS: correlated replies, bounds/coalescing, timeout/send/empty handling, cache expiry, invalidation, removal retry and queue/player races');
+ // A queue read that never settles must not disable all subsequent work.
+ const hung=harness();let finishRead;
+ hung.sgf.player._queue={getQueue:()=>new Promise(resolve=>{finishRead=resolve;})};
+ const stuck=hung.sgf.checkQueue();await tick();hung.expire();await stuck;
+ hung.sgf.requestStatuses=async items=>new Map(items.map(i=>[i.uri,{status:'DONE'}]));
+ await hung.sgf.checkQueue({nextUp:[queued('after-timeout')]});assert.strictEqual(hung.removed.length,1);
+ finishRead({nextUp:[queued('late')]});await tick();assert.strictEqual(hung.removed.length,1);
+ // Replacement player can progress immediately; old finally cannot unlock its work.
+ const swapped=harness();let oldRead,newRead;
+ swapped.sgf.player._queue={getQueue:()=>new Promise(resolve=>{oldRead=resolve;})};
+ const oldRun=swapped.sgf.checkQueue();await tick();
+ swapped.sgf.player={_queue:{getQueue:()=>new Promise(resolve=>{newRead=resolve;})},
+   removeFromQueue:async items=>swapped.removed.push(items)};
+ swapped.sgf.requestStatuses=async items=>new Map(items.map(i=>[i.uri,{status:'DONE'}]));
+ const newRun=swapped.sgf.checkQueue();await tick();assert(newRead);
+ oldRead({nextUp:[queued('old-player')]});await oldRun;
+ await swapped.sgf.checkQueue(); // Must not start a second read on this player.
+ newRead({nextUp:[queued('new-player')]});await newRun;assert.strictEqual(swapped.removed.length,1);
+ // A timed-out mutation remains reserved, including after invalidation.
+ const mutation=harness();let finishRemove,calls=0;
+ mutation.sgf.requestStatuses=async items=>new Map(items.map(i=>[i.uri,{status:'DONE'}]));
+ mutation.sgf.player.removeFromQueue=items=>{calls++;mutation.removed.push(items);
+   return calls===1?new Promise(resolve=>{finishRemove=resolve;}):Promise.resolve();};
+ const removal=mutation.sgf.checkQueue({nextUp:[queued('reserved')]});await tick();
+ mutation.expire();await removal;mutation.sgf.invalidateStatusCache();
+ await mutation.sgf.checkQueue({nextUp:[queued('reserved'),{...queued('reserved'),uid:'another-copy'}]});
+ assert.strictEqual(calls,2);assert.strictEqual(mutation.removed[1].length,1);
+ assert.strictEqual(mutation.removed[1][0].uid,'another-copy');
+ finishRemove();await tick();mutation.advance(3000);
+ await mutation.sgf.checkQueue({nextUp:[queued('reserved')]});assert.strictEqual(calls,3);
+ console.log('PASS: correlated statuses, pagination, queue timeout recovery, player replacement, reserved mutations and stale completions');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -8,6 +8,7 @@
 #include "media_session.h"
 #include "history_settings.h"
 #include "library_layout.h"
+#include "file_publication.h"
 #include <algorithm>
 #include <atomic>
 #include <array>
@@ -81,21 +82,9 @@ static DWORD WINAPI SaveM3UWorker(LPVOID param) {
                         std::replace(value.begin(),value.end(),L'\\',L'/');
                         data+=Utf8Path(value)+"\n\n";
                     }
-                    HANDLE file=CreateFileW(WindowsPath(output.wstring()).c_str(),GENERIC_WRITE,0,nullptr,
-                                            CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
-                    if(file!=INVALID_HANDLE_VALUE) {
-                        DWORD written=0;
-                        bool ok=data.size()<=MAXDWORD &&
-                            WriteFile(file,data.data(),DWORD(data.size()),&written,nullptr) &&
-                            written==data.size();
-                        CloseHandle(file);
-                        if(!ok) {
-                            DeleteFileW(WindowsPath(output.wstring()).c_str());
-                            HistoryLog("failed to write generated M3U playlist");
-                        } else {
-                            HistoryLog(("generated M3U tracks="+std::to_string(job->entries.size())).c_str());
-                        }
-                    } else HistoryLog("failed to create generated M3U playlist");
+                    if(ReplaceCompleteFile(output.wstring(),data.data(),data.size()))
+                        HistoryLog(("generated M3U tracks="+std::to_string(job->entries.size())).c_str());
+                    else HistoryLog("failed to save generated M3U playlist; existing file retained");
                     CoTaskMemFree(selected);
                 }
                 item->Release();

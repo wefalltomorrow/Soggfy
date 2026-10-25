@@ -189,7 +189,7 @@ static PostProcessResult ProcessFile(const std::wstring& native_path,const Setti
         if(!WriteBytes(cover_path,cover))cover_path.clear();
     }
 
-    std::wstring command=L"-y -hide_banner -loglevel warning -nostdin -i "+Quote(native_path);
+    std::wstring command=L"-y -hide_banner -loglevel warning -xerror -abort_on empty_output -nostdin -i "+Quote(native_path);
     const auto final_ext=ExtensionOf(result.path);
     if(!cover_path.empty() && (final_ext==L"mp3"||final_ext==L"m4a"||final_ext==L"mp4")) {
         command+=L" -i "+Quote(cover_path)+L" -map 0:a:0 -map 1:v:0 -map_metadata 0 -c:v copy -disposition:v attached_pic";
@@ -204,18 +204,19 @@ static PostProcessResult ProcessFile(const std::wstring& native_path,const Setti
 
     DWORD exit_code=~0u;
     bool launched=Run(ffmpeg,command,exit_code,control,deadline,result.error);
-    if(launched&&exit_code!=0 && final_ext==L"m4a" &&
-       Lower(settings.output_preset).find(L"fdk aac")!=std::wstring::npos) {
+    const auto preset=Lower(settings.output_preset);
+    const bool aac_preset=preset==L"m4a 256k"||preset==L"m4a 224k vbr"||preset==L"m4a 160k"||
+        preset==L"m4a 256k (fdk aac)"||preset==L"m4a 224k vbr (fdk aac)"||preset==L"m4a 160k (fdk aac)";
+    if(launched&&exit_code!=0 && final_ext==L"m4a" && aac_preset) {
         // Most redistributable FFmpeg builds omit non-free libfdk_aac. Preserve
         // old Soggfy's UI preset but fall back to FFmpeg's native AAC encoder.
         DeleteFileW(WindowsPath(temp.wstring()).c_str());
-        std::wstring fallback=L"-y -hide_banner -loglevel warning -nostdin -i "+Quote(native_path);
+        std::wstring fallback=L"-y -hide_banner -loglevel warning -xerror -abort_on empty_output -nostdin -i "+Quote(native_path);
         if(!cover_path.empty()) {
             fallback+=L" -i "+Quote(cover_path)+L" -map 0:a:0 -map 1:v:0 -map_metadata 0 -c:v copy -disposition:v attached_pic";
         } else if(existing&&settings.embed_cover_art)
             fallback+=L" -map 0:a:0 -map 0:v? -map_metadata 0 -c:v copy -disposition:v attached_pic";
         else fallback+=L" -map 0:a:0 -map_metadata 0";
-        const auto preset=Lower(settings.output_preset);
         if(preset.find(L"224k vbr")!=std::wstring::npos)fallback+=L" -c:a aac -q:a 2";
         else if(preset.find(L"160k")!=std::wstring::npos)fallback+=L" -c:a aac -b:a 160k";
         else fallback+=L" -c:a aac -b:a 256k";

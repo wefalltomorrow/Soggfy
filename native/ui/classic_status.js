@@ -323,7 +323,7 @@ sgf.refreshVisibleStatuses=()=>{
 // the queue_update event's data.nextUp. The event is authoritative: do
 // not silently replace its tracks with a separate/stale queued snapshot.
 // Spotify 1.3.x can also expose nextTracks and next_tracks.
-async function queueSnapshot(eventData){
+async function queueSnapshot(eventData,player){
   const candidates=[
     ['event.nextUp',eventData?.nextUp],
     ['event.queue.nextUp',eventData?.queue?.nextUp],
@@ -334,7 +334,7 @@ async function queueSnapshot(eventData){
   for(const [source,list] of candidates)
     if(Array.isArray(list))return {list,source};
   try{
-    const snapshot=await sgf.player?._queue?.getQueue?.();
+    const snapshot=await player?._queue?.getQueue?.();
     for(const key of ['nextUp','nextTracks','queued','next']){
       if(Array.isArray(snapshot?.[key]))
         return {list:snapshot[key],source:'getQueue.'+key};
@@ -365,7 +365,17 @@ function queuedInfo(entry){
 // Cache confirmed results briefly; settings/publication changes invalidate them.
 // Keep each queue UID and never cache an unanswered lookup.
 const queueStatusCache=new Map();
-let queueBusy=false,lastQueueDiagnostic=0,queueRevision=0,pendingQueueEvent=null;
+let queueRun=null,lastQueueDiagnostic=0,queueRevision=0,pendingQueueEvent=null;
+// A timeout cannot cancel a player mutation. Keep its exact entries reserved
+// until the underlying promise settles, including across status invalidation.
+const queueRemovals=new WeakMap();
+const queueEntryKey=track=>JSON.stringify([track.uri,track.uid??null]);
+function boundedQueueCall(call){
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(Error('Player queue operation timed out')),STATUS_LIMITS.timeout);
+    Promise.resolve().then(call).then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});
+  });
+}
 function queueDiagnostic(details,force=false){
   const now=Date.now();
   if(!sgf.state.debug||(!force&&now-lastQueueDiagnostic<20000))return;
@@ -379,17 +389,19 @@ sgf.checkQueue=async eventData=>{
     pendingQueueEvent={data:eventData,player:sgf.player,epoch:statusEpoch,policy:policy(),time:Date.now()};
   }
   if((!sgf.state.skipDownloaded&&!sgf.state.skipIgnored)||!sgf.player){pendingQueueEvent=null;return;}
-  if(queueBusy)return;
+  if(queueRun?.player===sgf.player&&queueRun?.epoch===statusEpoch)return;
   if(pendingQueueEvent){
     const pending=pendingQueueEvent;pendingQueueEvent=null;
     const age=Date.now()-pending.time;
     eventData=pending.player===sgf.player&&pending.epoch===statusEpoch&&pending.policy===policy()&&
       age>=0&&age<STATUS_LIMITS.doneAge?pending.data:undefined;
   }
-  queueBusy=true;
   const epoch=statusEpoch,player=sgf.player,revision=queueRevision;
+  const run=queueRun={player,epoch};
+  const current=()=>queueRun===run&&epoch===statusEpoch&&player===sgf.player&&revision===queueRevision;
   try{
-    const {list,source}=await queueSnapshot(eventData);
+    const {list,source}=await boundedQueueCall(()=>queueSnapshot(eventData,player));
+    if(!current())return;
     // A missing snapshot is not an empty queue: retry on the next event/poll.
     if(!list){queueDiagnostic('source=unavailable');return;}
     const infos=list.map(queuedInfo).filter(info=>info.uri);
@@ -409,7 +421,7 @@ sgf.checkQueue=async eventData=>{
       for(let i=0;i<pending.length;i+=STATUS_LIMITS.batch){
         const page=pending.slice(i,i+STATUS_LIMITS.batch);
         const statuses=await sgf.requestStatuses(page);
-        if(epoch!==statusEpoch||player!==sgf.player||revision!==queueRevision)return;
+        if(!current())return;
         for(const info of page){
           // A timeout/partial response must not poison the queue cache.
           if(statuses.has(info.uri))
@@ -418,21 +430,27 @@ sgf.checkQueue=async eventData=>{
         }
       }
     }
-    if(epoch!==statusEpoch||player!==sgf.player||revision!==queueRevision)return;
+    if(!current())return;
+    let inFlight=queueRemovals.get(player);
+    if(!inFlight){inFlight=new Set();queueRemovals.set(player,inFlight);}
     const remove=infos.filter(info=>
       (sgf.state.skipIgnored&&sgf.isTrackIgnored(info.ignoreTarget))||
       (sgf.state.skipDownloaded&&queueStatusCache.get(info.uri)?.done===true&&Date.now()-queueStatusCache.get(info.uri).time<STATUS_LIMITS.doneAge))
-      .map(info=>info.track);
+      .map(info=>info.track).filter(track=>!inFlight.has(queueEntryKey(track)))
+      .slice(0,Math.max(0,STATUS_LIMITS.queue-inFlight.size));
     if(remove.length){
-      const removeFn=sgf.player.removeFromQueue||sgf.player._queue?.removeFromQueue;
+      const removeFn=player.removeFromQueue||player._queue?.removeFromQueue;
       if(typeof removeFn==='function'){
         // Failed removals must trigger a fresh disk lookup on the next attempt.
         const removedCache=remove.map(track=>[track.uri,queueStatusCache.get(track.uri)]);
         for(const track of remove)queueStatusCache.delete(track.uri);
-        await removeFn.call(
-          typeof sgf.player.removeFromQueue==='function'?sgf.player:sgf.player._queue,
-          remove);
-        if(epoch===statusEpoch&&player===sgf.player&&revision===queueRevision)for(const [uri,cached] of removedCache)if(cached)queueStatusCache.set(uri,cached);
+        for(const track of remove)inFlight.add(queueEntryKey(track));
+        await boundedQueueCall(()=>Promise.resolve().then(()=>{
+          if(!current())throw Error('Queue changed before removal');
+          return removeFn.call(typeof player.removeFromQueue==='function'?player:player._queue,remove);
+        })
+          .finally(()=>{for(const track of remove)inFlight.delete(queueEntryKey(track));}));
+        if(current())for(const [uri,cached] of removedCache)if(cached)queueStatusCache.set(uri,cached);
         queueDiagnostic('removed='+remove.length+' source='+source,true);
       }else{
         queueDiagnostic('removeFromQueue unavailable source='+source,true);
@@ -447,8 +465,10 @@ sgf.checkQueue=async eventData=>{
     console.warn('Soggfy queue skip failed',e);
   }finally{
     while(queueStatusCache.size>STATUS_LIMITS.queue)queueStatusCache.delete(queueStatusCache.keys().next().value);
-    queueBusy=false;
-    if(pendingQueueEvent)setTimeout(()=>sgf.checkQueue(),0);
+    if(queueRun===run){
+      queueRun=null;
+      if(pendingQueueEvent)setTimeout(()=>sgf.checkQueue(),0);
+    }
   }
 };
 

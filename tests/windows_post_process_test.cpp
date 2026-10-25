@@ -38,7 +38,9 @@ int main() {
         return bytes=="valid-audio"||bytes==identifiedFlac()?0:2;
     }
     if(argc>1&&args[1]==L"-y") {
+        assert(std::find(args.begin(),args.end(),L"-xerror")!=args.end());
         const auto mode=env(L"SGF_TEST_MODE");
+        if(mode==L"no-fdk"&&std::find(args.begin(),args.end(),L"libfdk_aac")!=args.end())return 1;
         if(mode==L"hang"||mode==L"cancel") {
             std::wstring command=L"\""+args[0]+L"\" child";STARTUPINFOW si{};si.cb=sizeof(si);PROCESS_INFORMATION pi{};
             assert(CreateProcessW(args[0].c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&si,&pi));
@@ -133,6 +135,17 @@ int main() {
     assert(RetryPostProcessExistingFile(native.wstring(),s).state==PostProcessResult::State::Failed);CloseHandle(locked);
     assert(read(native)==identifiedFlac()&&!fs::exists(final));
     const auto real=env(L"SGF_REAL_FFMPEG");
+    // Legacy preset aliases must get the same native AAC fallback as UI names.
+    for(const auto* preset:{L"m4a 256k",L"m4a 224k vbr",L"m4a 160k",L"m4a 256k (fdk aac)",L"m4a 224k vbr (fdk aac)",L"m4a 160k (fdk aac)"}) {
+        reset();auto aac=s;aac.output_ext=L"m4a";aac.output_preset=preset;
+        SetEnvironmentVariableW(L"SGF_TEST_MODE",L"no-fdk");
+        auto result=PostProcessPublishedFile(native.wstring(),aac,{},L"");
+        assert(result.state==PostProcessResult::State::Converted&&read(result.path)=="valid-audio");
+        fs::remove(result.path);
+    }
+    reset();auto custom=s;custom.output_ext=L"m4a";custom.output_preset=L"Custom";custom.output_args=L"-c:a libfdk_aac";
+    assert(PostProcessPublishedFile(native.wstring(),custom,{},L"").state==PostProcessResult::State::Failed);
+    assert(fs::exists(native));
     if(!real.empty()) {
         reset();wav(native);s.ffmpeg_path=real;
         const auto started=GetTickCount64();auto result=run(L"ok");
@@ -156,7 +169,14 @@ int main() {
             assert(RetryPostProcessExistingFile(fixture.path,s).state==PostProcessResult::State::Converted);
             assert(read(fixture.path)==original&&fs::file_size(final)>0);
             assert(RetryPostProcessExistingFile(fixture.path,s).state==PostProcessResult::State::Skipped);
-            fs::remove(final);write(fixture.path,original.substr(0,42));
+            fs::remove(final);
+            if(std::wstring(codec)==L"flac") {
+                auto damaged=original;assert(damaged.size()>256);
+                damaged.replace(damaged.size()-128,128,128,'\0');write(fixture.path,damaged);
+                assert(PostProcessPublishedFile(fixture.path,s,{},L"").state==PostProcessResult::State::Failed);
+                assert(read(fixture.path)==damaged&&!fs::exists(final));
+            }
+            write(fixture.path,original.substr(0,42));
             assert(RetryPostProcessExistingFile(fixture.path,s).state==PostProcessResult::State::Failed);
             assert(!fs::exists(final)&&fs::file_size(fixture.path)==42);fs::remove(fixture.path);
         }

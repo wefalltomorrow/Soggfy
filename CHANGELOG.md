@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.69 — conversion, queue and export reliability (test build)
+
+- Reject damaged-source encoding, support all built-in AAC fallback aliases, resolve relative manual inputs and reconcile/retry watched files.
+- Bound queue waits with per-player ownership and pending-removal reservations. Separate regex and result caches for larger working sets.
+- Paginate M3U collections, batch all status requests, reject incomplete responses and preserve prior playlists on failed saves.
+- Preflight installation earlier; retain older packages and replace ZIPs only after successful packaging.
+- Extend portable and Windows CI/release gates and document the remaining live-validation limits.
+
 ## 3.0.0-rc.68 — large-library lookup and conversion retries (test build)
 
 - Filter impossible filenames before regex matching, retain match caches across unchanged rescans, and recheck unreadable candidates. Extend the benchmark to 32,768 files and 128 queries.

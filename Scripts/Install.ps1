@@ -147,6 +147,15 @@ if ($RunSpotX -and $SkipSpotX) {
     Fail 'Use either -RunSpotX or -SkipSpotX, not both.'
 }
 
+# Check the package before stopping Spotify or changing its installation.
+$packageRoot = Split-Path -Parent $PSScriptRoot
+$sourceDll = Join-Path $packageRoot 'version.dll'
+$sourceIni = Join-Path $packageRoot 'SpotifyHistory.ini'
+if (-not (Test-Path -LiteralPath $sourceDll -PathType Leaf) -or (Get-Item -LiteralPath $sourceDll).Length -eq 0) {
+    Fail "version.dll is missing or empty in '$packageRoot'. Extract the full release ZIP first."
+}
+$sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceDll).Hash
+
 $SpotifyPath = [Environment]::ExpandEnvironmentVariables($SpotifyPath)
 $SpotifyPath = [IO.Path]::GetFullPath($SpotifyPath).TrimEnd('\')
 $defaultSpotifyPath = [IO.Path]::GetFullPath((Join-Path $env:APPDATA 'Spotify')).TrimEnd('\')
@@ -215,7 +224,7 @@ if ($installSpotX) {
         [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
     $spotxUrl = 'https://raw.githubusercontent.com/SpotX-Official/SpotX/refs/heads/main/run.ps1'
-    $spotxScript = Join-Path ([IO.Path]::GetTempPath()) 'soggfy-spotx-run.ps1'
+    $spotxScript = Join-Path ([IO.Path]::GetTempPath()) ('soggfy-spotx-run-' + [Guid]::NewGuid().ToString('N') + '.ps1')
     $spotxBackup = Join-Path ([IO.Path]::GetTempPath()) ('soggfy-spotx-backup-' + [Guid]::NewGuid().ToString('N'))
 
     Write-Host 'Downloading SpotX...'
@@ -290,17 +299,9 @@ else {
     Write-Warning "SpotX was skipped. Soggfy $InstallerVersion does not block ads or Spotify updates itself; only telemetry blocking remains native."
 }
 
-$packageRoot = Split-Path -Parent $PSScriptRoot
-$sourceDll = Join-Path $packageRoot 'version.dll'
-$sourceIni = Join-Path $packageRoot 'SpotifyHistory.ini'
-if (-not (Test-Path -LiteralPath $sourceDll -PathType Leaf)) {
-    Fail "version.dll is missing from '$packageRoot'. Extract the full release ZIP first."
-}
-
 $targetDll = Join-Path $SpotifyPath 'version.dll'
 $backupDll = Join-Path $SpotifyPath 'version.dll.soggfy-backup'
 
-$sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceDll).Hash
 if (Test-Path -LiteralPath $targetDll -PathType Leaf) {
     $targetHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $targetDll).Hash
     if ($targetHash -ne $sourceHash) {

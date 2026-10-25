@@ -1,3 +1,35 @@
+## RC69 candidate scope
+
+RC69 includes RC63–RC68. The maintenance audit covers the Classic UI/queue/export
+paths, native status/cache/publication/conversion, settings/logging/metadata, capture
+and recovery boundaries, installer, manual conversion, packaging and CI gates.
+It is a bounded source and automated-test audit, not proof that every line or live
+Spotify behavior is defect free.
+
+Local assertion-enabled Zig diagnostics pass the 32,768-file status suite, 640-query
+result-cache reuse and 4,096-entry eviction; native conversion with controlled failures
+and real FFmpeg; manual conversion; and Windows publication/settings checks. All
+13 JavaScript suites pass. Real watch tests cover arrivals during encoding, locked
+files, corrupt input, relative paths and invalid watch preflight. Packaging checks
+verify deterministic bytes and preservation of old/same-version ZIPs on failure.
+
+Both workflows now require the additional Windows publication, settings, logging,
+metadata/cache and playback-quality suites. CI must pass for the final commit before
+the candidate is accepted; local Zig diagnostics do not replace the MinGW build.
+
+Live validation remains required on Spotify 1.3.1.234.g59d6bf59 Windows x64: 1x/30x,
+Downloads-off speed, pause/recovery, Repeat One, Ogg/FLAC, long playlist/album export,
+player replacement, Unicode/custom/podcast paths and extended playback.
+Historical random pauses and decoder stalls are unresolved. Known remaining limits
+include recurring watch scans, manual FFmpeg without a process deadline, a small
+source-replacement window around optional deletion, nontransactional installer writes,
+and uninstall ownership if another tool replaces the installed DLL. Settings flush
+under concurrent newer writes warrants a dedicated concurrency test. These are
+explicit follow-up risks, not established regressions or claimed fixes.
+
+Preserve RC63–RC68. Do not merge, officially release or install into live Spotify
+before the separate live-validation gate.
+
 ## RC68 candidate scope
 
 RC68 includes all earlier candidate changes. Local validation uses Zig 0.13 with

@@ -104,7 +104,12 @@ int main() {
     assert(QueryClassicTrackStatuses({canceledQuery},nullptr,control).empty());
     control.canceled={};assert(QueryClassicTrackStatuses({canceledQuery},&warm,control).size()==1);
     assert(warm.cache_hits==0);
-    for(unsigned i=128;i<520;++i){auto item=query(L"Missing "+std::to_wstring(i));item.uri+=std::to_string(i);QueryClassicTrackStatuses({item});}
+    for(unsigned i=128;i<640;++i){auto item=query(L"Missing "+std::to_wstring(i));item.uri+=std::to_string(i);batch.push_back(item);}
+    QueryClassicTrackStatuses(batch);
+    QueryClassicTrackStatuses(batch,&warm);assert(warm.compilations==0&&warm.cache_hits==640);
+    // The small regex LRU may evict, but stable results survive a 640-song pass.
+    // Result storage itself still has a finite 4096-entry limit.
+    for(unsigned i=640;i<4740;++i){auto item=query(L"Missing "+std::to_wstring(i));item.uri+=std::to_string(i);QueryClassicTrackStatuses({item});}
     QueryClassicTrackStatuses({batch.front()},&warm);assert(warm.compilations==3&&warm.cache_hits==0);
     fs::remove_all(base);
     std::puts("PASS: real-file status reconciliation, publication/settings invalidation, ambiguity, Unicode/multi-artist/legacy/podcast paths and cached work counts");

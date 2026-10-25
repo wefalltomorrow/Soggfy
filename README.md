@@ -24,7 +24,8 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
 
-RC68 improves large-library status lookup and pages long visible track lists.
+RC69 improves conversion/watch reliability, queue recovery and complete M3U export.
+It also retains the RC68 large-library lookup and paged visible-track improvements.
 Incomplete library scans show a warning. Conversion retries can reuse a validated
 retained Ogg/FLAC file while preserving it; retries occur when a capture reaches
 publication, so Skip Downloaded may need to be disabled for a replay. The manual

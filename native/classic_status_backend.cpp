@@ -20,6 +20,7 @@ namespace history {
 namespace {
 constexpr ULONGLONG kRecentLifetime=120000;
 constexpr size_t kPatternCacheSize=512;
+constexpr size_t kMatchCacheSize=4096;
 std::wstring Fold(std::wstring value) {
     const auto& facet=std::use_facet<std::ctype<wchar_t>>(std::locale());
     if(!value.empty())facet.tolower(&value[0],&value[0]+value.size());
@@ -193,15 +194,36 @@ std::shared_ptr<const std::vector<IndexedFile>> FileIndex(const std::wstring& co
 struct Compiled {
     std::wregex current,flat,original;
     bool legacy=false;
-    bool unreadable_candidate=false;
-    uint64_t generation=0;
-    std::vector<std::wstring> matches;
     std::wstring current_title,original_title;
     std::vector<std::wstring> legacy_titles;
 };
 using CacheList=std::list<std::pair<std::wstring,Compiled>>;
 CacheList patterns;
 std::map<std::wstring,CacheList::iterator> pattern_lookup;
+// Results are cheap compared with compiled regexes. A paged refresh must not
+// recompile every query just because its working set exceeds the regex cache.
+struct Matches {
+    bool unreadable_candidate=false;
+    uint64_t generation=0;
+    std::vector<std::wstring> paths;
+};
+using MatchList=std::list<std::pair<std::wstring,Matches>>;
+MatchList match_cache;
+std::map<std::wstring,MatchList::iterator> match_lookup;
+std::wstring QueryKey(const ClassicTrackQuery& q) {
+    return Key({std::wstring(q.uri.begin(),q.uri.end()),q.title,q.artist,q.album,q.all_artists});
+}
+Matches& CachedMatches(const ClassicTrackQuery& q) {
+    const auto key=QueryKey(q);
+    const auto found=match_lookup.find(key);
+    if(found!=match_lookup.end()) {
+        match_cache.splice(match_cache.begin(),match_cache,found->second);
+        return found->second->second;
+    }
+    if(match_cache.size()>=kMatchCacheSize){match_lookup.erase(match_cache.back().first);match_cache.pop_back();}
+    match_cache.emplace_front(key,Matches{});match_lookup[key]=match_cache.begin();
+    return match_cache.front().second;
+}
 std::wstring cached_configuration;
 bool RequiresTitle(const std::wstring& pattern) {
     if(pattern.empty())return true;
@@ -218,7 +240,7 @@ bool RequiresTitle(const std::wstring& pattern) {
     return found;
 }
 Compiled& Pattern(const ClassicTrackQuery& q,const Settings& s,ClassicStatusMetrics& metrics) {
-    const auto key=Key({std::wstring(q.uri.begin(),q.uri.end()),q.title,q.artist,q.album,q.all_artists});
+    const auto key=QueryKey(q);
     const auto found=pattern_lookup.find(key);
     if(found!=pattern_lookup.end()) {
         patterns.splice(patterns.begin(),patterns,found->second);
@@ -276,7 +298,9 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
     const auto started=GetTickCount64();
     const auto stopped=[&]{return (control.canceled&&control.canceled())||GetTickCount64()-started>=control.timeout_ms;};
     const auto settings=GetSettings();const auto configuration=Configuration(settings);
-    if(cached_configuration!=configuration){patterns.clear();pattern_lookup.clear();cached_configuration=configuration;}
+    if(cached_configuration!=configuration){
+        patterns.clear();pattern_lookup.clear();match_cache.clear();match_lookup.clear();cached_configuration=configuration;
+    }
     std::array<Recent,64> live;
     {std::lock_guard<std::mutex> recent_guard(recent_mutex);live=recent;}
     std::shared_ptr<const std::vector<IndexedFile>> files;
@@ -296,16 +320,17 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
             results.push_back(std::move(result));continue;
         }
         try {
-            auto& compiled=Pattern(q,settings,metrics);
             if(!files)files=FileIndex(settings.root,started,metrics,control,stopped);
             if(!files||stopped())break;
-            bool fresh=compiled.generation==index_generation&&!compiled.unreadable_candidate;
-            if(fresh)for(const auto& path:compiled.matches)if(!FilePresent(path)){fresh=false;break;}
+            auto& cached=CachedMatches(q);
+            bool fresh=cached.generation==index_generation&&!cached.unreadable_candidate;
+            if(fresh)for(const auto& path:cached.paths)if(!FilePresent(path)){fresh=false;break;}
             if(fresh)++metrics.cache_hits;
             else {
+                auto& compiled=Pattern(q,settings,metrics);
                 const auto match_started=GetTickCount64();
-                compiled.matches.clear();
-                compiled.unreadable_candidate=false;
+                cached.paths.clear();
+                cached.unreadable_candidate=false;
                 auto matches=[&](const std::wstring& path,const std::wregex& regex){++metrics.regex_checks;return std::regex_match(path,regex);};
                 for(const auto& file:*files) {
                     if(stopped())break;
@@ -316,18 +341,18 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
                     if((current&&matches(file.relative,compiled.current))||
                        (legacy&&matches(file.relative,compiled.flat))||
                        (original&&matches(file.relative,compiled.original))) {
-                        if(!FilePresent(file.display)){compiled.unreadable_candidate=true;continue;}
-                        compiled.matches.push_back(file.display);
-                        if(compiled.matches.size()==2)break;
+                        if(!FilePresent(file.display)){cached.unreadable_candidate=true;continue;}
+                        cached.paths.push_back(file.display);
+                        if(cached.paths.size()==2)break;
                     }
                 }
-                if(stopped()){compiled.matches.clear();compiled.generation=0;break;}
-                compiled.generation=index_generation;
+                if(stopped()){cached.paths.clear();cached.generation=0;break;}
+                cached.generation=index_generation;
                 metrics.match_ms+=GetTickCount64()-match_started;
             }
             if(!index_complete){result.status="WARN";result.message="Library scan incomplete; downloaded status is uncertain";}
-            else if(compiled.matches.size()==1){result.status="DONE";result.path=compiled.matches.front();}
-            else if(compiled.matches.size()>1){result.status="WARN";result.message="Different tracks mapping to the same file name";}
+            else if(cached.paths.size()==1){result.status="DONE";result.path=cached.paths.front();}
+            else if(cached.paths.size()>1){result.status="WARN";result.message="Different tracks mapping to the same file name";}
             // A fresh publication may have richer naming metadata than a UI row.
             // Only use its real path after ordinary ambiguity checking, in this root.
             else if(newest&&newest->status=="DONE"&&InRoot(newest->path,settings.root)&&FilePresent(newest->path)) {

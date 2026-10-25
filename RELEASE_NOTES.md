@@ -1,6 +1,22 @@
-# Soggfy v3.0.0-rc.68 — large-library lookup and conversion retries (test build)
+# Soggfy v3.0.0-rc.69 — conversion, queue and export reliability (test build)
 
-RC68 addresses the six RC67 maintenance findings and includes RC63–RC67. The target remains Spotify **1.3.1.234.g59d6bf59, Windows x64**. Live validation is still required; historical random pauses and decoder stalls are not established as fixed.
+RC69 includes RC63–RC68 and the broader maintenance audit. The target remains Spotify **1.3.1.234.g59d6bf59, Windows x64**. Live validation is still required; historical random pauses and decoder stalls are not established as fixed.
+
+## RC69 changes
+
+Native and manual encoding now fail on decoding errors rather than accepting a playable partial output. The built-in AAC fallback also recognizes the three unsuffixed M4A presets; custom commands remain explicit. MP3 stays at 320 kbps.
+
+Manual conversion resolves relative paths and validates watch mode before changing files. Watch mode reconciles the directory after each pass, retries busy files with bounded backoff, and continues past individual failures. Files arriving during conversion are picked up on the next pass.
+
+Queue reads and removals have bounded waits. Run ownership prevents old work from unlocking a replacement player's operation. Unsettled removals reserve their URI/UID so a retry cannot submit the same entry twice.
+
+A separate 4,096-entry match-result cache avoids recompiling expressions when a working set exceeds the 512-expression cache. Repeating 640 unchanged queries produces 640 cache hits with zero new compilations in the regression fixture.
+
+M3U export follows capped API pages and checks every track in batches of 128. Duplicate playlist entries retain their order. Incomplete responses, failed calls and limits produce an error instead of silently truncated exports. Saving stages a complete file before replacing an existing playlist. Visible-row fallback is identified in the message.
+
+Installation checks the DLL before stopping Spotify or starting SpotX. Packaging preserves older archives and replaces a same-version ZIP only after the new archive finishes successfully. Windows publication/settings/logging/metadata/quality checks now run in both CI and release workflows; regression tests cover the new fixes.
+
+Automated checks are not live Spotify validation. Watch mode performs recurring full scans and manual FFmpeg calls have no deadline. Concurrent external replacement of a source around optional deletion is not fully protected. Historical pauses/decoder stalls and live API variants remain unverified; preserve RC63–RC68 and do not install, merge or release before the separate live gate.
 
 ## RC68 changes
 
