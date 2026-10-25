@@ -1,4 +1,27 @@
-## RC65 candidate scope
+## RC66 candidate scope
+
+RC66 targets Spotify **1.3.1.234.g59d6bf59, Windows x64**. Local portable
+tests use workspace Zig 0.13 with assertions explicitly enabled (`-UNDEBUG`);
+release binaries still use the established MinGW CI toolchain. The new
+`repeat_identity_test.cpp` combines the production accelerated clock and listen
+tracker at 1x, 2x, 10x and 30x. It covers two consecutive repeats, original start
+and completion times, titles arriving before/after confirmation, changed
+durations, timestamp refreshes, stale raw observations, seeks, missing coverage,
+pauses, rate changes, short repeats and the original two-second deadline.
+Capture tests also verify original-generation ownership and the unchanged
+ten-second completion deadline through delayed relabeling.
+
+A minimal full six-second same-title repeat fixture returns no completed listen
+on RC65 and exactly one on RC66 after one second of confirmation. Existing
+history/position tests, capture tests and all eleven JavaScript suites pass
+locally. CI runs the full native suite, Windows observer boundary test, release
+build and package checks. These are synthetic/source regressions, not live
+Spotify evidence. Repeat One, delayed titles, manual seeks/Next, pause/resume,
+Downloads toggles and correct MP3 metadata need live 1x/30x comparison before
+merge or release. Very short/sparse accelerated resets may be unrecognized;
+manual seeks near a natural end can be indistinguishable from a repeat.
+
+## RC65 scope (included in RC66)
 
 RC65 targets Spotify **1.3.1.234.g59d6bf59, Windows x64**, and includes RC64 below.
 `bash test-native.sh` now compiles `tests/capture_association_test.cpp` against
@@ -9,8 +32,8 @@ listens, rapid Next overlap, ownership across later transitions, competing
 captures, invalid streams, duration/start mismatches and a natural 30x transition.
 The test asserts that RC64's deletion predicate selects the late-callback fixture.
 This is a portable policy/codec regression, not a live Spotify or full Windows
-hook/worker integration test. No local C++ toolchain is available; CI must pass
-before distributing this candidate. Preserve RC63/RC64 packages for comparison.
+hook/worker integration test. CI must pass before distributing a candidate.
+Preserve RC63/RC64/RC65 packages for comparison.
 
 No historical missing-stream event is proven to have this cause. A stalled
 decoder that never supplies the final callback still times out. Unresolved

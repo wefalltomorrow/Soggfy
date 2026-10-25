@@ -49,8 +49,22 @@ RC65 selectively adapts late-capture retention from Mainkill1/Floggfy commit
 window and accelerated listen tracker, binds retention to the original completed
 listen and defers selection while a retained competing stream is incomplete.
 The shared portable policy is tested with actual Ogg and FLAC validators.
-Upstream repeat/delayed-identity generation changes and network defaults remain
-outside this candidate. The RC64 exclusions above describe RC64 specifically.
+The RC64 exclusions above describe RC64 specifically; RC65 did not include
+upstream repeat/delayed-identity generation changes. Network defaults remain
+outside RC66 as well.
+
+## RC66 selective repeat and identity adaptation
+
+Adapted from Mainkill1/Floggfy commits
+`1bb4bf303cf09b303cd3c585266479d7b100cb6d` (generation-aware repeats),
+`54f4ff416ab4280e33ccc0db5a62c83bf6c8abef` (external coverage invalidation), and
+`f27deafebf14f6929d34aee26da6f5e2367a57b7` (delayed title reconciliation).
+Soggfy retains its 1x–30x clock and adds raw-reset evidence, previous-rate
+continuity, immutable completion timing and generation-bound capture retention.
+The one-second confirmation and original two-second identity window are tested
+against normal and accelerated playback. This is a selective adaptation, not
+feature parity or a wholesale upstream timeline replacement. Live Spotify
+Repeat One behavior still needs validation.
 
 Playback-speed compatibility was independently reimplemented against the current x64 Spotify track-player calling convention and validated with structural PE checks. Public reverse-engineering references were used only to confirm the modern calling convention and pattern family; no third-party implementation source was vendored.
 

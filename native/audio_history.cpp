@@ -195,7 +195,7 @@ struct Capture {
     double Duration() const { return lossless && flac.rate ? double(coverage.samples)/flac.rate : stream.Duration(); }
     Quality Encoding() const { return lossless ? Quality{Codec::Flac,flac.rate,flac.channels,flac.bits,0} : Quality{Codec::Vorbis,stream.rate,stream.channels,0,stream.bitrate}; }
 };
-struct Heard { Media media; double start=0,finish=0; };
+struct Heard { Media media; double start=0,finish=0; uint64_t generation=0; };
 static Catalog CatalogFor(const Media& media) {
     Catalog c; c.title=media.title; c.album=media.album; c.track=media.track;
     c.album_artist=media.album_artist;
@@ -435,7 +435,7 @@ static DWORD WINAPI Worker(LPVOID) {
             if(dropped!=overflow) {
                 overflow=dropped;
                 if(!current.title.empty())SetClassicTrackStatus(current,"ERROR","Canceled: capture queue overflow");
-                active.clear(); ready.clear(); heard.clear(); listen.eligible=false; quality.ClearStreams();
+                active.clear(); ready.clear(); heard.clear(); listen.Invalidate(); quality.ClearStreams();
                 Log("capture queue overflow; streams and listening coverage invalidated");
             }
             Slot s;
@@ -579,6 +579,8 @@ static DWORD WINAPI Worker(LPVOID) {
             }
             if(enabled && observation==MediaRead::Ready) {
                 std::string previous=listen.identity; double previous_start=listen.start_time;
+                const auto previous_instance=listen.generation;
+                const auto previous_phase=listen.phase;
                 bool was_eligible=listen.eligible;const bool prior_playing=listen.playing;
                 double prior_position=listen.last_position,prior_duration=listen.duration,prior_time=listen.last_time;
                 if(DebugLoggingEnabled()) {
@@ -590,6 +592,14 @@ static DWORD WINAPI Worker(LPVOID) {
                     Log(line);
                 }
                 std::string done=listen.Observe(media.Key(),media.position,media.duration,media.playing,observed_at,playback_rate);
+                if(previous_instance!=listen.generation || previous_phase!=listen.phase || previous!=listen.identity) {
+                    char line[512];snprintf(line,sizeof(line),
+                        "listen_instance generation=%llu previous=%llu phase=%u previous_phase=%u relabeled=%d completed=%llu start=%.3f wrap=%.3f",
+                        static_cast<unsigned long long>(listen.generation),static_cast<unsigned long long>(previous_instance),
+                        unsigned(listen.phase),unsigned(previous_phase),previous!=listen.identity && previous_instance==listen.generation,
+                        static_cast<unsigned long long>(done.empty()?0:listen.completed_generation),listen.start_time,listen.wrap_time);
+                    Log(line);
+                }
                 if(was_eligible && !listen.eligible && done.empty()) {
                     const auto identity=Utf8(current.artist)+" - "+Utf8(current.title);
                     char line[1400]; snprintf(line,sizeof(line),
@@ -605,15 +615,18 @@ static DWORD WINAPI Worker(LPVOID) {
                         SetClassicTrackStatus(current,"IGNORED","Ignored");
                         LogActivity("finished",Utf8(current.artist)+" - "+Utf8(current.title)+" (ignored)");
                     } else {
-                        heard.push_back({current,previous_start,observed_at});
+                        auto completed_media=current;completed_media.duration=listen.completed_duration;
+                        heard.push_back({std::move(completed_media),listen.completed_start,listen.completed_time,listen.completed_generation});
                         char line[1024];snprintf(line,sizeof(line),
-                            "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f elapsed_wall=%.3f rate=%.3f ready=%zu active=%zu",
+                            "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f elapsed_wall=%.3f rate=%.3f ready=%zu active=%zu generation=%llu confirmation_delay=%.3f",
                             Utf8(current.artist).c_str(),Utf8(current.title).c_str(),prior_position,current.raw_position,
-                            current.duration,current.timeline_age,observed_at-previous_start,playback_rate,ready.size(),active.size());
+                            listen.completed_duration,current.timeline_age,listen.completed_time-listen.completed_start,
+                            playback_rate,ready.size(),active.size(),static_cast<unsigned long long>(listen.completed_generation),
+                            observed_at-listen.completed_time);
                         LogActivity("listen_complete",line);QueueDiagnostic(line);
                     }
                 }
-                if(previous!=listen.identity && listen.eligible) {
+                if((previous_instance!=listen.generation || previous!=listen.identity) && listen.eligible) {
                     current_ignored=ClassicCurrentIgnored();
                     SetClassicTrackStatus(media,current_ignored?"IGNORED":"IN_PROGRESS",current_ignored?"Ignored":"Downloading...");
                     char line[1400];snprintf(line,sizeof(line),
@@ -629,16 +642,16 @@ static DWORD WINAPI Worker(LPVOID) {
                     if(!current.title.empty())SetClassicTrackStatus(current,"ERROR",
                         std::string("Canceled: ")+ListenRejectName(listen.reject));
                 }
-                if(previous!=listen.identity) {
+                if(previous_instance!=listen.generation) {
                     Log(("TRACK "+Utf8(media.artist)+" - "+Utf8(media.title)).c_str());
                     CleanupCaptureTransition(active,ready,heard,previous_start,
                         listen.start_time,!done.empty(),Now());
                 }
-                if(listen.transient) Log("timeline reset at natural end; waiting for matching title");
+                if(listen.transient) {if(previous_phase!=listen.phase)Log("timeline reset at natural end; waiting for title or repeat confirmation");}
                 else current=std::move(media);
             } else if(observation==MediaRead::Failed || Now()-last_media>3) {
                 const bool was_eligible=listen.eligible;
-                listen.eligible=false; quality.Media({},L"",0,0,Now());client_quality.clear();
+                listen.Invalidate(); quality.Media({},L"",0,0,Now());client_quality.clear();
                 if(was_eligible) {
                     char line[768];snprintf(line,sizeof(line),
                         "%s - %s (media snapshot unavailable or stale rate=%.3f active=%zu ready=%zu epoch=%u sequence=%llu state=%s last_sample_age=%.3f)",

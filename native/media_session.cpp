@@ -162,8 +162,9 @@ bool MediaReader::Read(Media& out,double& observed_at,bool include_artwork,doubl
     // listen, causing otherwise complete Ogg streams not to be published.
     // Timestamp the playback sample before optional artwork can block.
     const double observed=double(GetTickCount64())/1000.0;
+    const RawTimeline raw_timeline{media.raw_position,updated};
     media.position=position_clock_.Observe(media.Key(),media.position,media.duration,
-        media.playing,playback_rate,observed);
+        media.playing,playback_rate,observed,&raw_timeline);
     if(include_artwork) {
         if(media.Key()==cached_.Key() && !cached_.cover.empty()) {
             media.cover=cached_.cover; media.cover_extension=cached_.cover_extension;

@@ -7,6 +7,14 @@ tracks, run FFmpeg, transcode audio, or require an external runtime helper.
 
 ## Settings
 
+RC66 assigns separate listening instances to confirmed same-title repeats. A
+natural end and visible reset must be followed by one second of continuous
+playback. A delayed title may relabel that instance within two seconds of the
+original reset without completing it again. Captures retain their original
+instance and completion deadline. At accelerated speeds, only a newer raw
+backward timeline change breaks the monotonic clock; ordinary SMTC timestamp
+refreshes do not. Missing or ambiguous repeat evidence is not certified.
+
 RC65 keeps an unfinished capture through a track transition only when a completed
 listen is waiting for it. The original ten-second completion deadline, shared
 memory limit, strict codec validation and -20/+3-second capture-start window

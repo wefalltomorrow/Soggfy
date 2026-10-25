@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.66 — repeat instances and delayed titles (test build)
+
+- Confirm a same-title repeat after a natural end, visible timeline reset and one second of continuous playback. Assign separate generations to listens so repeats run normal transition cleanup.
+- Reconcile a delayed title within two seconds of the original reset without emitting a second completion or changing the instance's start. Keep completion time, duration and capture ownership tied to the original listen.
+- Expose newer raw SMTC backward resets to the accelerated listen tracker while preserving monotonic progress across ordinary timestamp refreshes. Judge elapsed progress using the preceding speed.
+- Reject interrupted, stale, invalid or discontinuous repeat evidence. Add bounded transition diagnostics and portable tests at 1x, 2x, 10x and 30x, including pauses, seeks, delayed labels, short tracks and capture ownership.
+- Selectively adapt Floggfy's repeat and identity work; retain RC63–RC65 fixes. Synthetic tests do not establish live Repeat One reliability or solve random Spotify pauses. Accelerated repeats without a distinct raw reset may remain unrecognized.
+
 ## 3.0.0-rc.65 — retain late capture completion (test build)
 
 - Preserve an unfinished Ogg/FLAC capture across a track transition when a completed, nonignored listen is awaiting it. Retention ends at that listen's existing ten-second deadline and remains inside the shared memory budget.

@@ -17,7 +17,7 @@ struct TestCapture {
     bool lossless=false;
     double Duration() const {return lossless?double(coverage.samples)/flac.rate:stream.Duration();}
 };
-struct TestHeard {struct {double duration;} media;double start,finish;};
+struct TestHeard {struct {double duration;} media;double start,finish;uint64_t generation=0;};
 using Active=std::map<int,std::unique_ptr<TestCapture>>;
 using Ready=std::vector<std::unique_ptr<TestCapture>>;
 using HeardList=std::vector<TestHeard>;
@@ -162,5 +162,23 @@ int main() {
         ogg(active,ready,1,page(3,4,44100*180),107);
         assert(SelectCapture(active,ready,heard[0],107).state==CaptureAssociation::Ready);
     }
-    std::puts("PASS: late Ogg/FLAC completion, bounded owned retention, skips, 30x, ambiguity, integrity and expiry");
+    {
+        Listen listen;listen.Observe("repeat",0,180,true,100,30);
+        for(int i=1;i<12;++i)listen.Observe("repeat",i*15,180,true,100+i*0.5,30);
+        listen.Observe("repeat",0,180,true,106,30);
+        listen.Observe("repeat",15,180,true,106.5,30);
+        assert(listen.Observe("repeat",30,180,true,107,30)=="repeat");
+        HeardList heard{{{listen.completed_duration},listen.completed_start,listen.completed_time,listen.completed_generation}};
+        Active active;Ready ready;begin(active,ready);
+        CleanupCaptureTransition(active,ready,heard,100,listen.start_time,true,107);
+        assert(active.at(1)->retention.until==116 && active.at(1)->retention.generation==1);
+        auto other=heard[0];other.generation=2;
+        assert(!CaptureTimingMatches(*active.at(1),other));
+        assert(listen.Observe("delayed label",45,180,true,107.5,30).empty());
+        assert(listen.generation==2 && active.at(1)->retention.until==116);
+        ogg(active,ready,1,page(3,4,44100*180),108);
+        assert(SelectCapture(active,ready,heard[0],108).state==CaptureAssociation::Ready);
+        assert(SelectCapture(active,ready,other,108).state==CaptureAssociation::Wait);
+    }
+    std::puts("PASS: late Ogg/FLAC completion, owned retention, repeat generations, skips, 30x, ambiguity, integrity and expiry");
 }

@@ -2,11 +2,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 
 namespace history {
 constexpr double capture_completion_wait=10;
 struct CaptureRetention {
     double until=0,start=0,finish=0;
+    std::uint64_t generation=0;
 };
 
 template<class Capture,class Heard>
@@ -15,7 +17,7 @@ bool CaptureTimingMatches(const Capture& c,const Heard& h) {
     // listen, so an overlapping later listen cannot inherit its audio.
     return c.born>=h.start-20 && c.born<=h.start+3 &&
         (!c.retention.until ||
-         (c.retention.start==h.start && c.retention.finish==h.finish));
+         (c.retention.start==h.start && c.retention.finish==h.finish && c.retention.generation==h.generation));
 }
 template<class Capture,class Heard>
 bool CaptureMatches(const Capture& c,const Heard& h) {
@@ -29,7 +31,7 @@ bool RetainPendingCapture(Capture& c,const HeardList& heard,double now) {
         const double deadline=h.finish+capture_completion_wait;
         if(CaptureTimingMatches(c,h) && now<=deadline &&
            (!c.retention.until || now<=c.retention.until)) {
-            if(!c.retention.until)c.retention={deadline,h.start,h.finish};
+            if(!c.retention.until)c.retention={deadline,h.start,h.finish,h.generation};
             return true;
         }
     }

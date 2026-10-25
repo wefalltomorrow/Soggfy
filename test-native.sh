@@ -34,6 +34,8 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/history_core_test.cpp native/ogg_
 build/history-core-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/media_position_core_test.cpp native/ogg_history_core.cpp -o build/media-position-core-test
 build/media-position-core-test
+g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/repeat_identity_test.cpp native/ogg_history_core.cpp -o build/repeat-identity-test
+build/repeat-identity-test
 gcc -std=c11 -O2 -I native/vendor/libogg/include -c native/vendor/libogg/src/framing.c -o build/ogg-framing-test.o
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include \
     tests/ogg_tags_test.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/ogg-tags-test

@@ -1,6 +1,14 @@
-# Soggfy v3.0.0-rc.65 — allow late capture completion (test build)
+# Soggfy v3.0.0-rc.66 — repeats and delayed titles (test build)
 
-RC65 retains pending audio through track transitions and includes RC64's media observer and RC63's recovery fixes. PR #64 remains a test candidate pending live validation on Spotify **1.3.1.234.g59d6bf59, Windows x64**. It does **not** claim to eliminate decoder stalls, random pauses or historical missing-stream failures.
+RC66 adds repeat-instance and delayed-title handling and includes RC65's late capture retention, RC64's media observer and RC63's recovery fixes. PR #64 remains a test candidate pending live validation on Spotify **1.3.1.234.g59d6bf59, Windows x64**. It does **not** claim to eliminate decoder stalls, random pauses or historical missing-stream failures.
+
+## RC66 changes
+
+RC65 could wait indefinitely for a new title after the same song restarted. RC66 observes a natural end and backward timeline reset, then requires one second of continuous playback before confirming a same-title repeat. Each listen has a distinct generation. A delayed title can relabel the new instance within two seconds of the original reset, preserving its start and emitting no duplicate completion. An earlier title can resolve the transition before repeat confirmation.
+
+The accelerated clock distinguishes newer raw backward timeline movement from ordinary SMTC timestamp refreshes. Actual resets reach the listen tracker; refreshed extrapolated positions retain monotonic progress. Seeks, missing coverage, invalid observations and interrupted confirmation fail closed. Progress across a speed change is judged using the preceding speed. Completed-listen times and capture deadlines refer to the original transition, not delayed confirmation. Retained captures also require the original generation.
+
+The same minimal six-second repeat fixture fails on RC65 and passes on RC66. Portable tests cover combined clock/listen behavior at 1x, 2x, 10x and 30x, delayed titles and durations, multiple repeats, seeks, pauses, stale timestamps, invalidation, rate changes and retained-capture ownership. Live Spotify behavior remains unverified. Raw resets must be distinguishable; very short or sparsely reported accelerated repeats can remain unrecognized. These timeline heuristics cannot distinguish every manual seek near a natural end from a repeat. No stable track-ID source is added.
 
 ## RC65 changes
 
@@ -8,7 +16,7 @@ A track transition previously deleted an active capture even when its completed 
 
 Retained audio belongs to the original completed listen. Later transitions cannot claim it or extend its deadline. Retained buffers are removed when their listen is queued, rejected or expires. If a second retained candidate is incomplete, selection waits; multiple complete matches or an unresolved competitor at the deadline fail closed. This can reject a complete candidate when association remains uncertain.
 
-Portable tests exercise the shared production policy, real Ogg validation, FLAC frame coverage and a natural 30x listen transition. They do not exercise live Spotify callbacks or the full Windows worker. This selectively adapts Floggfy commit f80dfdd; repeat/delayed-identity and network changes remain excluded.
+Portable tests exercise the shared production policy, real Ogg validation, FLAC frame coverage and a natural 30x listen transition. They do not exercise live Spotify callbacks or the full Windows worker. RC65 selectively adapts Floggfy commit f80dfdd. RC66 adds repeat/delayed-identity handling separately; network changes remain excluded.
 
 ## RC64 changes
 
@@ -43,7 +51,7 @@ Historical evidence remains limited: Simon Posford - Wish You Weren't Here repor
 
 ## Live test
 
-1. Close Spotify fully, extract the RC65 Windows x64 ZIP and install using Scripts/Install.ps1. Confirm the package VERSION and version.dll file properties identify 3.0.0-rc.65. Enable Debug logging.
+1. Close Spotify fully, extract the RC66 Windows x64 ZIP and install using Scripts/Install.ps1. Confirm the package VERSION and version.dll file properties identify 3.0.0-rc.66. Enable Debug logging.
 2. With Downloads enabled at 30x, check normal complete MP3 output and skipping of existing Unicode/multi-artist files.
 3. Pause during a stalled track or recovery attempt. Leave it paused past the recovery deadline; it should stay paused. Resume and confirm there is a fresh grace period before any further recovery.
 4. Disable Downloads during a stall/retry and check that playback returns to effective 1x without losing the selected speed. Re-enable Downloads to restore it.
@@ -51,4 +59,6 @@ Historical evidence remains limited: Simon Posford - Wish You Weren't Here repor
 6. Compare a short 1x run and several natural transitions at 30x. Include tracks with artwork; change speed and toggle Downloads while playback is active. Watch for repeated `media snapshot unavailable or stale` entries, lost start detection or premature green checks. Existing valid files should still be recognized from disk.
 7. Include natural transitions followed by a quick manual Next, several similar-duration tracks, and FLAC if available. Check that a late complete file receives the correct track's metadata and that skipped tracks are not saved. Compare RC64 separately; preserve both logs. Association failures now include `retained_active`, the number of unfinished retained candidates.
 
-Relevant diagnostics include pause_observed, resume_observed, recovery_aborted_state_changed, retry_1/retry_2, skip_stalled, decoder_probe, listen_complete, publish_done and failed. A publish_done entry alone does not prove a newly converted MP3, since existing files can follow a reuse path.
+8. Run Repeat One for at least three plays at 1x and 30x, with skip-downloaded disabled for this test. Include a normal transition where the displayed title lags, then pause/resume and manual Next. Check `listen_instance` generations, one completion per full play, correct titles and playable MP3 320kbps output. Reusing an existing valid file is expected; a repeat should not create a duplicate filename. Preserve the RC65 package and log for comparison.
+
+Relevant diagnostics include listen_instance (phase 0 tracking, 1 awaiting identity, 2 provisional repeat), pause_observed, resume_observed, recovery_aborted_state_changed, retry_1/retry_2, skip_stalled, decoder_probe, listen_complete, publish_done and failed. A publish_done entry alone does not prove a newly converted MP3, since existing files can follow a reuse path.
