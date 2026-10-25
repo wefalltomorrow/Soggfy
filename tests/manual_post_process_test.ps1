@@ -50,12 +50,20 @@ try {
         [IO.File]::WriteAllText($source, 'original')
         $guard = [Soggfy.ConversionSource]::new($source)
         $guard.Dispose()
+        $created = [IO.File]::GetCreationTimeUtc($source)
+        $written = [IO.File]::GetLastWriteTimeUtc($source)
         if ($replacement) { [IO.File]::Move($source, (Join-Path $testRoot 'moved.flac')) }
-        [IO.File]::WriteAllText($source, 'replacement-bytes')
+        $changed = if ($replacement) { 'replaced' } else { 'replacement-bytes' }
+        [IO.File]::WriteAllText($source, $changed)
+        if ($replacement) {
+            # Same size and timestamps: only file identity distinguishes it.
+            [IO.File]::SetCreationTimeUtc($source, $created)
+            [IO.File]::SetLastWriteTimeUtc($source, $written)
+        }
         $failed = $false
         try { $guard.DeleteValidatedSource() } catch { $failed = $true }
         Assert $failed 'Changed source was deleted'
-        Assert ([IO.File]::ReadAllText($source) -eq 'replacement-bytes') 'Replacement changed'
+        Assert ([IO.File]::ReadAllText($source) -eq $changed) 'Replacement changed'
     }
     if ($env:SGF_REAL_FFMPEG) {
         $source = Join-Path $testRoot 'real.flac'

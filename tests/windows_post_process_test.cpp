@@ -81,9 +81,16 @@ int main() {
         post_process_detail::SourceLock source(identity.wstring());
         assert(source.handle!=INVALID_HANDLE_VALUE);source.Close();
         if(replace)fs::rename(identity,moved);
-        write(identity,"replacement-bytes");
+        const auto changed=replace?"replaced":"replacement-bytes";
+        write(identity,changed);
+        if(replace) {
+            // Same size and timestamps: only file identity distinguishes it.
+            HANDLE attrs=CreateFileW(identity.c_str(),FILE_WRITE_ATTRIBUTES,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+            assert(attrs!=INVALID_HANDLE_VALUE);
+            assert(SetFileTime(attrs,&source.original.ftCreationTime,nullptr,&source.original.ftLastWriteTime));CloseHandle(attrs);
+        }
         assert(!source.DeleteValidated(identity.wstring()));source.Close();
-        assert(read(identity)=="replacement-bytes");
+        assert(read(identity)==changed);
     }
     Settings s;s.output_ext=L"mp3";s.output_preset=L"MP3 320k";s.ffmpeg_path=executable;s.keep_native_original=false;
     const auto native=base/L"capture.wav",final=base/L"capture.mp3",pidfile=base/L"child.pid";
