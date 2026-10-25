@@ -64,6 +64,7 @@ node tests/metadata_collector_test.js
 node tests/classic_status_icons_test.js
 node tests/classic_row_binding_test.js
 node tests/classic_skip_downloaded_test.js
+node tests/classic_status_protocol_test.js
 node tests/classic_speed_limit_test.js
 node tests/classic_player_discovery_test.js
 node tests/classic_cached_player_skip_test.js
@@ -78,3 +79,6 @@ build/cached-metadata-test
 
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include tests/playback_quality_test.cpp native/playback_quality.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/playback-quality-test
 build/playback-quality-test
+
+g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/existing_quality_core_test.cpp native/ogg_history_core.cpp -o build/existing-quality-core-test
+build/existing-quality-core-test

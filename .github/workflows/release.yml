@@ -79,6 +79,12 @@ jobs:
           CXX: g++
         run: bash test-media-observer-windows.sh
 
+      - name: Test conversion and library status maintenance
+        shell: msys2 {0}
+        env:
+          CXX: g++
+        run: bash test-maintenance-windows.sh
+
       - name: Build Windows x64 DLL
         shell: msys2 {0}
         env:

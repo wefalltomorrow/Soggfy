@@ -163,8 +163,13 @@ sgf.trackInfoFromRows=rows=>{
   return out;
 };
 
+const STATUS_LIMITS={batch:128,pending:16,map:1024,queue:2048,timeout:10000,missingAge:3000,doneAge:3000,visibleAge:15000};
+sgf.statusLimits=STATUS_LIMITS;
+const statusSession=Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
+let statusSequence=0,statusEpoch=0,nativeRevision=null;
 function encodeBatch(infos){
-  return infos.slice(0,128).map(i=>[i.uri,i.title,i.artist,i.album,i.allArtists].join(sgf.FS)).join(sgf.RS);
+  const field=value=>String(value||'').replace(/[\x1d-\x1f]/g,' ');
+  return infos.slice(0,STATUS_LIMITS.batch).map(i=>[i.uri,i.title,i.artist,i.album,i.allArtists].map(field).join(sgf.FS)).join(sgf.RS);
 }
 function decodeBatch(payload){
   const map=new Map();
@@ -177,26 +182,62 @@ function decodeBatch(payload){
 }
 sgf.statusQueue=[];
 sgf.statusActive=null;
-sgf.requestStatuses=infos=>new Promise(resolve=>{
-  const clean=(infos||[]).filter(i=>i?.uri&&i?.title).slice(0,128);
-  if(!clean.length){resolve(new Map());return;}
-  sgf.statusQueue.push({infos:clean,resolve});
+function finishStatus(job,map){
+  clearTimeout(job.timer);
+  if(sgf.statusActive===job)sgf.statusActive=null;
+  job.resolve(map);
+}
+sgf.invalidateStatusCache=()=>{
+  ++statusEpoch;
+  sgf.statusMap.clear();queueStatusCache.clear();
+  if(sgf.statusActive)finishStatus(sgf.statusActive,new Map());
+  for(const job of sgf.statusQueue.splice(0))finishStatus(job,new Map());
+  sgf.refreshVisibleStatuses?.();
+};
+window.__soggfyStatusRevision=revision=>{
+  if(nativeRevision!==null&&nativeRevision!==revision)sgf.invalidateStatusCache();
+  nativeRevision=revision;
+};
+sgf.requestStatuses=infos=>{
+  const clean=(infos||[]).filter(i=>i?.uri&&i?.title).slice(0,STATUS_LIMITS.batch);
+  if(!clean.length)return Promise.resolve(new Map());
+  const payload=encodeBatch(clean);
+  const duplicate=[sgf.statusActive,...sgf.statusQueue].find(job=>job?.payload===payload&&job.epoch===statusEpoch);
+  if(duplicate)return duplicate.promise;
+  if(sgf.statusQueue.length>=STATUS_LIMITS.pending)finishStatus(sgf.statusQueue.shift(),new Map());
+  const job={id:statusSession+'-'+(++statusSequence),payload,infos:clean,epoch:statusEpoch};
+  job.promise=new Promise(resolve=>{job.resolve=resolve;});
+  sgf.statusQueue.push(job);
   sgf.pumpStatusQueue();
-});
+  return job.promise;
+};
 sgf.pumpStatusQueue=()=>{
   if(sgf.statusActive||!sgf.statusQueue.length)return;
-  sgf.statusActive=sgf.statusQueue.shift();
-  sgf.send('status_batch',encodeBatch(sgf.statusActive.infos));
-  sgf.statusActive.timer=setTimeout(()=>{
-    const job=sgf.statusActive;sgf.statusActive=null;
-    job?.resolve(new Map());sgf.pumpStatusQueue();
-  },10000);
+  const job=sgf.statusActive=sgf.statusQueue.shift();
+  job.timer=setTimeout(()=>{
+    if(sgf.statusActive!==job)return;
+    finishStatus(job,new Map());sgf.pumpStatusQueue();
+  },STATUS_LIMITS.timeout);
+  try{sgf.send('status_batch',job.id+'\x1d'+job.payload);}
+  catch{finishStatus(job,new Map());sgf.pumpStatusQueue();}
 };
 window.__soggfyReceiveStatuses=payload=>{
-  const map=decodeBatch(payload);
+  const split=String(payload).indexOf('\x1d');
+  if(split<0)return;
   const job=sgf.statusActive;
-  if(job){clearTimeout(job.timer);sgf.statusActive=null;job.resolve(map);}
-  for(const [uri,value] of map)sgf.statusMap.set(uri,value);
+  if(!job||payload.slice(0,split)!==job.id||job.epoch!==statusEpoch)return;
+  const wanted=new Set(job.infos.map(info=>info.uri));
+  const map=decodeBatch(payload.slice(split+1));
+  const now=Date.now();
+  for(const [uri,value] of map){
+    if(!wanted.has(uri)){map.delete(uri);continue;}
+    value.checkedAt=now;
+    sgf.statusMap.delete(uri);sgf.statusMap.set(uri,value);
+    const cached=queueStatusCache.get(uri);
+    if(cached&&cached.done!==(value.status==='DONE'))queueStatusCache.delete(uri);
+  }
+  while(sgf.statusMap.size>STATUS_LIMITS.map)sgf.statusMap.delete(sgf.statusMap.keys().next().value);
+  finishStatus(job,map);
   sgf.renderVisibleStatuses?.();
   sgf.pumpStatusQueue();
 };
@@ -223,6 +264,7 @@ function statusCard(info){
 sgf.renderVisibleStatuses=()=>{
   for(const t of sgf.trackInfoFromRows()){
     let info=sgf.statusMap.get(t.uri);
+    if(info?.checkedAt!==undefined&&Date.now()-info.checkedAt>STATUS_LIMITS.visibleAge){sgf.statusMap.delete(t.uri);info=null;}
     if((t.ignoreUris||[t.uri]).some(uri=>sgf.isIgnored(uri)))info={status:'IGNORED',message:'Ignored',path:''};
     const old=t.row.__sgf_status_ind;
     // Original Soggfy shows a red X for ERROR, not for every absent file.
@@ -248,8 +290,9 @@ sgf.refreshVisibleStatuses=()=>{
   clearTimeout(refreshTimer);
   refreshTimer=setTimeout(async()=>{
     const infos=sgf.trackInfoFromRows();
+    const epoch=statusEpoch;
     const statuses=await sgf.requestStatuses(infos);
-    for(const [uri,value] of statuses)sgf.statusMap.set(uri,value);
+    if(epoch!==statusEpoch)return;
     sgf.renderVisibleStatuses();
     // A low-frequency diagnostic makes it possible to distinguish failed
     // row discovery from a stale or unreturned native status response.
@@ -308,11 +351,10 @@ function queuedInfo(entry){
     // Original Soggfy removes queued ContextTracks, preserving a per-entry UID.
     track:uid==null?{uri}:{uri,uid},ignoreTarget:track};
 }
-// Cache only completed lookup results per queued URI (as upstream does),
-// and drop entries after the URI leaves the upcoming queue. Unlike RC55,
-// never mark a queue checked before the native status response arrives.
+// Cache confirmed results briefly; settings/publication changes invalidate them.
+// Keep each queue UID and never cache an unanswered lookup.
 const queueStatusCache=new Map();
-let queueBusy=false,lastQueueDiagnostic=0;
+let queueBusy=false,lastQueueDiagnostic=0,queueRevision=0,pendingQueueEvent=null;
 function queueDiagnostic(details,force=false){
   const now=Date.now();
   if(!sgf.state.debug||(!force&&now-lastQueueDiagnostic<20000))return;
@@ -320,8 +362,11 @@ function queueDiagnostic(details,force=false){
   sgf.send('status_diag','queue '+details.slice(0,430));
 }
 sgf.checkQueue=async eventData=>{
+  if(eventData!==undefined){++queueRevision;pendingQueueEvent={data:eventData};}
   if(queueBusy||(!sgf.state.skipDownloaded&&!sgf.state.skipIgnored)||!sgf.player)return;
+  if(pendingQueueEvent){eventData=pendingQueueEvent.data;pendingQueueEvent=null;}
   queueBusy=true;
+  const epoch=statusEpoch,player=sgf.player,revision=queueRevision;
   try{
     const {list,source}=await queueSnapshot(eventData);
     // A missing snapshot is not an empty queue: retry on the next event/poll.
@@ -333,41 +378,57 @@ sgf.checkQueue=async eventData=>{
     for(const info of infos)
       if(info.title&&info.artist&&info.album&&!unique.has(info.uri))unique.set(info.uri,info);
     if(sgf.state.skipDownloaded){
-      const pending=[...unique.values()].filter(info=>!queueStatusCache.has(info.uri));
+      const key=info=>JSON.stringify([info.title,info.artist,info.album,info.allArtists]);
+      const pending=[...unique.values()].filter(info=>{
+        const cached=queueStatusCache.get(info.uri);
+        return !cached||cached.key!==key(info)||Date.now()<cached.time||
+          Date.now()-cached.time>=(cached.done?STATUS_LIMITS.doneAge:STATUS_LIMITS.missingAge);
+      });
       // The native status batch format has a 128-track limit.
-      for(let i=0;i<pending.length;i+=128){
-        const page=pending.slice(i,i+128);
+      for(let i=0;i<pending.length;i+=STATUS_LIMITS.batch){
+        const page=pending.slice(i,i+STATUS_LIMITS.batch);
         const statuses=await sgf.requestStatuses(page);
+        if(epoch!==statusEpoch||player!==sgf.player||revision!==queueRevision)return;
         for(const info of page){
           // A timeout/partial response must not poison the queue cache.
           if(statuses.has(info.uri))
-            queueStatusCache.set(info.uri,statuses.get(info.uri)?.status==='DONE');
+            queueStatusCache.set(info.uri,{done:statuses.get(info.uri)?.status==='DONE',time:Date.now(),key:key(info)});
+          else queueStatusCache.delete(info.uri);
         }
       }
     }
+    if(epoch!==statusEpoch||player!==sgf.player||revision!==queueRevision)return;
     const remove=infos.filter(info=>
       (sgf.state.skipIgnored&&sgf.isTrackIgnored(info.ignoreTarget))||
-      (sgf.state.skipDownloaded&&queueStatusCache.get(info.uri)===true))
+      (sgf.state.skipDownloaded&&queueStatusCache.get(info.uri)?.done===true&&Date.now()-queueStatusCache.get(info.uri).time<STATUS_LIMITS.doneAge))
       .map(info=>info.track);
     if(remove.length){
       const removeFn=sgf.player.removeFromQueue||sgf.player._queue?.removeFromQueue;
       if(typeof removeFn==='function'){
+        // Failed removals must trigger a fresh disk lookup on the next attempt.
+        const removedCache=remove.map(track=>[track.uri,queueStatusCache.get(track.uri)]);
+        for(const track of remove)queueStatusCache.delete(track.uri);
         await removeFn.call(
           typeof sgf.player.removeFromQueue==='function'?sgf.player:sgf.player._queue,
           remove);
+        if(epoch===statusEpoch&&player===sgf.player&&revision===queueRevision)for(const [uri,cached] of removedCache)if(cached)queueStatusCache.set(uri,cached);
         queueDiagnostic('removed='+remove.length+' source='+source,true);
       }else{
         queueDiagnostic('removeFromQueue unavailable source='+source,true);
       }
     }else{
       queueDiagnostic('source='+source+' upcoming='+infos.length+
-        ' queryable='+unique.size+' matched='+[...queueStatusCache.values()].filter(Boolean).length+
+        ' queryable='+unique.size+' matched='+[...queueStatusCache.values()].filter(value=>value.done).length+
         ' unresolved='+[...unique.keys()].filter(uri=>!queueStatusCache.has(uri)).length);
     }
   }catch(e){
     queueDiagnostic('failed '+String(e).slice(0,160),true);
     console.warn('Soggfy queue skip failed',e);
-  }finally{queueBusy=false;}
+  }finally{
+    while(queueStatusCache.size>STATUS_LIMITS.queue)queueStatusCache.delete(queueStatusCache.keys().next().value);
+    queueBusy=false;
+    if(pendingQueueEvent)setTimeout(()=>sgf.checkQueue(),0);
+  }
 };
 
 sgf.installPlayerListeners=()=>{

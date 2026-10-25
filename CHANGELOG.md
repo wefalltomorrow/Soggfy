@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0-rc.67 — conversion safety and status maintenance (test build)
+
+- Protect native audio when an existing conversion destination is invalid, unreadable or a directory. Fully decode new output before publication and optional original deletion. Retain originals even when a pre-existing output decodes, since its capture identity is unproven.
+- Give conversion a size-based deadline and capture cancellation. Supervise FFmpeg and its children through a Windows process job; preserve native audio on failure.
+- Correlate status requests/replies, handle empty/late replies and send failures, coalesce duplicate work and bound pending requests/caches. Invalidate on matching-setting/publication changes and expire queue results after three seconds. Retry failed removals with fresh status and discard obsolete queue/player work.
+- Verify real readable nonempty files for DONE, including recent publications and ambiguous matches. Preserve Unicode, multiple artists, legacy paths and podcast/custom extensions.
+- Separate library lookup from export/Canvas and metadata processing. Reuse bounded compiled expressions and per-index matches, with ten-second external-file reconciliation and scan/compile/match diagnostics.
+- Harden bounded Vorbis/FLAC identification without relaxing full capture validation or replacement protection. Add protocol, Windows filesystem/process and malformed-header regression tests to CI/release workflows.
+- Retain RC63–RC66 behavior and comparison packages. Automated validation does not establish a fix for random Spotify pauses.
+
 ## 3.0.0-rc.66 — repeat instances and delayed titles (test build)
 
 - Confirm a same-title repeat after a natural end, visible timeline reset and one second of continuous playback. Assign separate generations to listens so repeats run normal transition cleanup.

@@ -1,4 +1,36 @@
-## RC66 candidate scope
+## RC67 candidate scope
+
+RC67 targets Spotify **1.3.1.234.g59d6bf59, Windows x64** and includes RC63–RC66.
+The maintenance gate adds twelve total JavaScript suites and bounded existing-file
+Vorbis/FLAC header tests to the portable suite. Windows CI and release workflows
+also run production conversion and library-status tests with isolated fixtures.
+
+The conversion harness checks directories, empty/corrupt/locked destinations,
+valid pre-existing output with native retention, failed/empty/corrupt conversion,
+atomic destination conflicts, timeout/cancellation, child-process termination,
+successful publication and keep-original behavior. Optional SGF_REAL_FFMPEG runs
+an installed FFmpeg against generated PCM for MP3 320 kbps encode/full decode,
+valid/corrupt existing output and header-only audio. Fake-converter cases test
+process/control flow; only the optional smoke exercises real codec behavior.
+
+The status harness checks actual files, deletion, locking, empty files, directory
+conflicts, ambiguity, publication/root/template invalidation, exact artist identity,
+Unicode/multiple artists, legacy paths, podcasts/custom extensions and cache eviction.
+Its deterministic 2,048-file/128-query repeated-miss benchmark requires zero warm
+regex checks and compilations, versus 786,432 checks and 384 compilations cold.
+Local diagnostic binaries use Zig 0.13 with assertions enabled (-UNDEBUG); shipped
+binaries still require the established MinGW CI build and package verification.
+
+Live validation must include MP3 320 kbps playback, conflicting destinations with
+native retention, deletion/addition of library files, changed save folders/templates,
+skip-downloaded retries and normal 1x/30x capture. External additions reconcile
+after the ten-second directory-index lifetime plus polling; queue results expire
+after three seconds. Full output decoding adds work and the save queue remains
+bounded. Network/storage stalls and sustained overload are not eliminated.
+Preserve RC66 for comparison. Do not merge, publish an official release or install
+into live Spotify before the separate live-validation gate is satisfied.
+
+## RC66 candidate scope (included in RC67)
 
 RC66 targets Spotify **1.3.1.234.g59d6bf59, Windows x64**. Local portable
 tests use workspace Zig 0.13 with assertions explicitly enabled (`-UNDEBUG`);

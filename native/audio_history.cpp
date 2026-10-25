@@ -32,6 +32,7 @@
 
 namespace {
 using namespace history;
+static std::atomic<bool> workers_running{false};
 struct OggPage { unsigned char* header; int32_t header_length; unsigned char* body; int32_t body_length; };
 static_assert(sizeof(OggPage)==32 && offsetof(OggPage,body)==16,"Windows x64 libogg ABI");
 using PageSeek = int32_t(*)(void*,OggPage*);
@@ -316,7 +317,11 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
             Log("lyrics sidecar could not be written");
     }
 
-    auto post=PostProcessPublishedFile(destination,settings,heard.media.cover,heard.media.cover_extension);
+    PostProcessControl post_control;
+    post_control.canceled=[epoch=settings.capture_epoch] {
+        return !workers_running.load(std::memory_order_acquire)||CaptureEpoch()!=epoch;
+    };
+    auto post=PostProcessPublishedFile(destination,settings,heard.media.cover,heard.media.cover_extension,post_control);
     if(post.state==PostProcessResult::State::Failed) {
         auto detail="post-processing failed: "+post.error+" native="+Utf8(destination)+" output="+Utf8(post.path);
         LogActivity("failed",detail);QueueDiagnostic(detail.c_str());
@@ -335,7 +340,6 @@ static BoundedQueue<SaveJob,2> saves;
 static HANDLE save_event=nullptr;
 static std::atomic<size_t> publishing_reserved{0};
 static std::atomic<unsigned> saved_count{0};
-static std::atomic<bool> workers_running{false};
 static hooks::InitController audio_init;
 static DWORD WINAPI SaveWorker(LPVOID) {
     while(workers_running.load(std::memory_order_acquire)) {

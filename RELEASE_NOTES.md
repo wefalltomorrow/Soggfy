@@ -1,6 +1,20 @@
-# Soggfy v3.0.0-rc.66 — repeats and delayed titles (test build)
+# Soggfy v3.0.0-rc.67 — conversion safety and status maintenance (test build)
 
-RC66 adds repeat-instance and delayed-title handling and includes RC65's late capture retention, RC64's media observer and RC63's recovery fixes. PR #64 remains a test candidate pending live validation on Spotify **1.3.1.234.g59d6bf59, Windows x64**. It does **not** claim to eliminate decoder stalls, random pauses or historical missing-stream failures.
+RC67 addresses the RC66 maintenance review and includes RC63–RC66. PR #64 remains a test candidate pending live validation on Spotify **1.3.1.234.g59d6bf59, Windows x64**. It does **not** claim to eliminate decoder stalls, random pauses or historical missing-stream failures.
+
+## RC67 changes
+
+An existing conversion destination previously allowed the native capture to be deleted even when that destination was a directory or empty file. RC67 rejects invalid/unreadable destinations, checks actual audio decoding, and retains the native original for every pre-existing destination. A newly converted file must decode successfully with nonempty audio before it can be published and the original removed. No conflicting destination is overwritten. Full decoding adds conversion work; it is a preservation safeguard, not an encoder speed claim.
+
+FFmpeg now runs in a supervised Windows process job. The whole conversion/validation transaction has a size-based deadline (five minutes plus one second per 64 KiB, capped at six hours), and capture cancellation stops the converter and its child processes. Failure keeps the native audio and reports the reason. The pending-save queue is still bounded; sustained throughput overload can still fill it.
+
+Status replies carry the UI session and request ID, preventing a timed-out reply from completing a later request. Identical work shares one promise; queued requests and status caches have limits. Publication and matching-setting changes invalidate results, queue results expire after three seconds, and failed removals require a fresh lookup. A newer queue event or changed player prevents an older lookup from removing obsolete entries.
+
+Downloaded results are reconciled against readable, nonempty files under the applicable configuration. Ambiguity warnings, Unicode/multiple artists, legacy naming and podcast/custom extensions remain supported. The directory index refreshes on publication/root changes and after ten seconds; externally added files can take that interval plus the next UI/queue poll to appear. Queue decisions can be up to three seconds old. Status remains filename/file based, not a full audio integrity scan or persistent database.
+
+Compiled expressions (up to 512) and matches are reused within each directory-index generation. A dedicated status worker keeps scans out of the metadata worker. The Windows benchmark checks 128 misses against 2,048 files: a cold lookup performs 786,432 regex checks; the repeated lookup performs zero and recompiles nothing. This is synthetic repeated-work evidence, not a guarantee for a different library or storage device.
+
+New automated cases cover late/empty replies, bounded requests/maps, invalidation, queue/player changes, malformed headers, deleted/locked/ambiguous files, conversion conflicts, failed/empty/corrupt output, publication races, timeout/cancellation and child-process termination. A local real FFmpeg smoke test covers MP3 320 kbps encoding, full decoding, corrupt existing audio and header-only audio. Unknown or unreadable existing source files remain protected from replacement.
 
 ## RC66 changes
 
@@ -51,7 +65,7 @@ Historical evidence remains limited: Simon Posford - Wish You Weren't Here repor
 
 ## Live test
 
-1. Close Spotify fully, extract the RC66 Windows x64 ZIP and install using Scripts/Install.ps1. Confirm the package VERSION and version.dll file properties identify 3.0.0-rc.66. Enable Debug logging.
+1. Close Spotify fully, extract the RC67 Windows x64 ZIP and install using Scripts/Install.ps1. Confirm the package VERSION and version.dll file properties identify 3.0.0-rc.67. Enable Debug logging.
 2. With Downloads enabled at 30x, check normal complete MP3 output and skipping of existing Unicode/multi-artist files.
 3. Pause during a stalled track or recovery attempt. Leave it paused past the recovery deadline; it should stay paused. Resume and confirm there is a fresh grace period before any further recovery.
 4. Disable Downloads during a stall/retry and check that playback returns to effective 1x without losing the selected speed. Re-enable Downloads to restore it.

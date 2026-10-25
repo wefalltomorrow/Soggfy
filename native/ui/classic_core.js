@@ -100,6 +100,8 @@ sgf.flag = (p,key,fallback) => {
 
 sgf.applyConfig = payload => {
   try {
+    const statusKey=()=>JSON.stringify(['root','template','podcastTemplate','invalidChars','outputExt','normalize'].map(key=>sgf.state[key]));
+    const before=statusKey();
     const p=new URLSearchParams(payload||'');
     const bools=['downloads','ogg','flac','metadata','log','debug','normalize','skipDownloaded','skipIgnored','embedCover','saveCover','embedLyrics','saveLyrics','saveCanvas','blockTelemetry','liftQueue','keepNative'];
     for(const key of bools)sgf.state[key]=sgf.flag(p,key,sgf.state[key]);
@@ -109,6 +111,7 @@ sgf.applyConfig = payload => {
     if(p.has('playbackSpeed'))sgf.state.playbackSpeed=Math.max(1,Math.min(sgf.MAX_PLAYBACK_SPEED,Number(p.get('playbackSpeed'))||1));
     if(p.has('speedSupported'))sgf.state.speedSupported=sgf.flag(p,'speedSupported',sgf.state.speedSupported);
     if(p.has('speedImmediate'))sgf.state.speedImmediate=sgf.flag(p,'speedImmediate',sgf.state.speedImmediate);
+    if(before!==statusKey())sgf.invalidateStatusCache?.();
     if(sgf.refreshControls)sgf.refreshControls();
   } catch {}
 };
