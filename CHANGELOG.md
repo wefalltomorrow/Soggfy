@@ -5,6 +5,7 @@
 - Reject damaged-source encoding, support all built-in AAC fallback aliases, resolve relative manual inputs and reconcile/retry watched files.
 - Bound queue waits with per-player ownership and pending-removal reservations. Separate regex and result caches for larger working sets.
 - Paginate M3U collections, batch all status requests, reject incomplete responses and preserve prior playlists on failed saves.
+- Accept newer coalesced settings saves and read their failure result consistently.
 - Preflight installation earlier; retain older packages and replace ZIPs only after successful packaging.
 - Extend portable and Windows CI/release gates and document the remaining live-validation limits.
 

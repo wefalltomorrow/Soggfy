@@ -23,8 +23,8 @@ player replacement, Unicode/custom/podcast paths and extended playback.
 Historical random pauses and decoder stalls are unresolved. Known remaining limits
 include recurring watch scans, manual FFmpeg without a process deadline, a small
 source-replacement window around optional deletion, nontransactional installer writes,
-and uninstall ownership if another tool replaces the installed DLL. Settings flush
-under concurrent newer writes warrants a dedicated concurrency test. These are
+and uninstall ownership if another tool replaces the installed DLL. Settings flush now accepts newer coalesced writes, checks failures consistently and
+handles generation wrap; the deterministic production-code regression passes. The remaining limits are
 explicit follow-up risks, not established regressions or claimed fixes.
 
 Preserve RC63–RC68. Do not merge, officially release or install into live Spotify

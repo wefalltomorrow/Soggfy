@@ -14,6 +14,8 @@ A separate 4,096-entry match-result cache avoids recompiling expressions when a 
 
 M3U export follows capped API pages and checks every track in batches of 128. Duplicate playlist entries retain their order. Incomplete responses, failed calls and limits produce an error instead of silently truncated exports. Saving stages a complete file before replacing an existing playlist. Visible-row fallback is identified in the message.
 
+Settings flush accepts a newer coalesced save instead of waiting forever for the superseded version. The persisted generation and failure result are read together.
+
 Installation checks the DLL before stopping Spotify or starting SpotX. Packaging preserves older archives and replaces a same-version ZIP only after the new archive finishes successfully. Windows publication/settings/logging/metadata/quality checks now run in both CI and release workflows; regression tests cover the new fixes.
 
 Automated checks are not live Spotify validation. Watch mode performs recurring full scans and manual FFmpeg calls have no deadline. Concurrent external replacement of a source around optional deletion is not fully protected. Historical pauses/decoder stalls and live API variants remain unverified; preserve RC63–RC68 and do not install, merge or release before the separate live gate.

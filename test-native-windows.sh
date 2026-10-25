@@ -38,6 +38,8 @@ common=(-std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static)
  native/media_session.cpp native/playback_quality_windows.cpp native/playback_quality.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/windows-tests/metadata-ogg.o build/windows-tests/minhook-*.o -lole32 -luuid -lshell32 \
  -lruntimeobject -o "$floggfy_test_root/windows-metadata-identity-test.exe"
 "$floggfy_test_root/windows-history-test.exe"
+"$CXX" "${common[@]}" tests/windows_settings_flush_test.cpp native/async_log.cpp  -lole32 -luuid -lshell32 -o "$floggfy_test_root/windows-settings-flush-test.exe"
+"$floggfy_test_root/windows-settings-flush-test.exe"
 "$floggfy_test_root/windows-log-test.exe"
 "$floggfy_test_root/windows-metadata-identity-test.exe"
 
