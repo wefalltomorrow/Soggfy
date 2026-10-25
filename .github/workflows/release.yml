@@ -40,6 +40,7 @@ jobs:
             }
           }
           if ($failed) { exit 1 }
+          "SGF_PWSH_PATH=$((Get-Process -Id $PID).Path)" >> $env:GITHUB_ENV
 
       - name: Set up newer MinGW-w64 toolchain
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
