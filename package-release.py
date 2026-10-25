@@ -83,9 +83,8 @@ with zipfile.ZipFile(archive_path, "w") as archive:
             add_bytes(archive, arcname, path.read_bytes())
 
 archive_digest = sha256(archive_path)
-(out / "SHA256SUMS.txt").write_text(
-    f"{archive_digest}  {release_name}\n",
-    encoding="utf-8",
+(out / "SHA256SUMS.txt").write_bytes(
+    f"{archive_digest}  {release_name}\n".encode("utf-8"),
 )
 
 print(f"ZIP: {archive_path}")
