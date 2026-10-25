@@ -45,6 +45,9 @@ build/classic-path-match-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include \
     tests/flac_history_test.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/flac-history-test
 build/flac-history-test
+g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include \
+    tests/capture_association_test.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/capture-association-test
+build/capture-association-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/compressed_buffer_test.cpp native/compressed_buffer.cpp -o build/compressed-buffer-test
 build/compressed-buffer-test
 

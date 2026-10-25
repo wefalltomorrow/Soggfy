@@ -1,6 +1,14 @@
-# Soggfy v3.0.0-rc.64 — keep capture moving during Windows media reads (test build)
+# Soggfy v3.0.0-rc.65 — allow late capture completion (test build)
 
-RC64 moves Windows media reads off the capture worker and includes RC63's recovery-safety fixes. PR #64 remains a test candidate pending live validation on Spotify **1.3.1.234.g59d6bf59, Windows x64**. It does **not** claim to eliminate decoder stalls, random pauses or missing-stream failures.
+RC65 retains pending audio through track transitions and includes RC64's media observer and RC63's recovery fixes. PR #64 remains a test candidate pending live validation on Spotify **1.3.1.234.g59d6bf59, Windows x64**. It does **not** claim to eliminate decoder stalls, random pauses or historical missing-stream failures.
+
+## RC65 changes
+
+A track transition previously deleted an active capture even when its completed listen was waiting for a final Ogg EOS or FLAC frame. That candidate now survives until the listen's existing ten-second deadline. It remains subject to the shared memory budget, strict codec completeness and the unchanged -20/+3-second start window.
+
+Retained audio belongs to the original completed listen. Later transitions cannot claim it or extend its deadline. Retained buffers are removed when their listen is queued, rejected or expires. If a second retained candidate is incomplete, selection waits; multiple complete matches or an unresolved competitor at the deadline fail closed. This can reject a complete candidate when association remains uncertain.
+
+Portable tests exercise the shared production policy, real Ogg validation, FLAC frame coverage and a natural 30x listen transition. They do not exercise live Spotify callbacks or the full Windows worker. This selectively adapts Floggfy commit f80dfdd; repeat/delayed-identity and network changes remain excluded.
 
 ## RC64 changes
 
@@ -35,11 +43,12 @@ Historical evidence remains limited: Simon Posford - Wish You Weren't Here repor
 
 ## Live test
 
-1. Close Spotify fully, extract the RC64 Windows x64 ZIP and install using Scripts/Install.ps1. Confirm the package VERSION and version.dll file properties identify 3.0.0-rc.64. Enable Debug logging.
+1. Close Spotify fully, extract the RC65 Windows x64 ZIP and install using Scripts/Install.ps1. Confirm the package VERSION and version.dll file properties identify 3.0.0-rc.65. Enable Debug logging.
 2. With Downloads enabled at 30x, check normal complete MP3 output and skipping of existing Unicode/multi-artist files.
 3. Pause during a stalled track or recovery attempt. Leave it paused past the recovery deadline; it should stay paused. Resume and confirm there is a fresh grace period before any further recovery.
 4. Disable Downloads during a stall/retry and check that playback returns to effective 1x without losing the selected speed. Re-enable Downloads to restore it.
 5. Retest Cool Kids, Wish You Weren't Here, Murder-Death-Kill and Intoxicated (Radio Edit). Send the resulting Soggfy.log and note whether pauses were deliberate, whether any duplicate queued track remained, and whether the saved MP3s play through.
 6. Compare a short 1x run and several natural transitions at 30x. Include tracks with artwork; change speed and toggle Downloads while playback is active. Watch for repeated `media snapshot unavailable or stale` entries, lost start detection or premature green checks. Existing valid files should still be recognized from disk.
+7. Include natural transitions followed by a quick manual Next, several similar-duration tracks, and FLAC if available. Check that a late complete file receives the correct track's metadata and that skipped tracks are not saved. Compare RC64 separately; preserve both logs. Association failures now include `retained_active`, the number of unfinished retained candidates.
 
 Relevant diagnostics include pause_observed, resume_observed, recovery_aborted_state_changed, retry_1/retry_2, skip_stalled, decoder_probe, listen_complete, publish_done and failed. A publish_done entry alone does not prove a newly converted MP3, since existing files can follow a reuse path.

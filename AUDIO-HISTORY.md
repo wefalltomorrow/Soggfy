@@ -7,6 +7,15 @@ tracks, run FFmpeg, transcode audio, or require an external runtime helper.
 
 ## Settings
 
+RC65 keeps an unfinished capture through a track transition only when a completed
+listen is waiting for it. The original ten-second completion deadline, shared
+memory limit, strict codec validation and -20/+3-second capture-start window
+still apply. A retained candidate belongs to that completed listen and cannot
+be reassigned or have its deadline extended by later transitions. If another
+retained candidate is still incomplete, selection waits; unresolved competitors
+or multiple complete matches are rejected. This handles late callbacks without
+treating incomplete audio as a completed file.
+
 `SpotifyHistory.ini` is included with the release and is created beside
 `version.dll` on first launch when missing.
 The top-left menu contains **To Disk** with Downloads, Save Location, FLAC and Ogg.

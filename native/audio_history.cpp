@@ -3,6 +3,7 @@
 #include "ogg_history_core.h"
 #include "ogg_tags.h"
 #include "flac_history_core.h"
+#include "capture_association.h"
 #include "history_settings.h"
 #include "hook_init_state.h"
 #include "hook_rollback.h"
@@ -188,6 +189,7 @@ struct Capture {
     FlacInfo flac;
     FlacCoverage coverage;
     double born=0,finished=0;
+    CaptureRetention retention;
     uint64_t bytes=0;
     CompressedBuffer data;
     double Duration() const { return lossless && flac.rate ? double(coverage.samples)/flac.rate : stream.Duration(); }
@@ -629,20 +631,8 @@ static DWORD WINAPI Worker(LPVOID) {
                 }
                 if(previous!=listen.identity) {
                     Log(("TRACK "+Utf8(media.artist)+" - "+Utf8(media.title)).c_str());
-                    {
-                        auto prior=[previous_start,start=listen.start_time](const auto& c) {
-                            return c->born>=previous_start-20 && c->born<=previous_start+3 && c->born<start-3;
-                        };
-                        // A fast Next may create the new decoder inside the
-                        // previous track's three-second start window. Keep
-                        // that candidate; duration association still rejects
-                        // ambiguous or skipped streams at publication.
-                        if(done.empty())
-                        ready.erase(std::remove_if(ready.begin(),ready.end(),prior),ready.end());
-                        for(auto it=active.begin();it!=active.end();) {
-                            if(prior(it->second)) it=active.erase(it); else ++it;
-                        }
-                    }
+                    CleanupCaptureTransition(active,ready,heard,previous_start,
+                        listen.start_time,!done.empty(),Now());
                 }
                 if(listen.transient) Log("timeline reset at natural end; waiting for matching title");
                 else current=std::move(media);
@@ -667,13 +657,9 @@ static DWORD WINAPI Worker(LPVOID) {
             // Apply concurrent menu changes before considering publication.
             if(GetSettings().generation!=generation) continue;
             for(auto h=heard.begin();h!=heard.end();) {
-                size_t match=ready.size(),matches=0;
-                for(size_t i=0;i<ready.size();i++) {
-                    Capture& c=*ready[i];
-                    if(std::fabs(c.Duration()-h->media.duration)<=1.0 &&
-                       c.born>=h->start-20 && c.born<=h->start+3) { match=i; ++matches; }
-                }
-                if(matches==1) {
+                const auto selection=SelectCapture(active,ready,*h,now);
+                const auto match=selection.index,matches=selection.matches;
+                if(selection.state==CaptureAssociation::Ready) {
                     SaveJob job;job.reserved=ready[match]->data.capacity();job.epoch=epoch;
                     job.capture=std::move(ready[match]);job.heard=*h;
                     publishing_reserved.fetch_add(job.reserved);
@@ -684,8 +670,9 @@ static DWORD WINAPI Worker(LPVOID) {
                         LogActivity("failed","publication queue full; completed candidate discarded");
                     }
                     ready.erase(ready.begin()+match); h=heard.erase(h);
-                } else if(matches>1 || now-h->finish>10) {
-                    SetClassicTrackStatus(h->media,"ERROR",matches>1?"Ambiguous audio stream association":"Completed audio stream was not found");
+                } else if(selection.state==CaptureAssociation::Ambiguous ||
+                          selection.state==CaptureAssociation::Missing) {
+                    SetClassicTrackStatus(h->media,"ERROR",selection.state==CaptureAssociation::Ambiguous?"Ambiguous audio stream association":"Completed audio stream was not found");
                     std::string candidates;
                     for(size_t i=0;i<ready.size() && i<6;i++) {
                         char item[160];snprintf(item,sizeof(item),"%s%.3fs@%+.3fs",
@@ -693,13 +680,14 @@ static DWORD WINAPI Worker(LPVOID) {
                         candidates+=item;
                     }
                     char line[1400];snprintf(line,sizeof(line),
-                        "%s - %s (stream association failed matches=%zu ready=%zu media_duration=%.3f listen_start=%.3f listen_finish=%.3f wait=%.3f candidates=[%s])",
+                        "%s - %s (stream association failed matches=%zu ready=%zu retained_active=%zu media_duration=%.3f listen_start=%.3f listen_finish=%.3f wait=%.3f candidates=[%s])",
                         Utf8(h->media.artist).c_str(),Utf8(h->media.title).c_str(),matches,ready.size(),
-                        h->media.duration,h->start,h->finish,now-h->finish,candidates.c_str());
+                        selection.pending,h->media.duration,h->start,h->finish,now-h->finish,candidates.c_str());
                     LogActivity("failed",line);QueueDiagnostic(line);
                     h=heard.erase(h);
                 } else ++h;
             }
+            PruneRetainedCaptures(active,ready,heard,now);
             ready.erase(std::remove_if(ready.begin(),ready.end(),[now](const auto& c){return now-c->finished>600;}),ready.end());
             for(auto it=active.begin();it!=active.end();) {
                 if(now-it->second->born>21600) it=active.erase(it); else ++it;

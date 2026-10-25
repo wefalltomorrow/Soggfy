@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.0-rc.65 — retain late capture completion (test build)
+
+- Preserve an unfinished Ogg/FLAC capture across a track transition when a completed, nonignored listen is awaiting it. Retention ends at that listen's existing ten-second deadline and remains inside the shared memory budget.
+- Bind retained candidates to their original completed listen; later skips/repeats cannot extend the deadline or take that audio. Release retained buffers when the listen is queued, rejected or expires.
+- Wait for a competing retained capture before selecting one ready stream. Reject ambiguous results and unresolved competitors at the deadline. Keep strict codec completeness and the existing -20/+3-second start window.
+- Add portable regressions using production cleanup/selection policy, Ogg validation, FLAC coverage and accelerated Listen tracking. RC64 observer and RC63 recovery fixes remain included. Live validation is still required; this does not establish the cause of historical missing-stream failures or random pauses.
+
 ## 3.0.0-rc.64 — isolate Windows media reads from capture (test build)
 
 - Move blocking Windows media and artwork reads onto a dedicated observer. The capture worker consumes bounded, sequenced snapshots through a short try-lock.

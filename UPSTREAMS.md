@@ -44,6 +44,14 @@ claim that random pauses are solved.
 
 ## Compatibility references
 
+RC65 selectively adapts late-capture retention from Mainkill1/Floggfy commit
+`f80dfdd91f740afdce22869308b504308e072a61`. Soggfy keeps its existing association
+window and accelerated listen tracker, binds retention to the original completed
+listen and defers selection while a retained competing stream is incomplete.
+The shared portable policy is tested with actual Ogg and FLAC validators.
+Upstream repeat/delayed-identity generation changes and network defaults remain
+outside this candidate. The RC64 exclusions above describe RC64 specifically.
+
 Playback-speed compatibility was independently reimplemented against the current x64 Spotify track-player calling convention and validated with structural PE checks. Public reverse-engineering references were used only to confirm the modern calling convention and pattern family; no third-party implementation source was vendored.
 
 The active hook requires a unique validated Spotify.dll target and fails closed when discovery is missing or ambiguous.

@@ -1,4 +1,23 @@
-## RC64 candidate scope
+## RC65 candidate scope
+
+RC65 targets Spotify **1.3.1.234.g59d6bf59, Windows x64**, and includes RC64 below.
+`bash test-native.sh` now compiles `tests/capture_association_test.cpp` against
+the shared production transition cleanup, retention, selection and expiry policy.
+Synthetic callbacks use the real Ogg CRC/sequence/EOS validator and FLAC decoded
+frame coverage. Cases cover late completion, deadline boundaries, skipped/ignored
+listens, rapid Next overlap, ownership across later transitions, competing
+captures, invalid streams, duration/start mismatches and a natural 30x transition.
+The test asserts that RC64's deletion predicate selects the late-callback fixture.
+This is a portable policy/codec regression, not a live Spotify or full Windows
+hook/worker integration test. No local C++ toolchain is available; CI must pass
+before distributing this candidate. Preserve RC63/RC64 packages for comparison.
+
+No historical missing-stream event is proven to have this cause. A stalled
+decoder that never supplies the final callback still times out. Unresolved
+competing retained captures fail closed at ten seconds, which may reject an
+otherwise complete candidate. No wider association window is introduced.
+
+## RC64 observer scope (included in RC65)
 
 RC64 targets Spotify **1.3.1.234.g59d6bf59, Windows x64**. Older live-test
 accounts below are historical evidence, not validation of RC64 or a change of
