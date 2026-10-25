@@ -16,16 +16,14 @@ python3 tests/create_cache_fixtures.py "$floggfy_test_root/cache-fixtures"
 mkdir -p "$floggfy_test_root/cache-users/synthetic-user/primary.ldb"
 cp "$floggfy_test_root/cache-fixtures/separate-album.ldb" "$floggfy_test_root/cache-users/synthetic-user/primary.ldb/000001.ldb"
 mkdir -p build/windows-tests
-python3 - <<'PY'
-from pathlib import Path
-script='window.__floggfyNative=true;\n'+Path('native/metadata_collector.js').read_text()
-Path('build/metadata_script.h').write_text('static constexpr wchar_t metadata_script[]=LR"FLOGGFY('+script+')FLOGGFY";\n')
-PY
+python3 tools/generate_native_resources.py
 for source in buffer hook trampoline hde/hde64; do
     "$CC" -std=c11 -O2 -Wall -Wextra -c \
         "native/vendor/minhook/src/$source.c" -o "build/windows-tests/minhook-${source//\//-}.o"
 done
 common=(-std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static)
+fp_runtime="$("$CXX" -print-file-name=CRT_fp10.o)"
+test -f "$fp_runtime"
 "$CXX" "${common[@]}" tests/windows_history_test.cpp \
  native/existing_quality.cpp native/file_publication.cpp native/history_settings.cpp \
  native/async_log.cpp native/library_layout.cpp native/ogg_history_core.cpp \
@@ -35,8 +33,9 @@ common=(-std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static)
 "$CC" -std=c11 -O2 -I native/vendor/libogg/include -c native/vendor/libogg/src/framing.c -o build/windows-tests/metadata-ogg.o
 "$CXX" "${common[@]}" tests/windows_metadata_identity_test.cpp -I native/vendor/libogg/include \
  native/rich_metadata.cpp native/cached_metadata.cpp native/cached_metadata_windows.cpp native/history_settings.cpp native/async_log.cpp \
+ native/classic_ui_backend.cpp native/classic_status_backend.cpp native/classic_path_match.cpp native/library_layout.cpp native/existing_quality.cpp native/file_publication.cpp \
  native/media_session.cpp native/playback_quality_windows.cpp native/playback_quality.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/windows-tests/metadata-ogg.o build/windows-tests/minhook-*.o -lole32 -luuid -lshell32 \
- -lruntimeobject -o "$floggfy_test_root/windows-metadata-identity-test.exe"
+ "$fp_runtime" -lruntimeobject -lwinhttp -o "$floggfy_test_root/windows-metadata-identity-test.exe"
 "$floggfy_test_root/windows-history-test.exe"
 "$CXX" "${common[@]}" tests/windows_settings_flush_test.cpp native/async_log.cpp  -lole32 -luuid -lshell32 -o "$floggfy_test_root/windows-settings-flush-test.exe"
 "$floggfy_test_root/windows-settings-flush-test.exe"
@@ -55,5 +54,10 @@ quality_sources=(native/playback_quality.cpp native/flac_history_core.cpp native
 "$CXX" "${common[@]}" -I native/vendor/libogg/include tests/windows_menu_quality_test.cpp "${quality_sources[@]}" native/history_settings.cpp native/async_log.cpp build/windows-tests/minhook-*.o -lole32 -luuid -lshell32 -o "$floggfy_test_root/windows-menu-quality-test.exe"
 "$floggfy_test_root/windows-menu-quality-test.exe"
 
-"$CXX" "${common[@]}" -I native/vendor/libogg/include tests/windows_quality_observer_test.cpp native/playback_quality_windows.cpp "${quality_sources[@]}" native/media_session.cpp native/library_layout.cpp native/existing_quality.cpp native/file_publication.cpp native/spotify_hook_discovery.cpp native/history_settings.cpp native/async_log.cpp build/windows-tests/minhook-*.o -lole32 -luuid -lshell32 -lruntimeobject -o "$floggfy_test_root/windows-quality-observer-test.exe"
+"$CXX" "${common[@]}" -I native/vendor/libogg/include tests/windows_quality_observer_test.cpp \
+ native/playback_quality_windows.cpp "${quality_sources[@]}" native/media_session.cpp native/library_layout.cpp \
+ native/existing_quality.cpp native/file_publication.cpp native/spotify_hook_discovery.cpp native/history_settings.cpp \
+ native/async_log.cpp native/classic_ui_backend.cpp native/classic_status_backend.cpp native/classic_path_match.cpp \
+ native/post_process.cpp build/windows-tests/minhook-*.o "$fp_runtime" -lole32 -luuid -lshell32 -lruntimeobject -lwinhttp \
+ -o "$floggfy_test_root/windows-quality-observer-test.exe"
 "$floggfy_test_root/windows-quality-observer-test.exe"

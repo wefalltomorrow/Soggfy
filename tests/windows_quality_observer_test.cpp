@@ -5,6 +5,11 @@
 namespace history {
 std::string ReadClientPlaybackQuality(const Media&) {return {};}
 void EnrichTags(const Media &, Tags &) { assert(false && "observer test must not publish audio"); }
+void EnrichCatalog(const Media &, Catalog &) { assert(false && "observer test must not publish audio"); }
+// No Spotify decoder module is loaded by this observer-only fixture.
+bool PlaybackSpeedSupported() { return false; }
+void SetPlaybackSpeedProbeEnabled(bool) {}
+DecodeProbeSnapshot ReadPlaybackSpeedProbe() { return {}; }
 } // namespace history
 static int parser_calls = 0;
 static int32_t Parser(void *, OggPage *) {
