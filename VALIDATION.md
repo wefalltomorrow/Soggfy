@@ -1,4 +1,183 @@
-## Automated checks
+## RC70 candidate scope
+
+RC70 follows up three conversion gaps from RC69: manual FFmpeg could hang forever,
+fresh native sources were not locked throughout conversion, and optional deletion
+could target a replaced file. Regression coverage now includes encode/validation
+timeouts and child cleanup, one shared deadline, watcher recovery after a hang,
+parent-exit descendant cleanup, literal Unicode/metacharacter wrapper arguments,
+native/manual source locks, and deterministic replacement/change at deletion.
+The manual controlled suite runs under Windows PowerShell 5.1 and PowerShell 7.
+The new C# helper must ship with the script; both workflows check for it.
+
+The final candidate still requires successful full MinGW CI and package verification.
+Preserve RC63–RC69; no live installation, merge or official release before separate
+Spotify validation. Recurring full watch scans and installer/uninstaller transaction
+and ownership design remain outstanding. A forced PowerShell termination kills
+the converter tree but may leave a temporary output. Historical pauses and decoder
+stalls remain unresolved; these maintenance changes do not prove live stability.
+
+## RC69 candidate scope (historical)
+
+RC69 includes RC63–RC68. The maintenance audit covers the Classic UI/queue/export
+paths, native status/cache/publication/conversion, settings/logging/metadata, capture
+and recovery boundaries, installer, manual conversion, packaging and CI gates.
+It is a bounded source and automated-test audit, not proof that every line or live
+Spotify behavior is defect free.
+
+Local assertion-enabled Zig diagnostics pass the 32,768-file status suite, 640-query
+result-cache reuse and 4,096-entry eviction; native conversion with controlled failures
+and real FFmpeg; manual conversion; and Windows publication/settings checks. All
+13 JavaScript suites pass. Real watch tests cover arrivals during encoding, locked
+files, corrupt input, relative paths and invalid watch preflight. Packaging checks
+verify deterministic bytes and preservation of old/same-version ZIPs on failure.
+
+Both workflows now require the additional Windows publication, settings, logging,
+metadata/cache and playback-quality suites. CI must pass for the final commit before
+the candidate is accepted; local Zig diagnostics do not replace the MinGW build.
+
+Live validation remains required on Spotify 1.3.1.234.g59d6bf59 Windows x64: 1x/30x,
+Downloads-off speed, pause/recovery, Repeat One, Ogg/FLAC, long playlist/album export,
+player replacement, Unicode/custom/podcast paths and extended playback.
+Historical random pauses and decoder stalls are unresolved. Known remaining limits
+include recurring watch scans, manual FFmpeg without a process deadline, a small
+source-replacement window around optional deletion, nontransactional installer writes,
+and uninstall ownership if another tool replaces the installed DLL. Settings flush now accepts newer coalesced writes, checks failures consistently and
+handles generation wrap; the deterministic production-code regression passes. The remaining limits are
+explicit follow-up risks, not established regressions or claimed fixes.
+
+Preserve RC63–RC68. Do not merge, officially release or install into live Spotify
+before the separate live-validation gate.
+
+## RC68 candidate scope
+
+RC68 includes all earlier candidate changes. Local validation uses Zig 0.13 with
+assertions enabled (-UNDEBUG); shipped binaries still use MinGW CI. All twelve
+JavaScript suites cover paged rows, obsolete page cancellation and stale queue
+events, as well as existing pause/recovery and cached-player behavior.
+
+The Windows status suite checks 32,768 files and 128 misses with zero cold regex
+checks, 128 warm cache hits, unchanged-rescan reuse, added/deleted files,
+locked/unlocked candidates, ambiguity, title-free/nested-token custom templates,
+file/directory/depth limits, unavailable roots and cancellation during scan/match.
+Local cold lookup measured 547 ms and warm lookup 0 ms at millisecond resolution.
+The separate diagnostic measured 813 ms; RC67 measured about 46 seconds on that
+synthetic miss workload. These are not live Spotify performance measurements.
+
+Conversion tests use controlled failures and real FFmpeg: MP3 320 kbps full
+decode, generated FLAC/Ogg failure-then-retry, corrupt/truncated native sources,
+existing destinations, cancellation and original preservation. Manual-script
+tests cover empty/corrupt output, failed conversion, raced files/directories,
+320k arguments, explicit deletion only after validation and temporary cleanup.
+CI installs FFmpeg and requires the real-codec cases through the shared Windows
+maintenance runner. The fake converter tests control flow, not codec validity.
+
+Live validation remains outstanding on Spotify 1.3.1.234.g59d6bf59 Windows x64:
+check large playlists, changed save folders, skip policies/player replacement,
+retained-native conversion retry and normal 1x/30x capture/playback. Retry occurs
+only when capture reaches existing-file publication; it is not a background job.
+Incomplete/reparse-limited libraries show uncertainty. The cooperative lookup
+deadline cannot interrupt a blocked OS call or individual regex operation.
+Preserve RC63–RC67. Do not merge, publish an official release or install into
+live Spotify before the separate live-validation gate is satisfied.
+
+## RC67 candidate scope (included in RC68)
+
+RC67 targets Spotify **1.3.1.234.g59d6bf59, Windows x64** and includes RC63–RC66.
+The maintenance gate adds twelve total JavaScript suites and bounded existing-file
+Vorbis/FLAC header tests to the portable suite. Windows CI and release workflows
+also run production conversion and library-status tests with isolated fixtures.
+
+The conversion harness checks directories, empty/corrupt/locked destinations,
+valid pre-existing output with native retention, failed/empty/corrupt conversion,
+atomic destination conflicts, timeout/cancellation, child-process termination,
+successful publication and keep-original behavior. Optional SGF_REAL_FFMPEG runs
+an installed FFmpeg against generated PCM for MP3 320 kbps encode/full decode,
+valid/corrupt existing output and header-only audio. Fake-converter cases test
+process/control flow; only the optional smoke exercises real codec behavior.
+
+The status harness checks actual files, deletion, locking, empty files, directory
+conflicts, ambiguity, publication/root/template invalidation, exact artist identity,
+Unicode/multiple artists, legacy paths, podcasts/custom extensions and cache eviction.
+Its deterministic 2,048-file/128-query repeated-miss benchmark requires zero warm
+regex checks and compilations, versus 786,432 checks and 384 compilations cold.
+Local diagnostic binaries use Zig 0.13 with assertions enabled (-UNDEBUG); shipped
+binaries still require the established MinGW CI build and package verification.
+
+Live validation must include MP3 320 kbps playback, conflicting destinations with
+native retention, deletion/addition of library files, changed save folders/templates,
+skip-downloaded retries and normal 1x/30x capture. External additions reconcile
+after the ten-second directory-index lifetime plus polling; queue results expire
+after three seconds. Full output decoding adds work and the save queue remains
+bounded. Network/storage stalls and sustained overload are not eliminated.
+Preserve RC66 for comparison. Do not merge, publish an official release or install
+into live Spotify before the separate live-validation gate is satisfied.
+
+## RC66 candidate scope (included in RC67)
+
+RC66 targets Spotify **1.3.1.234.g59d6bf59, Windows x64**. Local portable
+tests use workspace Zig 0.13 with assertions explicitly enabled (`-UNDEBUG`);
+release binaries still use the established MinGW CI toolchain. The new
+`repeat_identity_test.cpp` combines the production accelerated clock and listen
+tracker at 1x, 2x, 10x and 30x. It covers two consecutive repeats, original start
+and completion times, titles arriving before/after confirmation, changed
+durations, timestamp refreshes, stale raw observations, seeks, missing coverage,
+pauses, rate changes, short repeats and the original two-second deadline.
+Capture tests also verify original-generation ownership and the unchanged
+ten-second completion deadline through delayed relabeling.
+
+A minimal full six-second same-title repeat fixture returns no completed listen
+on RC65 and exactly one on RC66 after one second of confirmation. Existing
+history/position tests, capture tests and all eleven JavaScript suites pass
+locally. CI runs the full native suite, Windows observer boundary test, release
+build and package checks. These are synthetic/source regressions, not live
+Spotify evidence. Repeat One, delayed titles, manual seeks/Next, pause/resume,
+Downloads toggles and correct MP3 metadata need live 1x/30x comparison before
+merge or release. Very short/sparse accelerated resets may be unrecognized;
+manual seeks near a natural end can be indistinguishable from a repeat.
+
+## RC65 scope (included in RC66)
+
+RC65 targets Spotify **1.3.1.234.g59d6bf59, Windows x64**, and includes RC64 below.
+`bash test-native.sh` now compiles `tests/capture_association_test.cpp` against
+the shared production transition cleanup, retention, selection and expiry policy.
+Synthetic callbacks use the real Ogg CRC/sequence/EOS validator and FLAC decoded
+frame coverage. Cases cover late completion, deadline boundaries, skipped/ignored
+listens, rapid Next overlap, ownership across later transitions, competing
+captures, invalid streams, duration/start mismatches and a natural 30x transition.
+The test asserts that RC64's deletion predicate selects the late-callback fixture.
+This is a portable policy/codec regression, not a live Spotify or full Windows
+hook/worker integration test. CI must pass before distributing a candidate.
+Preserve RC63/RC64/RC65 packages for comparison.
+
+No historical missing-stream event is proven to have this cause. A stalled
+decoder that never supplies the final callback still times out. Unresolved
+competing retained captures fail closed at ten seconds, which may reject an
+otherwise complete candidate. No wider association window is introduced.
+
+## RC64 observer scope (included in RC65)
+
+RC64 targets Spotify **1.3.1.234.g59d6bf59, Windows x64**. Older live-test
+accounts below are historical evidence, not validation of RC64 or a change of
+the chosen Spotify baseline. This candidate needs live testing before merge or release.
+
+`bash test-media-observer-windows.sh` runs a focused Windows regression against
+the production snapshot reader with an injected provider. The provider is held
+for more than three seconds while a consumer continues polling and draining a
+bounded queue. Tests cover the original sample timestamp, failures/exceptions,
+invalid/future samples, oversized artwork, duplicate/skipped sequences,
+generation/rate/epoch/artwork changes (including A-B-A), nonblocking stop and
+single-worker restart with monotonic sequences. This is a boundary test, not
+a live Spotify or full capture-worker integration test. CI and release workflows
+run it explicitly on Windows before packaging; the broader historical Windows
+test script is not implicitly covered by that step.
+
+The portable position-clock suite adds 30x coverage, variable delivery latency,
+pause/resume, effective-1x clock transitions and rejection of real observation
+gaps. Existing strict stream-integrity and eleven JavaScript suites remain gates.
+No test here establishes the cause or elimination of Spotify's random pauses,
+decoder stalls or late stream-association failures.
+
+## Automated checks (historical baseline and continuing suites)
 
 `bash test-native.sh` covers Ogg integrity/complete listens, native artwork/tags,
 FLAC metadata and contiguous frame coverage, fixed RAM block budgets, requested

@@ -19,7 +19,7 @@ int main() {
     InitSettings(GetModuleHandleW(nullptr));
     check(GetFileAttributesW(ini.c_str())!=INVALID_FILE_ATTRIBUTES,"missing INI created beside DLL");
     auto defaults=GetSettings();
-    check(!defaults.downloads && defaults.menu && defaults.ogg && defaults.flac &&
+    check(!defaults.downloads && !defaults.menu && defaults.classic_ui && defaults.ogg && defaults.flac &&
           defaults.metadata && defaults.log && !defaults.debug_log,
           "generated INI loads complete default switches");
     check(defaults.save_location.empty() && defaults.max_buffered_mib==500,
@@ -39,6 +39,17 @@ int main() {
     check(PublishBytes(target,qlow,lo.data(),lo.size())==FilePublication::Skipped && read(target)==hi,"downgrade prevented");
     WIN32_FIND_DATAW data; HANDLE files=FindFirstFileW((target+L".complete-*").c_str(),&data);
     check(files==INVALID_HANDLE_VALUE,"no completed staging files remain"); if(files!=INVALID_HANDLE_VALUE) FindClose(files);
+    const auto playlist=dir+L"\\export.m3u8";
+    check(ReplaceCompleteFile(playlist,lo.data(),lo.size()),"new export saved");
+    HANDLE exportLock=CreateFileW(playlist.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+    check(exportLock!=INVALID_HANDLE_VALUE,"lock existing export");
+    check(!ReplaceCompleteFile(playlist,hi.data(),hi.size())&&read(playlist)==lo,"failed export preserves old bytes");
+    CloseHandle(exportLock);
+    check(ReplaceCompleteFile(playlist,hi.data(),hi.size())&&read(playlist)==hi,"complete export replaces old bytes");
+    check(!ReplaceCompleteFile(playlist,lo.data(),0)&&read(playlist)==hi,"invalid export preserves old file");
+    files=FindFirstFileW((playlist+L".export-*").c_str(),&data);
+    check(files==INVALID_HANDLE_VALUE,"no export staging files remain");if(files!=INVALID_HANDLE_VALUE)FindClose(files);
+    DeleteFileW(playlist.c_str());
     check(SetDownloads(true) && OggEnabled(),"Downloads enabled immediately");
     check(SetOgg(false) && !OggEnabled(),"Ogg disable immediately bypasses capture");
     check(SetOgg(true) && SetDownloads(false) && !OggEnabled(),"Downloads off persists and bypasses capture");

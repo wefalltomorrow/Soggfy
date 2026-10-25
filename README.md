@@ -24,6 +24,17 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
 
+RC70 bounds manual conversion time, supervises converter child processes, and
+protects conversion sources against concurrent writes and replacement at deletion.
+It retains RC69 conversion/watch reliability, queue recovery and complete M3U export.
+It also retains the RC68 large-library lookup and paged visible-track improvements.
+Incomplete library scans show a warning. Conversion retries can reuse a validated
+retained Ogg/FLAC file while preserving it; retries occur when a capture reaches
+publication, so Skip Downloaded may need to be disabled for a replay. The manual
+PostProcess script validates output before deleting an original and uses MP3
+320 kbps. See RELEASE_NOTES.md and VALIDATION.md for candidate test results and
+the remaining live Spotify validation requirement.
+
 ## Install
 
 **RC40 targets Spotify Windows x64 1.3.1.234.** That is the runtime-validated baseline for Soggfy's native 1-30x playback-speed hook. The Spotify 1.3.3.264 experiment line has been rolled back rather than carried into this build. Existing saved speeds above 30x are automatically limited to 30x. Other Spotify versions fail closed for native playback speed. Microsoft Store installs remain unvalidated.
@@ -88,6 +99,15 @@ Built-in presets include:
 If an FFmpeg build does not include libfdk_aac, the old FDK-labelled M4A presets automatically fall back to FFmpeg's native AAC encoder instead of simply failing.
 
 By default the validated native Ogg/FLAC is retained after conversion. Scripts\PostProcess.ps1 is also included for manual/batch conversion workflows.
+
+The manual converter supports Windows PowerShell 5.1 and PowerShell 7. Keep
+Scripts/ConverterProcess.cs beside PostProcess.ps1. FFmpegPath accepts an .exe or
+.ps1 wrapper. Encoding and full output validation share one deadline: by default,
+five minutes plus one second per 64 KiB of source data, capped at six hours.
+Use -TimeoutSeconds 900 to choose a 15-minute budget per file. A timed-out file is
+retained; watch mode continues to other files and retries it with bounded backoff.
+Stopping PowerShell terminates supervised converter descendants. Forcibly ending
+PowerShell can leave a temporary output because script cleanup cannot then run.
 
 ## Output paths
 

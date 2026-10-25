@@ -3,6 +3,8 @@
 import hashlib
 from pathlib import Path
 import shutil
+import os
+import tempfile
 import zipfile
 
 root = Path(__file__).resolve().parent
@@ -10,12 +12,6 @@ VERSION = (root / "VERSION").read_text(encoding="utf-8").strip()
 out = root / "dist"
 out.mkdir(exist_ok=True)
 release_name = f"Soggfy-v{VERSION}-Windows-x64.zip"
-
-for old_archive in out.glob("Soggfy-v*-Windows-x64.zip"):
-    if old_archive.name != release_name:
-        old_archive.unlink()
-for old_archive in out.glob("Soggfy-v*-Launcher-Windows-x64.zip"):
-    old_archive.unlink()
 
 dll = out / "version.dll"
 launcher_exe = out / "Soggfy.exe"
@@ -61,6 +57,7 @@ files = [
     ("Scripts/Install.ps1", root / "Scripts" / "Install.ps1"),
     ("Scripts/Uninstall.ps1", root / "Scripts" / "Uninstall.ps1"),
     ("Scripts/PostProcess.ps1", root / "Scripts" / "PostProcess.ps1"),
+    ("Scripts/ConverterProcess.cs", root / "Scripts" / "ConverterProcess.cs"),
     ("Scripts/Diagnose.ps1", root / "Scripts" / "Diagnose.ps1"),
     ("Launcher/Soggfy.exe", launcher_exe),
     ("Launcher/Soggfy.dll", launcher_dll),
@@ -75,17 +72,23 @@ for vendor in ["minhook", "libogg", "cef", "soggfy"]:
     )
 
 archive_path = out / release_name
-with zipfile.ZipFile(archive_path, "w") as archive:
-    for arcname, path in files:
-        if arcname == "SHA256SUMS.txt":
-            add_bytes(archive, arcname, binary_manifest)
-        else:
-            add_bytes(archive, arcname, path.read_bytes())
+# Keep previous packages and never expose a half-written replacement ZIP.
+handle, staging = tempfile.mkstemp(prefix=release_name + ".", suffix=".tmp", dir=out)
+os.close(handle)
+try:
+    with zipfile.ZipFile(staging, "w") as archive:
+        for arcname, path in files:
+            if arcname == "SHA256SUMS.txt":
+                add_bytes(archive, arcname, binary_manifest)
+            else:
+                add_bytes(archive, arcname, path.read_bytes())
+    os.replace(staging, archive_path)
+finally:
+    Path(staging).unlink(missing_ok=True)
 
 archive_digest = sha256(archive_path)
-(out / "SHA256SUMS.txt").write_text(
-    f"{archive_digest}  {release_name}\n",
-    encoding="utf-8",
+(out / "SHA256SUMS.txt").write_bytes(
+    f"{archive_digest}  {release_name}\n".encode("utf-8"),
 )
 
 print(f"ZIP: {archive_path}")

@@ -40,6 +40,8 @@ jobs:
             }
           }
           if ($failed) { exit 1 }
+          "SGF_PWSH_PATH=$((Get-Process -Id $PID).Path)" >> $env:GITHUB_ENV
+          "SGF_PYTHON_PATH=$((Get-Command python.exe -ErrorAction Stop).Source)" >> $env:GITHUB_ENV
 
       - name: Set up newer MinGW-w64 toolchain
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
@@ -50,6 +52,7 @@ jobs:
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-binutils
+            mingw-w64-x86_64-ffmpeg
             python
 
       - name: Verify toolchain floor
@@ -72,6 +75,25 @@ jobs:
               raise SystemExit(f"binutils 2.44+ required for release builds, got {ld}")
           print(f"Accepted release toolchain: GCC {gcc}, binutils {ld}")
           PY
+
+      - name: Test Windows media observer boundary
+        shell: msys2 {0}
+        env:
+          CXX: g++
+        run: bash test-media-observer-windows.sh
+
+      - name: Test conversion and library status maintenance
+        shell: msys2 {0}
+        env:
+          CXX: g++
+        run: bash test-maintenance-windows.sh
+
+      - name: Test Windows publication, settings, logging, metadata and quality
+        shell: msys2 {0}
+        env:
+          CC: gcc
+          CXX: g++
+        run: bash test-native-windows.sh
 
       - name: Build Windows x64 DLL
         shell: msys2 {0}
@@ -98,11 +120,14 @@ jobs:
           objdump -h build/version.dll | grep -q '\.rsrc'
           strings -el build/version.dll | grep -Fq 'Soggfy Spotify history capture proxy'
           strings -el build/version.dll | grep -Fq "$version"
-          objdump -p build/version.dll | grep -iq 'DLL Name: msvcrt.dll'
-          if objdump -p build/version.dll | grep -iq 'DLL Name: libwinpthread-1.dll'; then
-            echo 'Unexpected dynamic MinGW pthread runtime dependency' >&2
-            exit 1
-          fi
+          for binary in build/version.dll build/Soggfy.exe; do
+            imports="$(objdump -p "$binary")"
+            grep -iq 'DLL Name: msvcrt.dll' <<< "$imports"
+            if grep -Ei 'DLL Name: (libwinpthread|libgcc|libstdc[+][+])' <<< "$imports"; then
+              echo "Unexpected dynamic MinGW runtime dependency in $binary" >&2
+              exit 1
+            fi
+          done
           cd dist
           grep -Fq "  $archive" SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
@@ -120,6 +145,7 @@ jobs:
               "Scripts/Install.ps1",
               "Scripts/Uninstall.ps1",
               "Scripts/PostProcess.ps1",
+              "Scripts/ConverterProcess.cs",
               "Scripts/Diagnose.ps1",
           }
           with zipfile.ZipFile(sys.argv[1]) as z:

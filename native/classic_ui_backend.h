@@ -1,7 +1,9 @@
 #pragma once
 #include "media_session.h"
 #include <string>
+#include <cstdint>
 #include <vector>
+#include <functional>
 
 namespace history {
 struct ClassicTrackQuery {
@@ -15,7 +17,19 @@ struct ClassicTrackResult {
 
 void SetClassicTrackStatus(const Media& media,const char* status,const std::string& message={},
                            const std::wstring& path={});
-std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<ClassicTrackQuery>& queries);
+struct ClassicStatusMetrics {
+    uint64_t scans=0,compilations=0,regex_checks=0,cache_hits=0;
+    uint64_t scan_ms=0,compile_ms=0,match_ms=0,elapsed_ms=0;
+};
+struct ClassicStatusControl {
+    std::function<bool()> canceled;
+    unsigned timeout_ms=7000,index_lifetime_ms=10000;
+    size_t max_files=100000,max_directories=10000;
+    unsigned max_depth=12;
+};
+unsigned ClassicStatusRevision();
+std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<ClassicTrackQuery>& queries,ClassicStatusMetrics* metrics=nullptr,
+                                                        const ClassicStatusControl& control={});
 bool RevealClassicTrack(const std::wstring& path);
 
 struct ClassicM3UEntry {

@@ -18,6 +18,7 @@ vm.runInNewContext(fs.readFileSync('native/ui/classic_recovery.js','utf8'),conte
 assert.strictEqual(sgf.readRecoveryState(sgf.currentState()).uri,uri);
 assert.strictEqual(sgf.readRecoveryState(sgf.currentState()).mode,'playing');
 assert.strictEqual(sgf.readRecoveryState(sgf.currentState()).durationMs,150000);
+assert.strictEqual(sgf.readRecoveryState(sgf.currentState()).source,'player-flags');
 const watcher=sgf.createPlaybackRecoveryMonitor({
  now:()=>now,getState:()=>sgf.currentState(),
  reset:async()=>{attempts++;return true;},
@@ -57,6 +58,9 @@ const watcher=sgf.createPlaybackRecoveryMonitor({
   track:{uri:'spotify:track:pause',duration:100000},
   is_paused:true,is_playing:false
  }).mode,'paused');
+ assert.strictEqual(sgf.readRecoveryState({
+  track:{uri:'spotify:track:contradiction'},is_paused:true,is_playing:true
+ }).source,'conflicting-flags');
 
  document.querySelector=selector=>selector.includes('control-button-pause')?{}:null;
  assert.strictEqual(sgf.readRecoveryState({track:{uri:'spotify:track:unknown'}}).mode,'playing',
