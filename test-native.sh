@@ -34,6 +34,8 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/history_core_test.cpp native/ogg_
 build/history-core-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/media_position_core_test.cpp native/ogg_history_core.cpp -o build/media-position-core-test
 build/media-position-core-test
+g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/repeat_identity_test.cpp native/ogg_history_core.cpp -o build/repeat-identity-test
+build/repeat-identity-test
 gcc -std=c11 -O2 -I native/vendor/libogg/include -c native/vendor/libogg/src/framing.c -o build/ogg-framing-test.o
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include \
     tests/ogg_tags_test.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/ogg-tags-test
@@ -45,11 +47,18 @@ build/classic-path-match-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include \
     tests/flac_history_test.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/flac-history-test
 build/flac-history-test
+g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include \
+    tests/capture_association_test.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/capture-association-test
+build/capture-association-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/compressed_buffer_test.cpp native/compressed_buffer.cpp -o build/compressed-buffer-test
 build/compressed-buffer-test
+g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/compressed_buffer_allocation_test.cpp native/compressed_buffer.cpp -o build/compressed-buffer-allocation-test
+build/compressed-buffer-allocation-test
 
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/rich_metadata_test.cpp native/rich_metadata.cpp -o build/rich-metadata-test
 build/rich-metadata-test
+g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/recording_identity_test.cpp native/ogg_history_core.cpp -o build/recording-identity-test
+build/recording-identity-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/bounded_queue_test.cpp -o build/bounded-queue-test
 build/bounded-queue-test
 for script in native/ui/classic_core.js native/ui/classic_settings.js native/ui/classic_status.js native/ui/classic_recovery.js native/ui/classic_canvas.js native/ui/classic_m3u.js native/ui/classic_context.js native/ui/classic_boot.js; do
@@ -59,11 +68,16 @@ node tests/metadata_collector_test.js
 node tests/classic_status_icons_test.js
 node tests/classic_row_binding_test.js
 node tests/classic_skip_downloaded_test.js
+node tests/classic_status_protocol_test.js
+node tests/classic_m3u_test.js
+python3 tests/package_release_test.py
 node tests/classic_speed_limit_test.js
 node tests/classic_player_discovery_test.js
 node tests/classic_cached_player_skip_test.js
 node tests/classic_recovery_test.js
 node tests/classic_recovery_native_state_test.js
+node tests/classic_recovery_pause_safety_test.js
+node tests/classic_recovery_async_reset_test.js
 
 python3 tests/create_cache_fixtures.py build/cache-fixtures
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/cached_metadata_test.cpp native/cached_metadata.cpp native/rich_metadata.cpp -o build/cached-metadata-test
@@ -71,3 +85,6 @@ build/cached-metadata-test
 
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include tests/playback_quality_test.cpp native/playback_quality.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/playback-quality-test
 build/playback-quality-test
+
+g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/existing_quality_core_test.cpp native/ogg_history_core.cpp -o build/existing-quality-core-test
+build/existing-quality-core-test

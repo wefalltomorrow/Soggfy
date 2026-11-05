@@ -21,23 +21,33 @@ struct Stream {
     double Duration() const { return rate && samples > 0 ? double(samples) / rate : 0; }
 };
 // Media positions must be extrapolated from the public timeline timestamp.
-// Completed identity is returned only on a natural transition at the end.
+// Completed identity is returned once per observed playback instance. A reset
+// at a natural end waits for a delayed title or a confirmed same-title repeat.
+enum class ListenPhase { Tracking, AwaitingIdentity, ProvisionalRepeat };
 enum class ListenReject {
     None,
     StartTooLate,
     ClockDiscontinuity,
     PositionRewind,
     PositionAhead,
-    DurationChanged
+    DurationChanged,
+    InvalidObservation,
+    IdentityUnresolved
 };
 const char* ListenRejectName(ListenReject reason);
 struct Listen {
     std::string identity;
     double start_time = 0, last_time = 0, last_position = 0, duration = 0;
     double identity_time = 0;
+    uint64_t generation = 0, completed_generation = 0;
+    double completed_start = 0, completed_time = 0, completed_duration = 0;
+    ListenPhase phase = ListenPhase::Tracking;
+    double wrap_time = 0, wrap_start = 0, wrap_position = 0, wrap_length = 0;
+    double wrap_last_time = 0, wrap_last_position = 0, wrap_rate = 1;
     double last_expected = 0, last_elapsed = 0, last_tolerance = 0, last_rate = 1;
     bool eligible = false, playing = false, transient = false, pending_start = false;
     ListenReject reject = ListenReject::None;
+    void Invalidate(ListenReject reason=ListenReject::ClockDiscontinuity);
     std::string Observe(const std::string& key, double position, double length,
                         bool is_playing, double time, double playback_rate=1.0);
 };

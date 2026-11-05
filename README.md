@@ -16,13 +16,35 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Can save cover art, synchronized lyrics as .lrc, plain lyrics as .txt, and Spotify Canvas video.
 - Uses separate track and podcast path templates.
 - Refuses incomplete, skipped, seeked or broken captures instead of publishing partial files.
-- Skips equal or better existing files and atomically replaces lower-quality copies.
+- Skips equal or better existing files and protects quality upgrades with identity checks and destination locks.
 - Uses dynamic x64 hook discovery instead of fixed Spotify offsets.
 - Keeps capture, UI, metadata and playback-speed integrations independent. Soggfy handles telemetry privacy filtering; SpotX handles ads and Spotify update blocking.
 - Preserves Floggfy RC5's current Song / Quality / Format / Sample-rate information inside the Classic settings UI.
 - Uses a bounded, short-lived file index for downloaded-track ticks/Skip Downloaded instead of recursively rescanning the library on every UI mutation.
 - Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
+
+RC72 adds track-identity duplicate routing and album URI tags. A verified different
+track at the configured path routes to Duplicates with escalating ID suffixes;
+legacy files keep their established paths. Classic recognizes tagged duplicates,
+and native/manual conversion copies both container and audio-stream metadata.
+Identity reads support Ogg, FLAC and MP3 ID3; unsupported or oversized metadata
+does not authorize an identity-based upgrade. See RELEASE_NOTES.md for limits.
+
+RC71 fixes buffer allocation recovery, checks launcher architecture before stopping
+Spotify, and requires a matching package to verify DLL ownership before uninstall.
+An unrelated DLL is retained even with -Force; use the package matching the installed
+version. See UPSTREAMS.md for the Floggfy v1.3-RC6 comparison and remaining gaps.
+RC70 bounds manual conversion time, supervises converter child processes, and
+protects conversion sources against concurrent writes and replacement at deletion.
+It retains RC69 conversion/watch reliability, queue recovery and complete M3U export.
+It also retains the RC68 large-library lookup and paged visible-track improvements.
+Incomplete library scans show a warning. Conversion retries can reuse a validated
+retained Ogg/FLAC file while preserving it; retries occur when a capture reaches
+publication, so Skip Downloaded may need to be disabled for a replay. The manual
+PostProcess script validates output before deleting an original and uses MP3
+320 kbps. See RELEASE_NOTES.md and VALIDATION.md for candidate test results and
+the remaining live Spotify validation requirement.
 
 ## Install
 
@@ -88,6 +110,15 @@ Built-in presets include:
 If an FFmpeg build does not include libfdk_aac, the old FDK-labelled M4A presets automatically fall back to FFmpeg's native AAC encoder instead of simply failing.
 
 By default the validated native Ogg/FLAC is retained after conversion. Scripts\PostProcess.ps1 is also included for manual/batch conversion workflows.
+
+The manual converter supports Windows PowerShell 5.1 and PowerShell 7. Keep
+Scripts/ConverterProcess.cs beside PostProcess.ps1. FFmpegPath accepts an .exe or
+.ps1 wrapper. Encoding and full output validation share one deadline: by default,
+five minutes plus one second per 64 KiB of source data, capped at six hours.
+Use -TimeoutSeconds 900 to choose a 15-minute budget per file. A timed-out file is
+retained; watch mode continues to other files and retries it with bounded backoff.
+Stopping PowerShell terminates supervised converter descendants. Forcibly ending
+PowerShell can leave a temporary output because script cleanup cannot then run.
 
 ## Output paths
 

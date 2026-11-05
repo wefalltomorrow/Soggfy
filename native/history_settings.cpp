@@ -20,7 +20,9 @@ static bool IsMusic(std::wstring root) {
 }
 static volatile LONG downloads_enabled=0,ogg_enabled=1,flac_enabled=1,capture_epoch=0,log_enabled=1,debug_enabled=0;
 static HANDLE settings_signal=nullptr,persist_done=nullptr;
-static volatile LONG persisted_generation=-1,persist_failed=0;
+static SRWLOCK persistence_lock=SRWLOCK_INIT;
+static unsigned persisted_generation=0;
+static bool persist_failed=false;
 static constexpr char default_ini[]=
     "[Soggfy]\r\n"
     "; Classic UI recreates the original Soggfy top-bar integration.\r\n"
@@ -118,18 +120,27 @@ static DWORD WINAPI PersistSettings(LPVOID) {
         text(L"To Disk",L"Save Location",snapshot.save_location);
         text(L"To Disk",L"Path Template",snapshot.path_template);
 
-        InterlockedExchange(&persist_failed,!ok);
-        InterlockedExchange(&persisted_generation,LONG(snapshot.generation));
+        AcquireSRWLockExclusive(&persistence_lock);
+        persist_failed=!ok;
+        persisted_generation=snapshot.generation;
+        ReleaseSRWLockExclusive(&persistence_lock);
         SetEvent(persist_done);
         if(!ok)LogActivity("failed","settings persistence");
     }
 }
 bool FlushSettings(unsigned timeout_ms) {
     unsigned expected=GetSettings().generation;ULONGLONG end=GetTickCount64()+timeout_ms;
-    while(unsigned(InterlockedCompareExchange(&persisted_generation,0,0))!=expected) {
+    for(;;) {
+        AcquireSRWLockShared(&persistence_lock);
+        // A newer persisted snapshot includes coalesced changes. Compare serial
+        // numbers across unsigned wrap, and read its result under the same lock.
+        const bool reached=unsigned(persisted_generation-expected)<0x80000000u;
+        const bool failed=persist_failed;
+        ReleaseSRWLockShared(&persistence_lock);
+        if(reached)return !failed;
         if(GetTickCount64()>=end)return false;
         WaitForSingleObject(persist_done,10);
-    }return !persist_failed;
+    }
 }
 std::wstring WindowsPath(const std::wstring& p) {
     if(p.rfind(L"\\\\?\\",0)==0) return p;
@@ -218,7 +229,10 @@ void InitSettings(HMODULE proxy) {
         if(persist_done) CloseHandle(persist_done);
         settings_signal=nullptr;persist_done=nullptr;
     }
-    persisted_generation=LONG(settings.generation);StartLogger();
+    AcquireSRWLockExclusive(&persistence_lock);
+    persisted_generation=settings.generation;persist_failed=false;
+    ReleaseSRWLockExclusive(&persistence_lock);
+    StartLogger();
 }
 Settings GetSettings() {
     AcquireSRWLockShared(&lock); auto copy=settings; ReleaseSRWLockShared(&lock); return copy;

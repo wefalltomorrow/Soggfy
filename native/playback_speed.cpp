@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "playback_speed.h"
+#include "procedure_cast.h"
 #include "playback_speed_compat.h"
 #include "playback_speed_pcm_core.h"
 #include "playback_speed_policy.h"
@@ -73,9 +74,9 @@ static bool ModuleVersion(HMODULE module,SpotifyVersion& out) {
     using SizeFn=DWORD (WINAPI*)(LPCWSTR,LPDWORD);
     using InfoFn=BOOL (WINAPI*)(LPCWSTR,DWORD,DWORD,LPVOID);
     using QueryFn=BOOL (WINAPI*)(LPCVOID,LPCWSTR,LPVOID*,PUINT);
-    auto size_fn=reinterpret_cast<SizeFn>(::ResolveVersionExport(7));
-    auto info_fn=reinterpret_cast<InfoFn>(::ResolveVersionExport(8));
-    auto query_fn=reinterpret_cast<QueryFn>(::ResolveVersionExport(16));
+    auto size_fn=ProcedureCast<SizeFn>(::ResolveVersionExport(7));
+    auto info_fn=ProcedureCast<InfoFn>(::ResolveVersionExport(8));
+    auto query_fn=ProcedureCast<QueryFn>(::ResolveVersionExport(16));
     if(!size_fn||!info_fn||!query_fn)return false;
 
     DWORD ignored=0;

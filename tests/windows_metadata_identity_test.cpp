@@ -4,6 +4,14 @@
 #include <cassert>
 #include <cstdio>
 
+// This fixture has no Spotify decoder module. Keep speed capability unavailable
+// while exercising the real CEF interception and Classic UI message boundary.
+namespace history {
+bool PlaybackSpeedSupported() { return false; }
+bool PlaybackSpeedImmediate() { return false; }
+void ArmPlaybackSpeedRuntime() {}
+}
+
 template<class T> struct CefStorage {
     unsigned long long type=0x434546434c49454eULL;
     void* object=this;
@@ -112,9 +120,17 @@ int main(){
     reinterpret_cast<void(*)(history::Load*,history::Browser*,history::Frame*,int)>(l->methods[2])(l,&browser.api,nullptr,200);
     assert(console_calls==1&&loading_calls==1&&end_calls==1&&browser_releases==3);
     assert(memcmp(&original_client,&storage.api,sizeof(original_client))==0);
-    assert(memcmp(&original_display,&display.api,sizeof(original_display))==0);
+    // Console interception patches its callback slot in place; every other
+    // public field and the private CEF wrapper identity must remain intact.
+    assert(display.api.methods[6]==reinterpret_cast<void*>(history::Console));
+    assert(history::console_callback.Original<void*>()==original_display.methods[6]);
+    auto expected_display=original_display;
+    expected_display.methods[6]=reinterpret_cast<void*>(history::Console);
+    assert(memcmp(&expected_display,&display.api,sizeof(expected_display))==0);
     assert(memcmp(&original_load,&load.api,sizeof(original_load))==0);
     assert(storage.type==0x434546434c49454eULL&&storage.object==&storage&&storage.wrapper==&storage);
+    assert(display.type==0x434546434c49454eULL&&display.object==&display&&display.wrapper==&display);
+    assert(load.type==0x434546434c49454eULL&&load.object==&load&&load.wrapper==&load);
     assert(history::ObserveClient(nullptr)==nullptr);
     assert(MH_Uninitialize()==MH_OK);
     std::puts("metadata client/handler identity and original callback ownership preserved");

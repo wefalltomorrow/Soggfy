@@ -1,4 +1,5 @@
 #include "rich_metadata.h"
+#include "spotify_identity.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -35,7 +36,7 @@ static bool ParseMetadata(const std::string& input,RichMetadata& out,std::string
   size_t end=input.find('&',p); if(end==std::string::npos) end=input.size();
   size_t eq=input.find('=',p); if(eq==std::string::npos||eq>=end) return fail("invalid pair");
   std::string key=input.substr(p,eq-p),value;
-  if(!allowed.count(key)||kv.count(key)||!Decode(input.substr(eq+1,end-eq-1),value)) return fail("invalid field");
+  if((!allowed.count(key)&&key!="album_uri"&&key!="SPOTIFY_ALBUM_URI")||kv.count(key)||!Decode(input.substr(eq+1,end-eq-1),value)) return fail("invalid field");
   if(value.size()>(key=="LYRICS"?65536u:4096u)) return fail("field too large");
   kv.emplace(key,std::move(value)); p=end+1;
  }
@@ -47,6 +48,16 @@ static bool ParseMetadata(const std::string& input,RichMetadata& out,std::string
  char* last=nullptr; double d=strtod(kv["duration"].c_str(),&last);
  if(!last||*last||!std::isfinite(d)||d<=0||d>86400) return fail("invalid duration");
  RichMetadata m; m.title=kv["title"];m.artist=kv["artist"];m.album=kv["album"];m.uri=kv["uri"];m.duration=d;
+ if(!kv["SPOTIFY_URI"].empty()&&kv["SPOTIFY_URI"]!=m.uri)return fail("conflicting track identity");
+ m.album_uri=kv["album_uri"].empty()?kv["SPOTIFY_ALBUM_URI"]:kv["album_uri"];
+ if(!m.album_uri.empty()) {
+  if(!track||!ValidSpotifyUri(m.album_uri,"album")||
+     (!kv["SPOTIFY_ALBUM_URI"].empty()&&kv["SPOTIFY_ALBUM_URI"]!=m.album_uri))return fail("invalid album identity");
+  kv["SPOTIFY_ALBUM_URI"]=m.album_uri;
+ }
+ // Preserve legacy bridge input compatibility; only a complete URI is authoritative.
+ if(ValidSpotifyUri(m.uri,track?"track":"episode"))kv["SPOTIFY_URI"]=m.uri;
+ else kv.erase("SPOTIFY_URI");
  m.kind=episode?"episode":"track";
  if(!kv["MEDIA_KIND"].empty())m.kind=kv["MEDIA_KIND"];
  const std::set<std::string> levels={"low","normal","high","very_high","lossless","lossless_24","hifi"};

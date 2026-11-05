@@ -100,6 +100,8 @@ sgf.flag = (p,key,fallback) => {
 
 sgf.applyConfig = payload => {
   try {
+    const statusKey=()=>JSON.stringify(['root','template','podcastTemplate','invalidChars','outputExt','normalize','skipDownloaded','skipIgnored'].map(key=>sgf.state[key]));
+    const before=statusKey();
     const p=new URLSearchParams(payload||'');
     const bools=['downloads','ogg','flac','metadata','log','debug','normalize','skipDownloaded','skipIgnored','embedCover','saveCover','embedLyrics','saveLyrics','saveCanvas','blockTelemetry','liftQueue','keepNative'];
     for(const key of bools)sgf.state[key]=sgf.flag(p,key,sgf.state[key]);
@@ -109,6 +111,7 @@ sgf.applyConfig = payload => {
     if(p.has('playbackSpeed'))sgf.state.playbackSpeed=Math.max(1,Math.min(sgf.MAX_PLAYBACK_SPEED,Number(p.get('playbackSpeed'))||1));
     if(p.has('speedSupported'))sgf.state.speedSupported=sgf.flag(p,'speedSupported',sgf.state.speedSupported);
     if(p.has('speedImmediate'))sgf.state.speedImmediate=sgf.flag(p,'speedImmediate',sgf.state.speedImmediate);
+    if(before!==statusKey())sgf.invalidateStatusCache?.();
     if(sgf.refreshControls)sgf.refreshControls();
   } catch {}
 };
@@ -171,22 +174,32 @@ sgf.currentState = () => {
   try{return sgf.player?.getState?.()||window.Spicetify?.Player?.data||null;}catch{return null;}
 };
 
-sgf.resetCurrentTrack = async preserve => {
+sgf.resetCurrentTrack = async (preserve,canContinue=()=>true) => {
   try{
+    const player=sgf.player;
+    const valid=()=>sgf.player===player&&canContinue();
+    if(!valid())return false;
     const st=sgf.currentState();
     const trackUri=st?.item?.uri||st?.track?.uri||st?.item?.contextTrack?.uri||'';
     if(!trackUri||!sgf.player)return false;
     const anchor=st.positionAsOfTimestamp??st.position_as_of_timestamp??st.position??0;
     const position=Math.max(0,(Date.now()-(st.timestamp||Date.now()))*
       (st.speed??st.playback_speed??1)+Number(anchor));
-    const queue=sgf.player._queue;
+    const queue=player._queue;
     const snapshot=await queue?.getQueue?.();
+    if(!valid())return false;
     const queued=snapshot?.queued||[];
-    if(queue?.insertIntoQueue&&sgf.player.skipToNext){
+    if(queue?.insertIntoQueue&&player.skipToNext){
       const tracks=[{uri:trackUri}];
       if(queued.length)await queue.insertIntoQueue(tracks,{before:queued[0]});else await queue.addToQueue(tracks);
-      await sgf.player.skipToNext();
-      if(preserve&&sgf.player.seekTo)await sgf.player.seekTo(position);
+      // Queue reads and writes yield to Spotify. A watchdog retry must not
+      // undo a pause or act on a different track after either await.
+      if(!valid())return false;
+      await player.skipToNext();
+      if(preserve&&player.seekTo){
+        if(!valid())return false;
+        await player.seekTo(position);
+      }
       return true;
     }
   }catch(e){console.warn('Soggfy resetCurrentTrack failed',e);}

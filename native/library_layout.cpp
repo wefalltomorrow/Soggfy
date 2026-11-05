@@ -1,4 +1,5 @@
 #include "library_layout.h"
+#include "spotify_identity.h"
 #include <cwctype>
 #include <cstdio>
 #include <vector>
@@ -167,5 +168,26 @@ bool HigherQuality(const Quality& incoming,const Quality& existing) {
         incoming.bitrate>existing.bitrate && incoming.rate>=existing.rate;
     return incoming.bits && existing.bits && incoming.bits>=existing.bits && incoming.rate>=existing.rate &&
         (incoming.bits>existing.bits || incoming.rate>existing.rate);
+}
+std::vector<std::wstring> DuplicatePaths(const std::wstring& root,const std::wstring& canonical,const std::string& uri) {
+    if(!ValidSpotifyUri(uri,"track"))return {};
+    auto base=root;
+    while(!base.empty()&&(base.back()==L'\\'||base.back()==L'/'))base.pop_back();
+    if(canonical.compare(0,base.size()+1,base+L"\\")!=0)return {};
+    const auto slash=canonical.find_last_of(L"\\/"),dot=canonical.find_last_of(L'.');
+    if(slash==std::wstring::npos||dot==std::wstring::npos||dot<=slash)return {};
+    const auto folder=canonical.substr(base.size()+1,slash-base.size());
+    const auto extension=canonical.substr(dot);
+    std::vector<std::wstring> paths;
+    for(size_t length:{10u,14u,22u}) {
+        const auto id=uri.substr(uri.size()-length);
+        const auto suffix=L" [t-"+std::wstring(id.begin(),id.end())+L"]"+extension;
+        if(suffix.size()>=200)return {};
+        auto name=canonical.substr(slash+1,dot-slash-1);
+        if(name.size()+suffix.size()>200)name.resize(200-suffix.size());
+        while(!name.empty()&&(name.back()==L' '||name.back()==L'.'||(name.back()>=0xd800&&name.back()<=0xdbff)))name.pop_back();
+        paths.push_back(base+L"\\Duplicates\\"+folder+name+suffix);
+    }
+    return paths;
 }
 }
