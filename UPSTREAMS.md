@@ -69,3 +69,48 @@ Repeat One behavior still needs validation.
 Playback-speed compatibility was independently reimplemented against the current x64 Spotify track-player calling convention and validated with structural PE checks. Public reverse-engineering references were used only to confirm the modern calling convention and pattern family; no third-party implementation source was vendored.
 
 The active hook requires a unique validated Spotify.dll target and fails closed when discovery is missing or ambiguous.
+
+## November 5, 2026 comparison and RC71 selective ports
+
+Compared RC70 (4327835b65c0e8005faaf38054ecb7ef6a7db0eb) with Floggfy
+v1.3-RC6 (7b825e3b942596c3e912fbbf7a0487abd7578e47), published November 5,
+2026 at 01:16:30 UTC. The release tag is ahead of main (6c7218475f33867a44f732dad89437508d73bfed).
+Sources: https://github.com/Mainkill1/Floggfy/releases/tag/v1.3-RC6 and its tagged
+source tree. Release notes describe a prerelease still awaiting an exact-artifact
+restarted live walkthrough. Earlier upstream live checks used their own client and
+do not validate Soggfy's pinned Spotify 1.3.1.234.g59d6bf59.
+
+RC71 adapts compressed_buffer.cpp allocation ownership and spare-capacity arithmetic,
+plus the allocation-failure regression approach. It preserves uninitialized block
+allocation to avoid unnecessary zero filling. It also ports launcher_architecture.h
+and invokes RequireX64 before StopExisting, with Soggfy names and local regression
+fixtures. These are small independent safety changes, not a capture-core rebase.
+
+| Upstream change | Soggfy status after RC71 | Follow-up |
+| --- | --- | --- |
+| Buffer allocation failure recovery | Adapted and fault-injection tested | Included |
+| Launcher PE architecture preflight | Ported before process control | Included |
+| Dedicated observer, late retention and repeat generations | Earlier selective RC64–66 adaptations | Preserve accelerated-clock behavior |
+| Direct Spotify playback source and decoder ownership | Not ported | Integrate private ABI discovery, producer sequences and capture ownership together |
+| Playback identity bridge and staged natural transitions | Not ported | Test bounded history, repeats, preloads, pause/resume, skips and seeks across 1x–30x |
+| Ad/DJ/interstitial audio isolation | Not ported | Requires trustworthy playback and decoder identity; SpotX remains separate |
+| Native podcast MP3 parser/capture | Not ported | Podcast path templates and MP3 transcoding are not native MP3 capture |
+| Concurrent capture validation and lifecycle/cross-format refinements | Partial overlap with existing strict validators/quality replacement | Compare association and ownership semantics before integrating |
+| Playback-time metadata refresh and instance-bound auto skip | Existing cached PlayerAPI/UID skip is different | Adapt to Classic queue reservations and file-status rules |
+| Verified different-track duplicate routing | Not ported | Integrate URI-based canonical lookup, suffix expansion and quality upgrade destinations |
+| Album URI in final provenance/tags | Cached album_uri exists; final rich tagging not ported | Carry through merge/tag/publication without losing existing metadata |
+| LogLevel 0/1/2/4 and independent bounded diagnostic lanes | Not ported | Reconcile with existing Soggfy diagnostics/settings and privacy behavior |
+| Deterministic sanitizer fuzz campaign | Not ported as an upstream campaign | Add after choosing the capture/identity boundaries to integrate |
+| CaptureSpeedLimit menu semantics and 1/2/4/8/10x choices | Intentionally not copied | Keep Classic 1x–30x and Downloads-off effective 1x with selection retained |
+| NetworkPatch default-off opt-in | Not ported | Keep separate from the native telemetry filter and SpotX policy |
+
+Priority for deeper work: playback/decoder identity and ad isolation first; native
+podcast MP3 second; identity-aware duplicate routing/album provenance next; then
+metadata refresh, diagnostics and broader fuzz coverage. Capture changes must retain
+strict complete-listen validation, Unicode/multiple artists, legacy/custom/podcast
+paths, file-based statuses and the pinned client. Upstream's FLAC overlap incident
+on Spotify 1.3.8.614 does not establish a fix for Soggfy's historical random pauses.
+
+Separate maintenance remains: transactional installer/SpotX rollback, watch-scan
+cost, and native playlist save acknowledgement. RC71 closes the known blind DLL
+deletion in uninstall; it does not make the entire installation process transactional.

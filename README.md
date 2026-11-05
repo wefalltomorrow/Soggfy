@@ -24,6 +24,10 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
 
+RC71 fixes buffer allocation recovery, checks launcher architecture before stopping
+Spotify, and requires a matching package to verify DLL ownership before uninstall.
+An unrelated DLL is retained even with -Force; use the package matching the installed
+version. See UPSTREAMS.md for the Floggfy v1.3-RC6 comparison and remaining gaps.
 RC70 bounds manual conversion time, supervises converter child processes, and
 protects conversion sources against concurrent writes and replacement at deletion.
 It retains RC69 conversion/watch reliability, queue recovery and complete M3U export.

@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.0.0-rc.71 — upstream safety ports and uninstall ownership (test build)
+
+- Adapt Floggfy v1.3-RC6 buffer allocation recovery: prevent leaks when vector
+  growth throws and reuse spare blocks after partial allocation failure.
+- Inspect Spotify.exe and Soggfy.dll PE architecture before the launcher stops
+  Spotify; reject x86, ARM64, malformed and unreadable inputs.
+- Verify installed version.dll against the matching package before uninstall
+  touches processes, settings or backups. Lock during verification and recheck
+  identity before deleting by handle; Force does not bypass ownership.
+- Gate allocation fault injection, launcher preflight and PowerShell 5.1/7
+  uninstall regressions. Document remaining Floggfy feature gaps in UPSTREAMS.md.
+- Keep the pinned client and Classic UI with 1x–30x controls. Capture architecture
+  changes and live playback validation remain separate work.
+
 ## 3.0.0-rc.70 — bounded conversion and source protection (test build)
 
 - Bound manual encoding and validation with a shared configurable deadline; supervise

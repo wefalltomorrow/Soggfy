@@ -52,6 +52,8 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include \
 build/capture-association-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/compressed_buffer_test.cpp native/compressed_buffer.cpp -o build/compressed-buffer-test
 build/compressed-buffer-test
+g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/compressed_buffer_allocation_test.cpp native/compressed_buffer.cpp -o build/compressed-buffer-allocation-test
+build/compressed-buffer-allocation-test
 
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/rich_metadata_test.cpp native/rich_metadata.cpp -o build/rich-metadata-test
 build/rich-metadata-test

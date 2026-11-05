@@ -1,4 +1,26 @@
-# Soggfy v3.0.0-rc.70 — bounded conversion and source protection (test build)
+# Soggfy v3.0.0-rc.71 — upstream safety ports and uninstall ownership (test build)
+
+RC71 includes RC70 and selectively adapts allocation and launcher safety from
+Floggfy v1.3-RC6. Buffer growth now owns each allocation before vector insertion,
+recovers spare capacity after allocation failure, and avoids empty-buffer copying.
+The launcher reads bounded PE headers and rejects incompatible or malformed inputs
+before stopping Spotify. It does not load binaries to inspect their architecture.
+
+Uninstall requires version.dll from the matching complete Soggfy package. It hashes
+the installed DLL under a read lock, refuses mismatches even with -Force, and
+rechecks identity before deleting by handle. A missing target with an existing
+backup is retained for manual recovery. Matching installations restore the backup
+without overwriting a new destination; settings removal remains optional.
+Scripts/ConverterProcess.cs must remain beside Uninstall.ps1 and PostProcess.ps1.
+
+New regression gates cover allocation failures, rejected launcher inputs and
+uninstall ownership under PowerShell 5.1 and 7. UPSTREAMS.md records the larger
+playback-identity, ad-isolation, native podcast MP3 and duplicate-routing work still
+missing. This candidate does not establish resolution of historical playback stalls.
+Preserve RC63–RC70. Installer transactions and live validation remain outstanding.
+No live installation, merge or official release is part of RC71.
+
+## RC70 scope (historical)
 
 RC70 includes RC63–RC69 and follows up the conversion limits from the maintenance audit. The target remains Spotify **1.3.1.234.g59d6bf59, Windows x64**. Live validation is still required; historical random pauses and decoder stalls are not established as fixed.
 

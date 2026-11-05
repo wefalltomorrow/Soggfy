@@ -1,4 +1,21 @@
-## RC70 candidate scope
+## RC71 candidate scope
+
+Allocation fault injection reproduced a leak before the fix and passes after it.
+The test exercises every allocation point in buffer growth and a failed Flatten,
+checks retained bytes, verifies smaller appends after failure and counts live allocations.
+Windows PE fixtures cover x64, x86, ARM64, inconsistent machine/magic, truncation
+and missing files; the launcher rejects an incompatible DLL before process control.
+Isolated uninstall tests use fake files and mocked process access under PowerShell
+5.1 and 7. They cover matching/foreign/missing DLLs, missing package evidence,
+Force, running-player refusal, backup restoration and settings retention.
+
+Full portable and MinGW Windows CI plus package verification are required for the
+candidate. Preserve RC63–RC70. No live Spotify installation, merge or official
+release precedes separate live validation on 1.3.1.234.g59d6bf59. UPSTREAMS.md lists
+the outstanding upstream features. Installer transactions, recurring full watch
+scans, and historical pauses/decoder stalls remain unresolved.
+
+## RC70 candidate scope (historical)
 
 RC70 follows up three conversion gaps from RC69: manual FFmpeg could hang forever,
 fresh native sources were not locked throughout conversion, and optional deletion
