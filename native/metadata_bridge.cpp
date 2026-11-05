@@ -657,6 +657,8 @@ void EnrichCatalog(const Media& media,Catalog& catalog) {
  if(auto m=cache.Find(Utf8(media.title),Utf8(media.artist),Utf8(media.album),media.duration)){copy=*m;found=true;}
  ReleaseSRWLockShared(&cache_lock);
  if(!found)return;
+ catalog.spotify_uri=copy.uri;
+ catalog.spotify_album_uri=copy.album_uri;
  auto field=[&](const char* key)->std::string{
   auto it=copy.fields.find(key);return it==copy.fields.end()?std::string{}:it->second;
  };

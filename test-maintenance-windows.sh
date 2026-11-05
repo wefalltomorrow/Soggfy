@@ -38,7 +38,7 @@ else
 fi
 "$CXX" -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static \
     tests/windows_classic_status_test.cpp native/classic_status_backend.cpp \
-    native/classic_path_match.cpp native/library_layout.cpp -o build/classic-status-test.exe
+    native/classic_path_match.cpp native/library_layout.cpp native/existing_quality.cpp native/ogg_history_core.cpp -o build/classic-status-test.exe
 build/classic-status-test.exe
 "$CXX" -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static \
     tests/windows_launcher_architecture_test.cpp native/startup_launcher.cpp -o build/launcher-architecture-test.exe

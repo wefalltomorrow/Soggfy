@@ -16,13 +16,20 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Can save cover art, synchronized lyrics as .lrc, plain lyrics as .txt, and Spotify Canvas video.
 - Uses separate track and podcast path templates.
 - Refuses incomplete, skipped, seeked or broken captures instead of publishing partial files.
-- Skips equal or better existing files and atomically replaces lower-quality copies.
+- Skips equal or better existing files and protects quality upgrades with identity checks and destination locks.
 - Uses dynamic x64 hook discovery instead of fixed Spotify offsets.
 - Keeps capture, UI, metadata and playback-speed integrations independent. Soggfy handles telemetry privacy filtering; SpotX handles ads and Spotify update blocking.
 - Preserves Floggfy RC5's current Song / Quality / Format / Sample-rate information inside the Classic settings UI.
 - Uses a bounded, short-lived file index for downloaded-track ticks/Skip Downloaded instead of recursively rescanning the library on every UI mutation.
 - Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
+
+RC72 adds track-identity duplicate routing and album URI tags. A verified different
+track at the configured path routes to Duplicates with escalating ID suffixes;
+legacy files keep their established paths. Classic recognizes tagged duplicates,
+and native/manual conversion copies both container and audio-stream metadata.
+Identity reads support Ogg, FLAC and MP3 ID3; unsupported or oversized metadata
+does not authorize an identity-based upgrade. See RELEASE_NOTES.md for limits.
 
 RC71 fixes buffer allocation recovery, checks launcher architecture before stopping
 Spotify, and requires a matching package to verify DLL ownership before uninstall.

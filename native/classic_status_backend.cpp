@@ -4,6 +4,7 @@
 #include "classic_path_match.h"
 #include "history_settings.h"
 #include "library_layout.h"
+#include "existing_quality.h"
 #include <array>
 #include <atomic>
 #include <algorithm>
@@ -324,7 +325,8 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
             if(!files||stopped())break;
             auto& cached=CachedMatches(q);
             bool fresh=cached.generation==index_generation&&!cached.unreadable_candidate;
-            if(fresh)for(const auto& path:cached.paths)if(!FilePresent(path)){fresh=false;break;}
+            if(fresh)for(const auto& path:cached.paths)if(!FilePresent(path)||
+                !RecordingIdentityCompatible(path,q.uri,!InRoot(path,settings.root+L"\\Duplicates"))){fresh=false;break;}
             if(fresh)++metrics.cache_hits;
             else {
                 auto& compiled=Pattern(q,settings,metrics);
@@ -338,10 +340,20 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
                     const bool current=contains(compiled.current_title);
                     const bool legacy=compiled.legacy&&std::any_of(compiled.legacy_titles.begin(),compiled.legacy_titles.end(),contains);
                     const bool original=compiled.legacy&&contains(compiled.original_title);
-                    if((current&&matches(file.relative,compiled.current))||
+                    bool duplicate=false;
+                    if(ValidSpotifyUri(q.uri,"track")&&file.folded.rfind(L"duplicates\\",0)==0) {
+                        const auto dot=file.relative.find_last_of(L'.');
+                        if(dot!=std::wstring::npos)for(size_t length:{10u,14u,22u}) {
+                            const auto id=q.uri.substr(q.uri.size()-length);
+                            const auto suffix=L" [t-"+std::wstring(id.begin(),id.end())+L"]";
+                            if(dot>=suffix.size()&&file.relative.compare(dot-suffix.size(),suffix.size(),suffix)==0)duplicate=true;
+                        }
+                    }
+                    if(duplicate||(current&&matches(file.relative,compiled.current))||
                        (legacy&&matches(file.relative,compiled.flat))||
                        (original&&matches(file.relative,compiled.original))) {
                         if(!FilePresent(file.display)){cached.unreadable_candidate=true;continue;}
+                        if(!RecordingIdentityCompatible(file.display,q.uri,!duplicate))continue;
                         cached.paths.push_back(file.display);
                         if(cached.paths.size()==2)break;
                     }
@@ -355,7 +367,8 @@ std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<Clas
             else if(cached.paths.size()>1){result.status="WARN";result.message="Different tracks mapping to the same file name";}
             // A fresh publication may have richer naming metadata than a UI row.
             // Only use its real path after ordinary ambiguity checking, in this root.
-            else if(newest&&newest->status=="DONE"&&InRoot(newest->path,settings.root)&&FilePresent(newest->path)) {
+            else if(newest&&newest->status=="DONE"&&InRoot(newest->path,settings.root)&&FilePresent(newest->path)&&
+                    RecordingIdentityCompatible(newest->path,q.uri,!InRoot(newest->path,settings.root+L"\\Duplicates"))) {
                 result.status="DONE";result.path=newest->path;
             }
         } catch(const std::regex_error&) {result.status="WARN";result.message="Invalid path template";}

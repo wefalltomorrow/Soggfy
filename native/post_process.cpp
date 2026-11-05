@@ -208,6 +208,8 @@ static PostProcessResult ProcessFile(const std::wstring& native_path,const Setti
     } else {
         command+=L" -map 0:a:0 -map_metadata 0";
     }
+    // Vorbis comments are stream tags; FLAC tags are usually container tags.
+    command+=L" -map_metadata 0:s:a:0";
     auto args=PresetArgs(settings);
     if(!args.empty())command+=L" "+args;
     command+=L" "+Quote(temp.wstring());
@@ -227,6 +229,7 @@ static PostProcessResult ProcessFile(const std::wstring& native_path,const Setti
         } else if(existing&&settings.embed_cover_art)
             fallback+=L" -map 0:a:0 -map 0:v? -map_metadata 0 -c:v copy -disposition:v attached_pic";
         else fallback+=L" -map 0:a:0 -map_metadata 0";
+        fallback+=L" -map_metadata 0:s:a:0";
         if(preset.find(L"224k vbr")!=std::wstring::npos)fallback+=L" -c:a aac -q:a 2";
         else if(preset.find(L"160k")!=std::wstring::npos)fallback+=L" -c:a aac -b:a 160k";
         else fallback+=L" -c:a aac -b:a 256k";

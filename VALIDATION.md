@@ -1,4 +1,24 @@
-## RC71 candidate scope
+## RC72 candidate scope
+
+Portable regressions cover album identity agreement, cached release conflicts,
+structural tag parsing, truncation, conflicting identity tags, payload spoofing,
+Unicode/custom duplicate paths and exact URI validation. Windows filesystem tests
+cover foreign-track preservation, locked upgrades, suffix escalation/exhaustion,
+reusing longer matches, converted MP3 paths and legacy retention. Classic tests
+cover identical labels with different IDs and reject suffix-only identity claims.
+
+Real FFmpeg tests reproduce and fix loss of Ogg stream metadata when converting to
+MP3 320 kbps. Native and PowerShell tests cover FLAC/Ogg sources and converted track
+and album tags. Existing strict audio validation, timeout, cancellation, source
+identity, large-library caching and PowerShell 5.1/7 gates remain required.
+
+Full MinGW CI and exact package verification are required. Keep RC63–RC71 and the
+historical archive extraction. Live Spotify validation is separate. The bounded
+metadata reader is not a complete audio validator; unsupported converted formats
+retain legacy status rules. Upgrade recovery files may require manual restoration
+after interruption. Decoder ownership and historical pauses are not resolved here.
+
+## RC71 candidate scope (historical)
 
 Allocation fault injection reproduced a leak before the fix and passes after it.
 The test exercises every allocation point in buffer growth and a failed Flatten,

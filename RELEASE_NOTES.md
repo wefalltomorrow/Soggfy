@@ -1,4 +1,36 @@
-# Soggfy v3.0.0-rc.71 — upstream safety ports and uninstall ownership (test build)
+# Soggfy v3.0.0-rc.72 — track identity and album provenance (test build)
+
+RC72 completes a selective duplicate-routing and album-tagging milestone against
+Floggfy v1.3-RC6. Different full Spotify track IDs at the same configured filename
+route into Duplicates with 10-, 14-, then 22-character suffixes. Matching existing
+duplicate files take priority over vacant shorter suffixes. Custom hierarchy and
+Unicode names are retained. Legacy identity-less files remain in their established
+namespace; an explicit valid foreign ID is required to create a duplicate route.
+
+Album URI is validated in the bridge, carried through cached enrichment, and
+embedded as SPOTIFY_ALBUM_URI. Conflicting IDs reject enrichment. Both native and
+manual conversion preserve container and audio-stream tags, fixing metadata loss
+on Ogg-to-MP3. Classic filters explicit foreign IDs and requires an exact embedded
+track ID to recognize a suffixed duplicate; filename suffixes alone are insufficient.
+
+Identity inspection supports native Vorbis/FLAC and MP3 ID3v2.3/v2.4 text tags,
+including UTF-16. It reads at most 2 MiB, validates metadata structure and Ogg CRCs,
+and does not claim full audio validation. Other formats retain legacy lookup behavior;
+they cannot establish a duplicate identity. Mixed foreign/unknown destination
+families and exhausted suffixes fail without replacing existing files.
+
+Quality upgrades lock the previous recording, move it by handle, then publish the
+complete staged file without replacement. A concurrent creator is preserved. If
+interruption or a concurrent creator prevents rollback, the complete previous file
+remains at a .complete-<process>-<sequence>.previous recovery path. This is not a
+crash-atomic two-file transaction or automatic recovery implementation.
+
+This candidate includes RC63–RC71. Full portable/Windows CI and package verification
+are required. No live installation, merge or official release precedes separate
+Spotify 1.3.1.234.g59d6bf59 validation. Decoder ownership/ad isolation, native podcast
+MP3 capture and historical playback stalls remain outstanding; see UPSTREAMS.md.
+
+## RC71 (historical)
 
 RC71 includes RC70 and selectively adapts allocation and launcher safety from
 Floggfy v1.3-RC6. Buffer growth now owns each allocation before vector insertion,

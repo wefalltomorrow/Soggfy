@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+#include <filesystem>
 using namespace history;
 static void check(bool ok,const char* label) { if(!ok) { std::fprintf(stderr,"FAIL: %s error=%lu\n",label,GetLastError()); std::exit(1); } }
 static std::vector<unsigned char> read(const std::wstring& p) {
@@ -32,7 +33,40 @@ int main() {
     check(DecideSave(high,qlow)==SaveDecision::Skip && DecideSave(high,qhigh)==SaveDecision::Skip,"equal and higher file skipped");
     check(DecideSave(dir+L"\\unknown.ogg",qhigh)==SaveDecision::Skip,"unknown existing content preserved");
     auto lo=read(low),hi=read(high); DeleteFileW(target.c_str());
+    const std::string a="spotify:track:"+std::string(22,'A'),b="spotify:track:"+std::string(22,'B');
+    const auto tagged=read(dir+L"\\A-160000.ogg"),better=read(dir+L"\\A-320000.ogg"),foreign=read(dir+L"\\B-320000.ogg");
+    for(size_t n=0;n<tagged.size();++n)check(ParseRecordingIdentity(tagged.data(),n).state==IdentityState::Unknown,"truncated Ogg identity never authoritative");
+    auto damaged=tagged;damaged.back()^=1;
+    check(ParseRecordingIdentity(damaged.data(),damaged.size()).state==IdentityState::Unknown,"bad metadata page CRC rejected");
+    for(const auto* ext:{L".flac",L".mp3"})check(ReadRecordingIdentity(dir+L"\\A"+ext).uri==a,"native and converted identity tags");
+    check(PublishBytes(target,qlow,tagged.data(),tagged.size())==FilePublication::Saved,"tagged initial capture");
+    check(PublishBytes(target,qhigh,foreign.data(),foreign.size())==FilePublication::Failed&&read(target)==tagged,"different track cannot replace or skip as same recording");
+    HANDLE upgradeLock=CreateFileW(target.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+    check(upgradeLock!=INVALID_HANDLE_VALUE,"lock upgrade destination");
+    check(PublishBytes(target,qhigh,better.data(),better.size())==FilePublication::Failed&&read(target)==tagged,"locked destination preserves old recording");
+    CloseHandle(upgradeLock);
+    const auto duplicates=DuplicatePaths(dir,target,b);
+    check(duplicates.size()==3&&ResolveRecordingPath(dir,target,b,L"mp3")==duplicates[0],"explicit conflict routes to first duplicate suffix");
+    std::filesystem::create_directories(std::filesystem::path(duplicates[0]).parent_path());
+    check(PublishBytes(duplicates[0],qlow,tagged.data(),tagged.size())==FilePublication::Saved,"occupied short suffix fixture");
+    check(ResolveRecordingPath(dir,target,b,L"mp3")==duplicates[1],"short suffix collision escalates");
+    check(PublishBytes(duplicates[1],qhigh,foreign.data(),foreign.size())==FilePublication::Saved,"different identity stored separately");
+    check(ResolveRecordingPath(dir,target,b,L"mp3")==duplicates[1],"same track reuses matching duplicate");
+    DeleteFileW(duplicates[0].c_str());
+    check(ResolveRecordingPath(dir,target,b,L"mp3")==duplicates[1],"matching longer suffix preferred to newly vacant short suffix");
+    DeleteFileW(duplicates[1].c_str());
+    const auto converted=duplicates[1].substr(0,duplicates[1].find_last_of(L'.'))+L".mp3";
+    check(CopyFileW((dir+L"\\B.mp3").c_str(),converted.c_str(),TRUE)!=0,"converted duplicate fixture");
+    check(ResolveRecordingPath(dir,target,b,L"mp3")==duplicates[1],"converted duplicate retains its namespace");
+    DeleteFileW(converted.c_str());
+    for(const auto& duplicate:duplicates)check(PublishBytes(duplicate,qlow,tagged.data(),tagged.size())==FilePublication::Saved,"occupy all suffixes");
+    check(ResolveRecordingPath(dir,target,b,L"mp3").empty(),"exhausted suffixes preserve every file");
+    for(const auto& duplicate:duplicates)DeleteFileW(duplicate.c_str());
+    check(PublishBytes(target,qhigh,better.data(),better.size())==FilePublication::Upgraded&&read(target)==better,"same identity upgrades under destination lock");
+    DeleteFileW(target.c_str());
     check(PublishBytes(target,qlow,lo.data(),lo.size())==FilePublication::Saved,"first completed file published");
+    check(ResolveRecordingPath(dir,target,b,L"mp3")==target,"legacy header-only file stays canonical");
+    check(PublishBytes(target,qhigh,better.data(),better.size())==FilePublication::Failed&&read(target)==lo,"unreadable identity cannot authorize tagged upgrade");
     check(PublishBytes(target,qlow,hi.data(),hi.size())==FilePublication::Skipped && read(target)==lo,"duplicate skip performs no overwrite");
     check(PublishBytes(target,qhigh,hi.data(),0)==FilePublication::Failed && read(target)==lo,"failed upgrade preserves previous file");
     check(PublishBytes(target,qhigh,hi.data(),hi.size())==FilePublication::Upgraded && read(target)==hi,"verified higher quality replaces lower quality");
@@ -62,5 +96,5 @@ int main() {
     check(GetFileAttributesW(root.c_str())==INVALID_FILE_ATTRIBUTES && GetSettings().capture_epoch==epoch,"save location does not precreate folders or invalidate capture");
     check(FlushSettings(5000),"background save location persisted");
     DeleteFileW(target.c_str());
-    puts("PASS: Windows quality parsing, duplicate skip, atomic upgrade, downgrade protection, failure preservation and settings persistence");
+    puts("PASS: Windows quality parsing, duplicate skip, locked upgrade, downgrade protection, failure preservation and settings persistence");
 }

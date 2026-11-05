@@ -233,8 +233,9 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
         ?settings.podcast_template:settings.path_template;
     std::wstring destination=OutputPath(settings.root,catalog,c.lossless ? L".flac" : L".ogg",
         settings.music_folder,active_template,settings.normalize_artist_separators,settings.invalid_char_repl);
-    std::wstring flac=OutputPath(settings.root,catalog,L".flac",
-        settings.music_folder,active_template,settings.normalize_artist_separators,settings.invalid_char_repl);
+    destination=ResolveRecordingPath(settings.root,destination,catalog.spotify_uri,settings.output_ext);
+    if(destination.empty())return {Publication::Failed,{},"Recording identity conflict; existing files retained"};
+    std::wstring flac=destination.substr(0,destination.find_last_of(L'.'))+L".flac";
     {
         char line[1400];snprintf(line,sizeof(line),
             "destination=%s native=%s preset=%s output_ext=%s keep_native=%d embed_cover=%d embed_lyrics=%d save_cover=%d save_lyrics=%d",
@@ -245,6 +246,11 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
     }
     Quality quality=c.Encoding(),lossless;
     const auto retry_existing=[&](const std::wstring& path)->PublicationResult {
+        const auto existing_identity=ReadRecordingIdentity(path);
+        if((ValidSpotifyUri(catalog.spotify_uri,"track")||ValidSpotifyUri(catalog.spotify_uri,"episode"))&&
+           (existing_identity.state==IdentityState::Unknown||
+            (existing_identity.state==IdentityState::Tagged&&existing_identity.uri!=catalog.spotify_uri)))
+            return {Publication::Failed,path,"Recording identity changed; existing file retained"};
         PostProcessControl control;
         control.canceled=[generation=settings.generation,epoch=settings.capture_epoch] {
             return !workers_running.load(std::memory_order_acquire)||CaptureEpoch()!=epoch||GetSettings().generation!=generation;
@@ -288,6 +294,15 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
     }
     if(!heard.media.genre.empty())tags.fields.push_back({"GENRE",Utf8(heard.media.genre)});
     EnrichTags(heard.media,tags);
+    if(ValidSpotifyUri(catalog.spotify_uri,"track")||ValidSpotifyUri(catalog.spotify_uri,"episode")) {
+        for(const auto& field:tags.fields)if(field.first=="SPOTIFY_URI"&&field.second!=catalog.spotify_uri)
+            return {Publication::Failed,{},"Metadata identity changed before publication"};
+        tags.fields.erase(std::remove_if(tags.fields.begin(),tags.fields.end(),[](const auto& field){
+            return field.first=="SPOTIFY_URI"||field.first=="SPOTIFY_ALBUM_URI";
+        }),tags.fields.end());
+        tags.fields.push_back({"SPOTIFY_URI",catalog.spotify_uri});
+        if(ValidSpotifyUri(catalog.spotify_album_uri,"album"))tags.fields.push_back({"SPOTIFY_ALBUM_URI",catalog.spotify_album_uri});
+    }
     std::string lyrics;
     for(auto it=tags.fields.begin();it!=tags.fields.end();) {
         if(it->first=="LYRICS") {

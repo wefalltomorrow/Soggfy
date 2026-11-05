@@ -114,3 +114,26 @@ on Spotify 1.3.8.614 does not establish a fix for Soggfy's historical random pau
 Separate maintenance remains: transactional installer/SpotX rollback, watch-scan
 cost, and native playlist save acknowledgement. RC71 closes the known blind DLL
 deletion in uninstall; it does not make the entire installation process transactional.
+
+## RC72 identity milestone — November 5, 2026
+
+Adapted the v1.3-RC6 duplicate-routing concepts and album-URI provenance to Soggfy's
+custom path templates and Classic file status implementation. This is an independent
+implementation, not the upstream RecordingFile/song_destination architecture.
+
+| Area | RC72 result | Limits |
+| --- | --- | --- |
+| Album URI | Validated live/cached identity, canonical SPOTIFY_ALBUM_URI tags, conflicting release rejection | Requires available matching local metadata |
+| Different-track duplicate routing | Explicit full track-ID conflict routes through 10/14/22-character suffixes under Duplicates | Canonical unknown/legacy data never authorizes routing; mixed conflicting families fail |
+| Destination reuse | Matching native or MP3 converted duplicate preferred over vacant shorter suffix | Other converted formats do not establish identity |
+| Publication | Recheck under destination lock; move old identity by handle; publish without replacing a concurrent creator | Interrupted rollback can retain .previous recovery file; no automatic crash recovery |
+| Classic downloaded state | Filter foreign embedded IDs; require exact tags for suffixed duplicates | Legacy identity-less lookup retained; no full playback proof from tags |
+| Metadata through conversion | Copy global and audio-stream tags; real FLAC/Ogg-to-MP3 regression coverage | Container support still determines which tags survive |
+
+Identity inspection is bounded to 2 MiB and recognizes Vorbis/FLAC comments and
+MP3 ID3v2.3/v2.4 text encodings. It validates native headers and Ogg metadata CRCs,
+without replacing strict complete-capture or FFmpeg decode validation.
+The direct decoder/playback identity, ad isolation, native podcast MP3, metadata
+refresh/instance-bound skip, diagnostic lanes and sanitizer campaigns listed above
+remain open. Classic 1x–30x and the pinned client are retained. RC72 is a candidate
+milestone, not upstream feature parity or proof of a live-stall fix.

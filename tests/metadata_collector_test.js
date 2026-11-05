@@ -67,6 +67,16 @@ fresh.metadata.year='2024';context.window.__floggfyPoll();
 assert(output.at(-1).includes('DATE=2024-05-06')); // Do not replace a full date with a coarse year.
 const indexed=[];Object.defineProperty(indexed,'0',{get(){getters++;forbidden();}});fresh.metadata.genres=indexed;
 context.window.__floggfyPoll();
+// Current album identity takes precedence over conflicting cached release data.
+fresh.metadata.album_uri='spotify:album:0000000000000000000007';
+query.queryKey=['cached-track',fresh.uri];
+query.state.data={album:{uri:'spotify:album:0000000000000000000008',label:'FOREIGN ALBUM'}};
+context.window.__floggfyPoll();
+assert(output.at(-1).includes('SPOTIFY_ALBUM_URI=spotify%3Aalbum%3A0000000000000000000007'));
+assert(!output.at(-1).includes('FOREIGN'));
+fresh.metadata.album_uri='invalid';fresh.album.uri=undefined;
+context.window.__floggfyPoll();
+assert(!output.at(-1).includes('SPOTIFY_ALBUM_URI=invalid'));
 // Current-item heartbeat must keep episode titles even when music-style tags are absent.
 const musicMessages=output.filter(x=>x.startsWith('FLOGGFY_METADATA_V1:')).length;
 state.playback_quality=undefined;

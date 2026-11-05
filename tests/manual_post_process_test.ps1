@@ -66,14 +66,23 @@ try {
         Assert ([IO.File]::ReadAllText($source) -eq $changed) 'Replacement changed'
     }
     if ($env:SGF_REAL_FFMPEG) {
-        $source = Join-Path $testRoot 'real.flac'
-        & $env:SGF_REAL_FFMPEG -y -hide_banner -loglevel error -f lavfi -i 'sine=frequency=440:duration=1' -c:a flac $source
-        Assert ($LASTEXITCODE -eq 0) 'Real FLAC generation failed'
+        foreach ($codec in 'flac','libvorbis') {
+        $extension = if ($codec -eq 'flac') { 'flac' } else { 'ogg' }
+        $source = Join-Path $testRoot ('real-' + $extension + '.' + $extension)
+        $uri = 'spotify:track:0000000000000000000001'
+        $album = 'spotify:album:0000000000000000000002'
+        & $env:SGF_REAL_FFMPEG -y -hide_banner -loglevel error -f lavfi -i 'sine=frequency=440:duration=1' -c:a $codec -metadata "SPOTIFY_URI=$uri" -metadata "SPOTIFY_ALBUM_URI=$album" $source
+        Assert ($LASTEXITCODE -eq 0) 'Real tagged source generation failed'
         & $script -InputPath $source -FFmpegPath $env:SGF_REAL_FFMPEG -DeleteOriginal
         Assert (-not (Test-Path -LiteralPath $source)) 'Real converted source not deleted'
         $dest = [IO.Path]::ChangeExtension($source,'mp3')
         & $env:SGF_REAL_FFMPEG -hide_banner -loglevel error -xerror -i $dest -f null -
         Assert ($LASTEXITCODE -eq 0) 'Real MP3 decode failed'
+        $tags = & $env:SGF_REAL_FFMPEG -hide_banner -loglevel error -i $dest -f ffmetadata -
+        Assert ($LASTEXITCODE -eq 0) 'Converted metadata inspection failed'
+        Assert (($tags -join [char]10).Contains("SPOTIFY_URI=$uri")) 'Converted track identity lost'
+        Assert (($tags -join [char]10).Contains("SPOTIFY_ALBUM_URI=$album")) 'Converted album identity lost'
+        }
     }
     Write-Host 'PASS: manual conversion validation, 320k arguments, original retention/deletion, conflicts and cleanup'
 } finally {

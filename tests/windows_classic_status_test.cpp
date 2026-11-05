@@ -20,6 +20,18 @@ static void published(const ClassicTrackQuery& q,const fs::path& path) {
     SetClassicTrackStatus(media,"DONE",{},path.wstring());
 }
 static std::string status(const ClassicTrackQuery& q){return QueryClassicTrackStatuses({q}).at(0).status;}
+static void tagged(const fs::path& path,const std::string& uri) {
+    const auto field="SPOTIFY_URI="+uri;
+    std::string comments(8,'\0');comments[4]=1;
+    for(unsigned i=0;i<4;++i)comments+=char(field.size()>>(i*8));
+    comments+=field;
+    std::string bytes="fLaC";bytes.append("\0\0\0\x22",4);bytes.append(34,'\0');
+    bytes[8]=bytes[10]=16;
+    const uint64_t info=(uint64_t(44100)<<44)|(uint64_t(1)<<41)|(uint64_t(15)<<36)|44100;
+    for(unsigned i=0;i<8;++i)bytes[18+i]=char(info>>((7-i)*8));
+    bytes+=char(132);bytes+=char(0);bytes+=char(0);bytes+=char(comments.size());bytes+=comments;
+    fs::create_directories(path.parent_path());std::ofstream f(path,std::ios::binary);f.write(bytes.data(),bytes.size());assert(f.good());
+}
 int main() {
     const auto base=fs::temp_directory_path()/(L"soggfy-status-test-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64()));
     assert(fs::create_directory(base));settings.root=base.wstring();settings.path_template=L"{all_artist_names} - {track_name}.{ext}";settings.output_ext=L"mp3";
@@ -57,6 +69,18 @@ int main() {
     q=query(L"Absent title");assert(status(q)=="DONE");
     settings.path_template=L"{foo{track_name}.{ext}";assert(status(q)=="DONE");
     settings.path_template=L"{all_artist_names} - {track_name}.{ext}";
+    settings.root=(base/L"identity").wstring();
+    auto first=query(L"Identical"),second=first;
+    first.uri="spotify:track:"+std::string(22,'A');second.uri="spotify:track:"+std::string(22,'B');
+    const auto canonical=fs::path(settings.root)/L"Artist - Identical.flac";
+    tagged(canonical,first.uri);published(first,canonical);
+    assert(status(first)=="DONE"&&status(second).empty());
+    const auto routed=fs::path(settings.root)/L"Duplicates"/L"Artist - Identical [t-BBBBBBBBBB].flac";
+    tagged(routed,second.uri);published(second,routed);
+    assert(status(first)=="DONE"&&status(second)=="DONE");
+    tagged(routed,first.uri);published(first,routed);
+    assert(status(second).empty()); // A suffix alone is never proof of identity.
+    fs::remove(routed);assert(status(second).empty());
     // Partial scans must not claim absence or uniqueness, even if one matching
     // file happens to be visible before the limit.
     settings.root=(base/L"limits").wstring();q=query(L"Limited");

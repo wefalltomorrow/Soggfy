@@ -196,14 +196,18 @@ int main() {
             reset();wav(native);
             auto generate=s;generate.output_ext=codec;generate.output_preset=L"Custom";
             generate.output_args=std::wstring(codec)==L"flac"?L"-c:a flac":L"-c:a libvorbis";
+            const std::string identity="spotify:track:0000000000000000000001";
+            generate.output_args+=L" -metadata SPOTIFY_URI=spotify:track:0000000000000000000001 -metadata SPOTIFY_ALBUM_URI=spotify:album:0000000000000000000002";
             const auto fixture=PostProcessPublishedFile(native.wstring(),generate,{},L"");
             assert(fixture.state==PostProcessResult::State::Converted);
+            assert(ReadRecordingIdentity(fixture.path).uri==identity);
             const auto original=read(fixture.path);Quality quality;assert(ReadQuality(fixture.path,quality));
             auto broken=s;broken.output_preset=L"Custom";broken.output_args=L"-c:a nonexistent_soggfy_codec";
             assert(RetryPostProcessExistingFile(fixture.path,broken).state==PostProcessResult::State::Failed);
             assert(read(fixture.path)==original&&!fs::exists(final));
             assert(RetryPostProcessExistingFile(fixture.path,s).state==PostProcessResult::State::Converted);
             assert(read(fixture.path)==original&&fs::file_size(final)>0);
+            assert(ReadRecordingIdentity(final.wstring()).uri==identity);
             assert(RetryPostProcessExistingFile(fixture.path,s).state==PostProcessResult::State::Skipped);
             fs::remove(final);
             if(std::wstring(codec)==L"flac") {

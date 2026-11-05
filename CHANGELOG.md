@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.0.0-rc.72 — track identity and album provenance (test build)
+
+- Carry validated album URI through cached/live metadata to native tags; reject
+  conflicting track/album identities and avoid cross-album cached enrichment.
+- Route verified different-track filename conflicts into Duplicates, preserving
+  configured hierarchy with 10/14/22-character track ID suffixes. Reuse matching
+  longer suffixes before choosing vacant ones, including converted MP3 copies.
+- Read structural Ogg/FLAC comments and MP3 ID3 text tags with bounded reads.
+  Classic excludes explicit foreign identities and requires exact tags for duplicates.
+- Lock and recheck quality-upgrade destinations, retain the previous complete file
+  during publication, and publish without replacing a concurrent creator.
+- Preserve audio-stream metadata during native and manual FFmpeg conversion;
+  real Ogg-to-MP3 regression exposed the previous metadata loss.
+- Keep legacy/custom/podcast paths, Classic controls and 1x–30x behavior.
+  Decoder ownership, native podcast MP3 capture and live validation remain separate.
+
 ## 3.0.0-rc.71 — upstream safety ports and uninstall ownership (test build)
 
 - Adapt Floggfy v1.3-RC6 buffer allocation recovery: prevent leaks when vector
