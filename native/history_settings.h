@@ -14,6 +14,7 @@ struct Settings {
     bool block_telemetry=true,lift_add_to_queue=false;
     bool keep_native_original=true;
 
+    unsigned log_level=1;
     unsigned max_buffered_mib=500,generation=0,capture_epoch=0;
     std::wstring root,save_location,path_template;
     std::wstring podcast_template,canvas_template,invalid_char_repl=L"unicode";
@@ -27,6 +28,8 @@ bool SetDownloads(bool enabled);
 bool SetOgg(bool enabled);
 bool SetFlac(bool enabled);
 bool SetMetadata(bool enabled);
+bool SetLogLevel(unsigned level);
+unsigned LogLevel();
 bool SetLogging(bool enabled);
 bool SetDebugLogging(bool enabled);
 bool SetNormalizeArtistSeparators(bool enabled);

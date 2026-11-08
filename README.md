@@ -170,9 +170,18 @@ If the injected UI is unavailable after a Spotify update, capture can still be e
 
 ## Diagnostics
 
-`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages.
+Choose **Log detail** in Classic settings, or set **LogLevel** under **[To Disk]**:
+0 disables logging; 1 records completions, warnings and failures; 2 adds activity;
+4 adds diagnostics. Fresh installs default to 1. Existing INIs without LogLevel
+retain their Log/DebugLog behavior (off=0, normal=2, debug=4). Explicit invalid
+levels normalize to 1; exact values 0, 1, 2 and 4 are accepted.
 
-Enable **Debug log** in Soggfy settings for the high-volume timeline trace: each media-session sample plus replayed Ogg-page details. This is intended for short troubleshooting runs because the log is capped and rotates by truncation when it reaches its size limit.
+Activity goes to Soggfy.log; diagnostic traces go to Soggfy-diagnostics.log
+in the save root. Each has an independent 128-record queue and a 5 MiB file cap.
+Producers do not wait for queue space. Overflow/lock-contention drops are reported
+per lane; a diagnostic burst cannot consume activity queue slots. Both lanes use
+one disk worker, so this does not isolate disk latency. Files reset at their cap.
+Scripts/Diagnose.ps1 includes the last 80 lines from each file.
 
 ## Safety / implementation notes
 

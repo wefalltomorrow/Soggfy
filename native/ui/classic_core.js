@@ -13,7 +13,7 @@ sgf.bootFns = sgf.bootFns || [];
 sgf.controls = new Map();
 sgf.statusMap = new Map();
 sgf.state = Object.assign({
-  downloads:false, ogg:true, flac:true, metadata:true, log:true, debug:false, normalize:true,
+  downloads:false, ogg:true, flac:true, metadata:true, log:true, debug:false, logLevel:1, normalize:true,
   skipDownloaded:false, skipIgnored:false, embedCover:true, saveCover:true, embedLyrics:true,
   saveLyrics:true, saveCanvas:false, blockTelemetry:true, liftQueue:false, keepNative:true,
   playbackSpeed:1, speedSupported:false, speedImmediate:false,
@@ -108,6 +108,7 @@ sgf.applyConfig = payload => {
     const strings=['root','template','podcastTemplate','canvasTemplate','invalidChars','outputPreset','outputExt','outputArgs','ffmpegPath',
       'qualitySong','qualityLevel','qualityFormat','qualitySample'];
     for(const key of strings)if(p.has(key))sgf.state[key]=p.get(key)||'';
+    if(p.has('logLevel')){const v=p.get('logLevel');if(['0','1','2','4'].includes(v)){sgf.state.logLevel=Number(v);sgf.state.log=v!=='0';sgf.state.debug=v==='4';}}
     if(p.has('playbackSpeed'))sgf.state.playbackSpeed=Math.max(1,Math.min(sgf.MAX_PLAYBACK_SPEED,Number(p.get('playbackSpeed'))||1));
     if(p.has('speedSupported'))sgf.state.speedSupported=sgf.flag(p,'speedSupported',sgf.state.speedSupported);
     if(p.has('speedImmediate'))sgf.state.speedImmediate=sgf.flag(p,'speedImmediate',sgf.state.speedImmediate);

@@ -13,5 +13,19 @@ int main() {
     persist_failed=false;
     settings.generation=UINT_MAX;persisted_generation=0;assert(FlushSettings(0));
     settings.generation=0;persisted_generation=UINT_MAX;assert(!FlushSettings(0));
+    settings_signal=CreateEventW(nullptr,FALSE,FALSE,nullptr);assert(settings_signal);
+    for(unsigned level:{0u,1u,2u,4u}) {
+        assert(SetLogLevel(level));auto snapshot=GetSettings();
+        assert(snapshot.log_level==level && snapshot.log==(level!=0) && snapshot.debug_log==(level==4));
+        assert(LogLevel()==level && LoggingEnabled()==(level!=0) && DebugLoggingEnabled()==(level==4));
+    }
+    const auto generation=GetSettings().generation;
+    assert(!SetLogLevel(3) && !SetLogLevel(UINT_MAX));assert(GetSettings().generation==generation);
+    assert(SetLogging(false) && LogLevel()==0 && !DebugLoggingEnabled());
+    assert(SetLogging(true) && LogLevel()==2);
+    assert(SetDebugLogging(true) && LogLevel()==4);
+    assert(SetDebugLogging(false) && LogLevel()==2);
+    assert(SetLogLevel(1) && SetDebugLogging(false) && LogLevel()==1);
+    CloseHandle(settings_signal);settings_signal=nullptr;
     puts("PASS: settings flush accepts coalesced snapshots, rejects failed/pending writes and handles generation wrap");
 }

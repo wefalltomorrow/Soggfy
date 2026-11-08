@@ -165,6 +165,7 @@ static std::wstring UiConfigCode() {
  add("metadata",bit(s.metadata));
  add("log",bit(s.log));
  add("debug",bit(s.debug_log));
+ add("logLevel",std::to_string(s.log_level));
  add("normalize",bit(s.normalize_artist_separators));
  add("skipDownloaded",bit(s.skip_downloaded_tracks));
  add("skipIgnored",bit(s.skip_ignored_tracks));
@@ -471,6 +472,7 @@ static bool ClassicUiMessage(const String* text) {
  else if(key==L"ogg")ok=SetOgg(flag());
  else if(key==L"flac")ok=SetFlac(flag());
  else if(key==L"metadata")ok=SetMetadata(flag());
+ else if(key==L"logLevel")ok=decoded.size()==1 && (decoded[0]=='0'||decoded[0]=='1'||decoded[0]=='2'||decoded[0]=='4') && SetLogLevel(unsigned(decoded[0]-'0'));
  else if(key==L"log")ok=SetLogging(flag());
  else if(key==L"debug")ok=SetDebugLogging(flag());
  else if(key==L"normalize")ok=SetNormalizeArtistSeparators(flag());

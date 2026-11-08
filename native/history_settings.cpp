@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cmath>
 #include "async_log.h"
+#include "log_policy.h"
 namespace history {
 static SRWLOCK lock=SRWLOCK_INIT;
 static Settings settings;
@@ -18,7 +19,7 @@ static bool IsMusic(std::wstring root) {
     return !music_path.empty() && (_wcsicmp(root.c_str(),music_path.c_str())==0 ||
         _wcsicmp(root.c_str(),(music_path+L"\\Spotify").c_str())==0);
 }
-static volatile LONG downloads_enabled=0,ogg_enabled=1,flac_enabled=1,capture_epoch=0,log_enabled=1,debug_enabled=0;
+static volatile LONG downloads_enabled=0,ogg_enabled=1,flac_enabled=1,capture_epoch=0,log_level_value=1;
 static HANDLE settings_signal=nullptr,persist_done=nullptr;
 static SRWLOCK persistence_lock=SRWLOCK_INIT;
 static unsigned persisted_generation=0;
@@ -64,6 +65,8 @@ static constexpr char default_ini[]=
     "; Activity log in Save Location, capped at 5 MiB.\r\n"
     "Log=1\r\n"
     "DebugLog=0\r\n"
+    "; 0 off, 1 completions/warnings/failures, 2 activity, 4 diagnostics.\r\n"
+    "LogLevel=1\r\n"
     "\r\n"
     "[History]\r\n"
     "; Maximum compressed audio held in RAM for one track.\r\n"
@@ -116,6 +119,7 @@ static DWORD WINAPI PersistSettings(LPVOID) {
         flag(L"To Disk",L"Metadata",snapshot.metadata);
         flag(L"To Disk",L"Log",snapshot.log);
         flag(L"To Disk",L"DebugLog",snapshot.debug_log);
+        text(L"To Disk",L"LogLevel",std::to_wstring(snapshot.log_level));
         flag(L"To Disk",L"Normalize Artist Separators",snapshot.normalize_artist_separators);
         text(L"To Disk",L"Save Location",snapshot.save_location);
         text(L"To Disk",L"Path Template",snapshot.path_template);
@@ -182,6 +186,10 @@ void InitSettings(HMODULE proxy) {
     settings.normalize_artist_separators=GetPrivateProfileIntW(L"To Disk",L"Normalize Artist Separators",1,ini.c_str())!=0;
     settings.log=GetPrivateProfileIntW(L"To Disk",L"Log",1,ini.c_str())!=0;
     settings.debug_log=GetPrivateProfileIntW(L"To Disk",L"DebugLog",0,ini.c_str())!=0;
+    wchar_t level_text[32];
+    GetPrivateProfileStringW(L"To Disk",L"LogLevel",L"",level_text,32,ini.c_str());
+    settings.log_level=ReadLogLevel(level_text,settings.log,settings.debug_log);
+    settings.log=settings.log_level!=0;settings.debug_log=settings.log_level==4;
 
     settings.skip_downloaded_tracks=GetPrivateProfileIntW(L"Soggfy",L"Skip Downloaded Tracks",0,ini.c_str())!=0;
     settings.skip_ignored_tracks=GetPrivateProfileIntW(L"Soggfy",L"Skip Ignored Tracks",0,ini.c_str())!=0;
@@ -219,7 +227,7 @@ void InitSettings(HMODULE proxy) {
     if(raw[0] && length && length<=4096) {settings.root=expanded;settings.save_location=raw;}
     settings.music_folder=IsMusic(settings.root);
     downloads_enabled=settings.downloads; ogg_enabled=settings.ogg; flac_enabled=settings.flac;
-    log_enabled=settings.log;debug_enabled=settings.debug_log;
+    InterlockedExchange(&log_level_value,LONG(settings.log_level));
     settings_signal=CreateEventW(nullptr,FALSE,FALSE,nullptr);
     persist_done=CreateEventW(nullptr,FALSE,FALSE,nullptr);
     HANDLE thread=settings_signal&&persist_done ? CreateThread(nullptr,0,PersistSettings,nullptr,0,nullptr) : nullptr;
@@ -237,8 +245,9 @@ void InitSettings(HMODULE proxy) {
 Settings GetSettings() {
     AcquireSRWLockShared(&lock); auto copy=settings; ReleaseSRWLockShared(&lock); return copy;
 }
-bool LoggingEnabled() { return log_enabled!=0; }
-bool DebugLoggingEnabled() { return debug_enabled!=0; }
+unsigned LogLevel() {return unsigned(InterlockedCompareExchange(&log_level_value,0,0));}
+bool LoggingEnabled() { return LogLevel()!=0; }
+bool DebugLoggingEnabled() { return LogLevel()==4; }
 bool OggEnabled() { return downloads_enabled && ogg_enabled; }
 bool FlacEnabled() { return downloads_enabled && flac_enabled; }
 unsigned CaptureEpoch() { return unsigned(InterlockedCompareExchange(&capture_epoch,0,0)); }
@@ -268,8 +277,23 @@ bool SetDownloads(bool v) { return SetBool(v,settings.downloads,&downloads_enabl
 bool SetOgg(bool v) { return SetBool(v,settings.ogg,&ogg_enabled,true); }
 bool SetFlac(bool v) { return SetBool(v,settings.flac,&flac_enabled,true); }
 bool SetMetadata(bool v) { return SetBool(v,settings.metadata,nullptr,false); }
-bool SetLogging(bool v) { return SetBool(v,settings.log,&log_enabled,false); }
-bool SetDebugLogging(bool v) { return SetBool(v,settings.debug_log,&debug_enabled,false); }
+static bool ChangeLogLevel(unsigned level,int legacy) {
+    if(!ValidLogLevel(level))return false;
+    AcquireSRWLockExclusive(&lock);
+    bool ok=settings_signal!=nullptr;
+    if(ok) {
+        if(legacy==1)level=level?(settings.log_level?settings.log_level:2):0;
+        if(legacy==2)level=level?4:(settings.log_level==4?2:settings.log_level);
+        settings.log_level=level;settings.log=level!=0;settings.debug_log=level==4;
+        InterlockedExchange(&log_level_value,LONG(level));++settings.generation;
+    }
+    ReleaseSRWLockExclusive(&lock);
+    if(ok)SetEvent(settings_signal);
+    return ok;
+}
+bool SetLogLevel(unsigned level) {return ChangeLogLevel(level,0);}
+bool SetLogging(bool v) {return ChangeLogLevel(v?1:0,1);}
+bool SetDebugLogging(bool v) {return ChangeLogLevel(v?1:0,2);}
 bool SetNormalizeArtistSeparators(bool v) { return SetBool(v,settings.normalize_artist_separators,nullptr,false); }
 bool SetSkipDownloadedTracks(bool v) { return SetBool(v,settings.skip_downloaded_tracks,nullptr,false); }
 bool SetSkipIgnoredTracks(bool v) { return SetBool(v,settings.skip_ignored_tracks,nullptr,false); }

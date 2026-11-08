@@ -1,4 +1,4 @@
-## RC74 client playback boundaries â€” November 8, 2026
+## RC74 client playback boundaries — November 8, 2026
 
 Continues the pinned v1.3-RC6 (7b825e3b942596c3e912fbbf7a0487abd7578e47)
 review. Its cached PlayerAPI fields informed client-ID observation and unsupported
@@ -7,7 +7,7 @@ by its private playback-ID hook; that hook and offsets were not copied.
 This is not a fresh latest-release survey or full feature parity. Exact native
 playback binding, native podcast MP3 capture and live acceptance remain open.
 
-## RC73 decoder-event isolation â€” November 8, 2026
+## RC73 decoder-event isolation — November 8, 2026
 
 Continues the source review of Floggfy v1.3-RC6
 (7b825e3b942596c3e912fbbf7a0487abd7578e47). RC73 uses Soggfy's existing
@@ -32,12 +32,12 @@ The old source is preserved under `legacy/`.
 
 Community work reviewed while building this fork:
 
-- SuperSecretEyeball/Soggfy-Fixed â€” artist/path metadata changes and TypeScript cleanup
-- MacKinnon7/Soggfy-Fixed â€” newer release-build workflow fixes
-- AndyBogle1/Soggfy / upstream PR #143 â€” safer installer reuse behavior
-- coleaderme/Soggfy / upstream PR #125 â€” TLS 1.2 installer compatibility
-- MrSykenro/Soggfy / upstream PR #148 â€” current SpotX script URL
-- upstream PR #102 â€” quoted/idempotent uninstall-path handling
+- SuperSecretEyeball/Soggfy-Fixed — artist/path metadata changes and TypeScript cleanup
+- MacKinnon7/Soggfy-Fixed — newer release-build workflow fixes
+- AndyBogle1/Soggfy / upstream PR #143 — safer installer reuse behavior
+- coleaderme/Soggfy / upstream PR #125 — TLS 1.2 installer compatibility
+- MrSykenro/Soggfy / upstream PR #148 — current SpotX script URL
+- upstream PR #102 — quoted/idempotent uninstall-path handling
 
 Not every patch was copied literally. Fixes tied to the obsolete x86 installer/hook architecture were reimplemented only where they still apply to the modern x64 design.
 
@@ -78,7 +78,7 @@ Adapted from Mainkill1/Floggfy commits
 `1bb4bf303cf09b303cd3c585266479d7b100cb6d` (generation-aware repeats),
 `54f4ff416ab4280e33ccc0db5a62c83bf6c8abef` (external coverage invalidation), and
 `f27deafebf14f6929d34aee26da6f5e2367a57b7` (delayed title reconciliation).
-Soggfy retains its 1xâ€“30x clock and adds raw-reset evidence, previous-rate
+Soggfy retains its 1x–30x clock and adds raw-reset evidence, previous-rate
 continuity, immutable completion timing and generation-bound capture retention.
 The one-second confirmation and original two-second identity window are tested
 against normal and accelerated playback. This is a selective adaptation, not
@@ -109,9 +109,9 @@ fixtures. These are small independent safety changes, not a capture-core rebase.
 | --- | --- | --- |
 | Buffer allocation failure recovery | Adapted and fault-injection tested | Included |
 | Launcher PE architecture preflight | Ported before process control | Included |
-| Dedicated observer, late retention and repeat generations | Earlier selective RC64â€“66 adaptations | Preserve accelerated-clock behavior |
+| Dedicated observer, late retention and repeat generations | Earlier selective RC64–66 adaptations | Preserve accelerated-clock behavior |
 | Direct Spotify playback source and decoder ownership | Not ported | Integrate private ABI discovery, producer sequences and capture ownership together |
-| Playback identity bridge and staged natural transitions | Not ported | Test bounded history, repeats, preloads, pause/resume, skips and seeks across 1xâ€“30x |
+| Playback identity bridge and staged natural transitions | Not ported | Test bounded history, repeats, preloads, pause/resume, skips and seeks across 1x–30x |
 | Ad/DJ/interstitial audio isolation | Not ported | Requires trustworthy playback and decoder identity; SpotX remains separate |
 | Native podcast MP3 parser/capture | Not ported | Podcast path templates and MP3 transcoding are not native MP3 capture |
 | Concurrent capture validation and lifecycle/cross-format refinements | Partial overlap with existing strict validators/quality replacement | Compare association and ownership semantics before integrating |
@@ -120,7 +120,7 @@ fixtures. These are small independent safety changes, not a capture-core rebase.
 | Album URI in final provenance/tags | Cached album_uri exists; final rich tagging not ported | Carry through merge/tag/publication without losing existing metadata |
 | LogLevel 0/1/2/4 and independent bounded diagnostic lanes | Not ported | Reconcile with existing Soggfy diagnostics/settings and privacy behavior |
 | Deterministic sanitizer fuzz campaign | Not ported as an upstream campaign | Add after choosing the capture/identity boundaries to integrate |
-| CaptureSpeedLimit menu semantics and 1/2/4/8/10x choices | Intentionally not copied | Keep Classic 1xâ€“30x and Downloads-off effective 1x with selection retained |
+| CaptureSpeedLimit menu semantics and 1/2/4/8/10x choices | Intentionally not copied | Keep Classic 1x–30x and Downloads-off effective 1x with selection retained |
 | NetworkPatch default-off opt-in | Not ported | Keep separate from the native telemetry filter and SpotX policy |
 
 Priority for deeper work: playback/decoder identity and ad isolation first; native
@@ -134,7 +134,7 @@ Separate maintenance remains: transactional installer/SpotX rollback, watch-scan
 cost, and native playlist save acknowledgement. RC71 closes the known blind DLL
 deletion in uninstall; it does not make the entire installation process transactional.
 
-## RC72 identity milestone â€” November 5, 2026
+## RC72 identity milestone — November 5, 2026
 
 Adapted the v1.3-RC6 duplicate-routing concepts and album-URI provenance to Soggfy's
 custom path templates and Classic file status implementation. This is an independent
@@ -154,7 +154,7 @@ MP3 ID3v2.3/v2.4 text encodings. It validates native headers and Ogg metadata CR
 without replacing strict complete-capture or FFmpeg decode validation.
 The direct decoder/playback identity, ad isolation, native podcast MP3, metadata
 refresh/instance-bound skip, diagnostic lanes and sanitizer campaigns listed above
-remain open. Classic 1xâ€“30x and the pinned client are retained. RC72 is a candidate
+remain open. Classic 1x–30x and the pinned client are retained. RC72 is a candidate
 milestone, not upstream feature parity or proof of a live-stall fix.
 
 ## RC75 maintenance checkpoint
@@ -168,3 +168,8 @@ RC76 adds independently implemented bounded seeded mutation/model tests for the
 current Soggfy APIs. The sanitizer-campaign concept was reviewed in Floggfy
 v1.3-RC6 test-capture-fuzz.sh; this does not claim coverage of its unported
 identity, MP3 or lifecycle features. Both CI and release builds gate on ASan/UBSan.
+
+RC77 adopts the upstream 0/1/2/4 verbosity and separate bounded diagnostic-lane
+concepts with an independent implementation for Soggfy's Classic/INI settings.
+It has two queues and files, one worker, no new network telemetry, and no claim
+of complete upstream diagnostics parity or disk-latency isolation.

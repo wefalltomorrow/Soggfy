@@ -30,6 +30,8 @@ test -f "$fp_runtime"
  native/existing_quality.cpp native/file_publication.cpp native/history_settings.cpp \
  native/async_log.cpp native/library_layout.cpp native/ogg_history_core.cpp \
  -lole32 -luuid -lshell32 -o "$floggfy_test_root/windows-history-test.exe"
+"$CXX" "${common[@]}" tests/windows_log_lane_test.cpp -o "$floggfy_test_root/windows-log-lane-test.exe"
+"$floggfy_test_root/windows-log-lane-test.exe"
 "$CXX" "${common[@]}" tests/windows_log_test.cpp native/async_log.cpp \
  native/history_settings.cpp -lole32 -luuid -lshell32 -o "$floggfy_test_root/windows-log-test.exe"
 "$CC" -std=c11 -O2 -I native/vendor/libogg/include -c native/vendor/libogg/src/framing.c -o build/windows-tests/metadata-ogg.o
