@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.0-rc.78
+
+- Reject stale Classic queue lookups/events after playback identity or skip policy changes.
+- Preserve per-entry reservations and ordinary same-instance timeline updates.
+- Add playback-transition and collector position/clock regression coverage.
+
 ## 3.0.0-rc.77
 
 - Add Classic/INI log levels 0/1/2/4 with legacy flag migration and default level 1.

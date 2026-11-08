@@ -1,3 +1,22 @@
+# Soggfy v3.0.0-rc.78 - playback-bound Classic queue work (test build)
+
+Classic queue lookups and retained queue events now belong to the cached player's
+observed playback ID and current URI as well as its queue revision, settings and
+status epoch. A repeat, track change, missing snapshot or changed skip policy
+invalidates a delayed lookup before queue removal. Ordinary timeline updates do
+not invalidate it. Per-entry UIDs and outstanding mutation reservations remain.
+When playback identity is absent, the legacy queue safeguards still apply; this
+is not native decoder binding or permission to skip the currently playing track.
+
+Regression tests reproduce the stale repeat lookup before the fix and cover
+track changes, missing state, policy changes, retained event replacement and
+same-instance position updates. Added collector tests validate seconds/milliseconds,
+pause/buffering, 1x/2x/10x/30x, end clamps and invalid clocks. The existing position
+conversion was correct and has not changed.
+
+RC78 requires full CI and independent MinGW package verification. Native playback
+ownership, podcast MP3 capture, metadata refresh and live acceptance remain open.
+
 # Soggfy v3.0.0-rc.77 - bounded logging and Classic log levels (test build)
 
 Classic Log detail selects 0 (off), 1 (completions/problems), 2 (activity) or

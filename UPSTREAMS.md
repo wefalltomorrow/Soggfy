@@ -173,3 +173,7 @@ RC77 adopts the upstream 0/1/2/4 verbosity and separate bounded diagnostic-lane
 concepts with an independent implementation for Soggfy's Classic/INI settings.
 It has two queues and files, one worker, no new network telemetry, and no claim
 of complete upstream diagnostics parity or disk-latency isolation.
+
+RC78 strengthens existing Classic queue removal with cached playback identity and
+policy rechecks. It does not port upstream's native current-song skip or recent
+playback metadata refresh. Outstanding queue mutations retain their UID reservations.

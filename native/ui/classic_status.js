@@ -382,23 +382,33 @@ function queueDiagnostic(details,force=false){
   lastQueueDiagnostic=now;
   sgf.send('status_diag','queue '+details.slice(0,430));
 }
+// Bind asynchronous queue work to the observed playback instance. Timeline
+// updates are harmless; repeats, track changes and disappearing state are not.
+function queuePlaybackKey(){
+  try{
+    const state=sgf.currentState?.();
+    return JSON.stringify([typeof state?.playbackId==='string'?state.playbackId:'',
+      typeof state?.item?.uri==='string'?state.item.uri:'']);
+  }catch{return 'unavailable';}
+}
 sgf.checkQueue=async eventData=>{
   const policy=()=>[!!sgf.state.skipDownloaded,!!sgf.state.skipIgnored].join(',');
   if(eventData!==undefined){
     ++queueRevision;
-    pendingQueueEvent={data:eventData,player:sgf.player,epoch:statusEpoch,policy:policy(),time:Date.now()};
+    pendingQueueEvent={data:eventData,player:sgf.player,epoch:statusEpoch,policy:policy(),playback:queuePlaybackKey(),time:Date.now()};
   }
   if((!sgf.state.skipDownloaded&&!sgf.state.skipIgnored)||!sgf.player){pendingQueueEvent=null;return;}
   if(queueRun?.player===sgf.player&&queueRun?.epoch===statusEpoch)return;
   if(pendingQueueEvent){
     const pending=pendingQueueEvent;pendingQueueEvent=null;
     const age=Date.now()-pending.time;
-    eventData=pending.player===sgf.player&&pending.epoch===statusEpoch&&pending.policy===policy()&&
+    eventData=pending.player===sgf.player&&pending.epoch===statusEpoch&&pending.policy===policy()&&pending.playback===queuePlaybackKey()&&
       age>=0&&age<STATUS_LIMITS.doneAge?pending.data:undefined;
   }
-  const epoch=statusEpoch,player=sgf.player,revision=queueRevision;
+  const epoch=statusEpoch,player=sgf.player,revision=queueRevision,playback=queuePlaybackKey(),selectedPolicy=policy();
   const run=queueRun={player,epoch};
-  const current=()=>queueRun===run&&epoch===statusEpoch&&player===sgf.player&&revision===queueRevision;
+  const current=()=>queueRun===run&&epoch===statusEpoch&&player===sgf.player&&revision===queueRevision&&
+    playback===queuePlaybackKey()&&selectedPolicy===policy();
   try{
     const {list,source}=await boundedQueueCall(()=>queueSnapshot(eventData,player));
     if(!current())return;

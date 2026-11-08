@@ -128,5 +128,42 @@ const tick=async()=>{for(let i=0;i<24;i++)await Promise.resolve();};
  assert.strictEqual(mutation.removed[1][0].uid,'another-copy');
  finishRemove();await tick();mutation.advance(3000);
  await mutation.sgf.checkQueue({nextUp:[queued('reserved')]});assert.strictEqual(calls,3);
+ // A playback transition without a queue event invalidates a suspended lookup.
+ for(const change of ['repeat','track','missing','policy']){
+  const bound=harness();let reply;
+  let playback={playbackId:'a'.repeat(32),item:{uri:'spotify:track:current'}};
+  bound.sgf.currentState=()=>playback;
+  bound.sgf.requestStatuses=()=>new Promise(resolve=>{reply=resolve;});
+  const pending=bound.sgf.checkQueue({nextUp:[queued('instance-bound')]});await tick();
+  if(change==='repeat')playback={...playback,playbackId:'b'.repeat(32)};
+  if(change==='track')playback={...playback,item:{uri:'spotify:track:other'}};
+  if(change==='missing')playback=null;
+  if(change==='policy')bound.sgf.state.skipIgnored=true;
+  reply(new Map([[info('instance-bound').uri,{status:'DONE'}]]));await pending;
+  assert.strictEqual(bound.removed.length,0,'Reject stale '+change+' lookup');
+ }
+ // A queued event retained while lookup runs cannot cross a playback boundary.
+ const delayed=harness();let finishOld;
+ let delayedState={playbackId:'d'.repeat(32),item:{uri:'spotify:track:current'}};
+ delayed.sgf.currentState=()=>delayedState;
+ delayed.sgf.requestStatuses=()=>new Promise(resolve=>{finishOld=resolve;});
+ const delayedRun=delayed.sgf.checkQueue({nextUp:[queued('old-active')]});await tick();
+ await delayed.sgf.checkQueue({nextUp:[queued('old-pending')]});
+ delayedState={...delayedState,playbackId:'e'.repeat(32)};
+ finishOld(new Map());await delayedRun;
+ delayed.sgf.player._queue={getQueue:async()=>({nextUp:[queued('fresh-instance')]})};
+ delayed.sgf.requestStatuses=async items=>new Map(items.map(i=>[i.uri,{status:'DONE'}]));
+ await delayed.sgf.checkQueue();
+ assert.strictEqual(delayed.removed.length,1);
+ assert.strictEqual(delayed.removed[0][0].uid,'uid-fresh-instance');
+ // Timeline updates within the same playback instance keep the request valid.
+ const same=harness();let finish;
+ let playback={playbackId:'c'.repeat(32),item:{uri:'spotify:track:current'},positionAsOfTimestamp:0};
+ same.sgf.currentState=()=>playback;
+ same.sgf.requestStatuses=()=>new Promise(resolve=>{finish=resolve;});
+ const sameRun=same.sgf.checkQueue({nextUp:[queued('same-instance')]});await tick();
+ playback={...playback,positionAsOfTimestamp:12000};
+ finish(new Map([[info('same-instance').uri,{status:'DONE'}]]));await sameRun;
+ assert.strictEqual(same.removed.length,1);
  console.log('PASS: correlated statuses, pagination, queue timeout recovery, player replacement, reserved mutations and stale completions');
 })().catch(e=>{console.error(e);process.exitCode=1;});
