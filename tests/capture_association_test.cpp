@@ -17,7 +17,7 @@ struct TestCapture {
     bool lossless=false;
     double Duration() const {return lossless?double(coverage.samples)/flac.rate:stream.Duration();}
 };
-struct TestHeard {struct {double duration;} media;double start,finish;uint64_t generation=0;};
+struct TestHeard {struct {double duration;} media;double start,finish;uint64_t generation=0;size_t retention_conflicts=0;};
 using Active=std::map<int,std::unique_ptr<TestCapture>>;
 using Ready=std::vector<std::unique_ptr<TestCapture>>;
 using HeardList=std::vector<TestHeard>;
@@ -226,7 +226,8 @@ int main() {
         HeardList heard{{{10},100,106,1},{{10},106,112,2}};
         // Fast-transition overlap prevented retention at the first boundary.
         begin(active,ready,1,103);
-        CleanupCaptureTransition(active,ready,HeardList{heard[0]},100,106,true,106);
+        HeardList first{heard[0]};
+        CleanupCaptureTransition(active,ready,first,100,106,true,106);
         assert(!active.at(1)->retention.until);
         if(reverse)std::reverse(heard.begin(),heard.end());
         CleanupCaptureTransition(active,ready,heard,106,112,true,112);
@@ -251,6 +252,10 @@ int main() {
         PruneRetainedCaptures(active,ready,heard,122.001);
         assert(active.empty());
         for(const auto& c:ready)assert(!c->retention.ambiguous);
+        // Decoder errors, reuse or expiry may remove the marker before a
+        // deferred selection. The listen's remembered conflict still rejects.
+        s=SelectCapture(active,ready,heard[0],123);
+        assert(s.state==CaptureAssociation::Ambiguous && s.retention_conflicts==1);
     }
     {
         TestCapture c;c.born=103;

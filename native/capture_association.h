@@ -51,7 +51,7 @@ bool RetainPendingCapture(Capture& c,const HeardList& heard,double now) {
     return true;
 }
 template<class Active,class Ready,class HeardList>
-void CleanupCaptureTransition(Active& active,Ready& ready,const HeardList& heard,
+void CleanupCaptureTransition(Active& active,Ready& ready,HeardList& heard,
                               double previous_start,double start,bool completed,double now) {
     auto prior=[=](const auto& c) {
         return c->born>=previous_start-20 && c->born<=previous_start+3 && c->born<start-3;
@@ -65,6 +65,17 @@ void CleanupCaptureTransition(Active& active,Ready& ready,const HeardList& heard
         if(prior(it->second) && !RetainPendingCapture(*it->second,heard,now))
             it=active.erase(it);
         else ++it;
+    }
+    // Remember the rejection on the listen before any worker restart/guard can
+    // defer selection. A later decoder failure or pointer reuse may destroy
+    // the capture marker; that must not make a competing capture publishable.
+    for(auto& h:heard) {
+        std::size_t conflicts=0;
+        for(const auto& entry:active)
+            if(entry.second->retention.ambiguous && CaptureTimingMatches(*entry.second,h))++conflicts;
+        for(const auto& c:ready)
+            if(c->retention.ambiguous && CaptureTimingMatches(*c,h))++conflicts;
+        h.retention_conflicts=std::max(h.retention_conflicts,conflicts);
     }
 }
 template<class Active,class Ready,class HeardList>
@@ -117,6 +128,7 @@ CaptureSelection SelectCapture(const Active& active,const Ready& ready,const Hea
         if(c.retention.ambiguous && CaptureTimingMatches(c,h))++result.retention_conflicts;
         else if(c.retention.until && CaptureTimingMatches(c,h))++result.pending;
     }
+    result.retention_conflicts=std::max(result.retention_conflicts,h.retention_conflicts);
     // Retaining a second, unfinished candidate must not let the first ready
     // candidate win a race. Wait for strict codec validation, then reject
     // multiple matches (or an unresolved competitor at the deadline).

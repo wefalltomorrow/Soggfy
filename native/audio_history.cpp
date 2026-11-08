@@ -221,6 +221,7 @@ struct Capture {
 struct Heard {
     Media media; double start=0,finish=0; uint64_t generation=0;
     std::string identity;bool exact_identity=false;
+    size_t retention_conflicts=0;
 };
 static Catalog CatalogFor(const Media& media) {
     Catalog c; c.title=media.title; c.album=media.album; c.track=media.track;

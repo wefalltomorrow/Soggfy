@@ -5,7 +5,9 @@ could previously bind to whichever listen appeared first. RC85 scans the eligibl
 batch before binding. Shared candidates become persistent rejection markers:
 neither they nor a competing ready candidate can publish for affected listens,
 even after one listen is removed. Markers retain the bounded completion deadline
-and are pruned when expired or when no affected listen remains.
+and are pruned when expired or when no affected listen remains. Each affected
+listen remembers the conflict, so decoder failure, reuse or marker expiry during
+deferred selection cannot make a competing capture publishable.
 
 Fixtures cover the fast-transition overlap that postpones retention, both queue
 orders, active/completed Ogg/FLAC markers, ready competitors, unrelated captures,
