@@ -19,6 +19,9 @@ public:
     ValidationWorkerTrust(const ValidationWorkerTrust&)=delete;
     ValidationWorkerTrust& operator=(const ValidationWorkerTrust&)=delete;
     bool Open(const std::wstring& path,const std::string& build_sha256,std::string& error);
+    // Requires validation_worker_build.cpp and the generated build header.
+    // Runtime callers cannot select the expected digest through this entry point.
+    bool OpenBuildPinned(const std::wstring& path,std::string& error);
     const std::wstring& Path()const{return path_;}
 };
 }

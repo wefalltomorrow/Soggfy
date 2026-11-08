@@ -23,6 +23,8 @@ int wmain(int argc,wchar_t** argv) {
         return WriteFile(pipe,&reply,sizeof(reply),&written,nullptr)&&written==sizeof(reply)?0:1;
     }
     assert(argc==4);
+    ValidationWorkerTrust trusted;std::string trust_error;
+    assert(trusted.OpenBuildPinned(argv[3],trust_error));
     const fs::path original=argv[1],expected=argv[2];
     const auto before=Read(original),after=Read(expected);
     wchar_t temporary[32768]{},self[32768]{};
@@ -40,7 +42,7 @@ int wmain(int argc,wchar_t** argv) {
             MetadataRefreshTransaction transaction;assert(transaction.Open(path.wstring()));
             std::string error="stale";unsigned calls=0;
             const auto state=PrepareMetadataRefresh(transaction,scenario==3?"spotify:track:abcdefghijkl0123456789":uri,
-                incoming,scenario==4||scenario==2?L"missing.exe":scenario==5?self:argv[3],error,[&] {
+                incoming,scenario==4||scenario==2?L"missing.exe":scenario==5?self:trusted.Path().c_str(),error,[&] {
                     ++calls;
                     if(scenario==6)return true;
                     if(scenario==7)throw 1;

@@ -35,12 +35,21 @@ validator = str(pathlib.Path(sys.argv[3]).resolve()) if len(sys.argv) > 3 else N
 flac_validator = str(pathlib.Path(sys.argv[4]).resolve()) if len(sys.argv) > 4 else None
 process_validator = str(pathlib.Path(sys.argv[5]).resolve()) if len(sys.argv) > 5 else None
 worker = pathlib.Path(sys.argv[6]).resolve() if len(sys.argv) > 6 else None
-# Only fixtures derive trust from the executable under test. Production must
-# use a digest embedded by its trusted build, not hash the installed helper.
-worker_digest = hashlib.sha256(worker.read_bytes()).hexdigest() if worker else None
 preparer = str(pathlib.Path(sys.argv[7]).resolve()) if len(sys.argv) > 7 else None
 with tempfile.TemporaryDirectory(prefix="soggfy-metadata-") as directory:
     root = pathlib.Path(directory)
+    if process_validator:
+        assert worker is not None
+        run(process_validator, "--accept-worker", worker)
+        substitute = root / "substitute-worker.exe"
+        changed = bytearray(worker.read_bytes())
+        changed[-1] ^= 1
+        substitute.write_bytes(changed)
+        # Even a matching mutable sidecar cannot change compiled trust.
+        (root / "SHA256SUMS.txt").write_text(
+            hashlib.sha256(changed).hexdigest() + "  substitute-worker.exe\n")
+        run(process_validator, "--reject-worker", substitute)
+        run(process_validator, "--reject-worker", root / "missing-worker.exe")
     cases = itertools.product((("ogg", "libvorbis"), ("flac", "flac")),
         ((44100, 2, "0.01", "tone"), (44100, 2, "1", "tone"),
          (48000, 1, "3.25", "tone"), (44100, 2, "1", "silence"),
@@ -70,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix="soggfy-metadata-") as directory:
         if process_validator:
             assert worker is not None
             for path in (source, before, after):
-                run(process_validator, path, worker, worker_digest)
+                run(process_validator, path, worker)
         decoded = []
         for path in (source, before, after):
             decoded.append(run(ffmpeg, "-hide_banner", "-loglevel", "error",

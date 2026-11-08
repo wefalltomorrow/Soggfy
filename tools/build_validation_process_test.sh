@@ -16,5 +16,6 @@ flags=(-std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static -municode)
     native/validation_worker.cpp native/vorbis_validation.cpp native/flac_validation.cpp \
     native/flac_history_core.cpp native/compressed_buffer.cpp native/rich_metadata.cpp \
     native/ogg_tags.cpp native/ogg_history_core.cpp "${objects[@]}" -o "$destination/validation-worker.exe"
-"$CXX" "${flags[@]}" tests/windows_validation_process_test.cpp native/validation_process.cpp native/validation_worker_trust.cpp \
+python3 tools/generate_validation_worker_digest.py "$destination/validation-worker.exe" "$destination/validation_worker_digest.h"
+"$CXX" "${flags[@]}" -I "$destination" tests/windows_validation_process_test.cpp native/validation_process.cpp native/validation_worker_trust.cpp native/validation_worker_build.cpp \
     -lbcrypt -o "$destination/validation-process-test.exe"

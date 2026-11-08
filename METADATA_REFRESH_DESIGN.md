@@ -199,6 +199,15 @@ held trust object. This is not yet deployment: the expected digest must be bound
 to the DLL build, not read from an adjacent mutable manifest. Static helper
 packaging/import verification and production caller integration remain open.
 
+The offline build now generates the helper SHA-256 header after linking the
+worker, then compiles that value into its supervisor and preparation test
+callers. OpenBuildPinned accepts no runtime expected digest. The harness checks
+acceptance of the exact build and rejection of a substituted executable even
+with an updated adjacent checksum file. Failed generation removes stale headers;
+missing, empty and oversized helpers fail the build. Both helper/source locks
+remain held during preparation. This closes the runtime-selected-digest gap in
+the offline harness; the shipping DLL/build/package do not yet include it.
+
 1. Read metadata from complete native recordings. Require exact Spotify URI
    agreement and recognized complete-listen/capture provenance. Legacy or
    uncertain identity cannot authorize a rewrite. Metadata/header checks and

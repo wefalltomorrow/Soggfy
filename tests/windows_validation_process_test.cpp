@@ -4,6 +4,13 @@
 #include <cwchar>
 #include <iostream>
 int wmain(int argc,wchar_t** argv) {
+    if(argc==3&&(!wcscmp(argv[1],L"--accept-worker")||!wcscmp(argv[1],L"--reject-worker"))) {
+        history::ValidationWorkerTrust worker;std::string error;
+        const bool accepted=worker.OpenBuildPinned(argv[2],error);
+        assert(accepted==!wcscmp(argv[1],L"--accept-worker"));
+        assert(accepted?(!worker.Path().empty()&&error.empty()):(worker.Path().empty()&&!error.empty()));
+        return 0;
+    }
     if(argc==5) {
         // A deliberately faulty trusted test helper exercises the supervisor.
         wchar_t mode[64]{};GetEnvironmentVariableW(L"SGF_TEST_VALIDATOR_FAULT",mode,64);
@@ -28,10 +35,9 @@ int wmain(int argc,wchar_t** argv) {
         if(!wcscmp(mode,L"extra"))WriteFile(pipe,&reply,1,&written,nullptr);
         return 0;
     }
-    assert(argc==4);
-    std::string expected;for(const auto* p=argv[3];*p;++p)expected+=char(*p);
+    assert(argc==3);
     history::ValidationWorkerTrust trusted;std::string trust_error;
-    assert(trusted.Open(argv[2],expected,trust_error));
+    assert(trusted.OpenBuildPinned(argv[2],trust_error));
     HANDLE source=CreateFileW(argv[1],GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
     assert(source!=INVALID_HANDLE_VALUE);
     HANDLE mutation=CreateFileW(argv[1],GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
