@@ -22,13 +22,9 @@ bool SameFile(const BY_HANDLE_FILE_INFORMATION& a,const BY_HANDLE_FILE_INFORMATI
     return a.dwVolumeSerialNumber==b.dwVolumeSerialNumber&&a.nFileIndexHigh==b.nFileIndexHigh&&
         a.nFileIndexLow==b.nFileIndexLow;
 }
-struct Staging {
-    HANDLE handle=INVALID_HANDLE_VALUE;
-    bool published=false;
-    ~Staging(){if(handle!=INVALID_HANDLE_VALUE){if(!published)Dispose(handle);CloseHandle(handle);}}
-};
 }
 MetadataRefreshTransaction::~MetadataRefreshTransaction() {
+    if(staged_!=INVALID_HANDLE_VALUE){if(!published_)Dispose(staged_);CloseHandle(staged_);}
     if(source_!=INVALID_HANDLE_VALUE)CloseHandle(source_);
     for(HANDLE directory:directories_)CloseHandle(directory);
 }
@@ -79,27 +75,39 @@ bool MetadataRefreshTransaction::Read(std::vector<uint8_t>& bytes)const {
 }
 RefreshTransactionResult MetadataRefreshTransaction::Commit(const std::vector<uint8_t>& bytes,
     const std::function<bool(RefreshTransactionStage)>& still_current) {
+    bool current=false;
+    try{current=still_current&&still_current(RefreshTransactionStage::Prepared);}catch(...){}
+    if(!current)return {false,{},"refresh canceled before staging"};
+    if(!Stage(bytes))return {false,{},"refresh staging failed"};
+    return CommitStaged(still_current);
+}
+bool MetadataRefreshTransaction::Stage(const std::vector<uint8_t>& bytes) {
+    if(used_||staged_!=INVALID_HANDLE_VALUE||source_==INVALID_HANDLE_VALUE||
+       bytes.empty()||bytes.size()>ValidationInputLimit)return false;
+    used_=true; // failure consumes the transaction; no namespace change yet
+    static volatile LONG sequence=0;
+    staging_path_=path_+L".refresh-"+std::to_wstring(GetCurrentProcessId())+L"-"+
+        std::to_wstring(InterlockedIncrement(&sequence));
+    staged_=CreateFileW(staging_path_.c_str(),GENERIC_READ|GENERIC_WRITE|DELETE,FILE_SHARE_READ,
+        nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+    DWORD written=0;
+    if(staged_==INVALID_HANDLE_VALUE||!WriteFile(staged_,bytes.data(),DWORD(bytes.size()),&written,nullptr)||
+       written!=bytes.size()||!FlushFileBuffers(staged_))return false;
+    ready_=true;used_=false;return true;
+}
+RefreshTransactionResult MetadataRefreshTransaction::CommitStaged(
+    const std::function<bool(RefreshTransactionStage)>& still_current) {
     RefreshTransactionResult result;result.error.reserve(128);
     auto fail=[&](const char* why){result.error=why;return std::move(result);};
     auto current=[&](RefreshTransactionStage stage) {
         try{return still_current&&still_current(stage);}catch(...){return false;}
     };
-    if(used_||source_==INVALID_HANDLE_VALUE||bytes.empty()||bytes.size()>ValidationInputLimit)
+    if(used_||source_==INVALID_HANDLE_VALUE||!ready_||staged_==INVALID_HANDLE_VALUE)
         return fail("invalid refresh transaction");
     used_=true;
-    if(!current(RefreshTransactionStage::Prepared))return fail("refresh canceled before staging");
-    static volatile LONG sequence=0;
-    const auto staging=path_+L".refresh-"+std::to_wstring(GetCurrentProcessId())+L"-"+
-        std::to_wstring(InterlockedIncrement(&sequence));
-    const auto backup=staging+L".previous";
+    const auto backup=staging_path_+L".previous";
     // Allocate all rename/recovery state before changing the namespace.
     RenameTarget destination(path_),previous(backup);
-    Staging next;
-    next.handle=CreateFileW(staging.c_str(),GENERIC_READ|GENERIC_WRITE|DELETE,FILE_SHARE_READ,
-        nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
-    DWORD written=0;
-    if(next.handle==INVALID_HANDLE_VALUE||!WriteFile(next.handle,bytes.data(),DWORD(bytes.size()),&written,nullptr)||
-       written!=bytes.size()||!FlushFileBuffers(next.handle))return fail("refresh staging failed");
     if(!current(RefreshTransactionStage::Prepared))return fail("refresh canceled before publication");
     result.retained_original=backup;
     if(!previous.Apply(source_)) {
@@ -107,11 +115,11 @@ RefreshTransactionResult MetadataRefreshTransaction::Commit(const std::vector<ui
     }
     // Every rename forbids replacement. A concurrent creator wins its name;
     // rollback then leaves our original at the explicitly reported backup.
-    if(!current(RefreshTransactionStage::SourceMoved)||!destination.Apply(next.handle)) {
+    if(!current(RefreshTransactionStage::SourceMoved)||!destination.Apply(staged_)) {
         if(destination.Apply(source_))result.retained_original.clear();
         return fail("refresh publication canceled or failed");
     }
-    next.published=true;result.committed=true;
+    published_=true;result.committed=true;
     if(Dispose(source_))result.retained_original.clear();
     return result;
 }

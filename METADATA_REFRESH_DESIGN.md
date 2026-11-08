@@ -167,9 +167,13 @@ requires the exact generation with downloads and metadata enabled. Its lifetime
 excludes setters; stale/disabled guards release the lock immediately. A Windows
 regression checks exclusion from another thread and reacquisition after scope
 exit. It must be acquired after staging and held only through final mutation.
-The transaction still requires splitting staging from mutation before this guard
-can be connected without blocking UI settings during disk work. These two
-additions pass local tests; their full CI validation is pending.
+The transaction now splits Stage from CommitStaged. The former writes/flushes
+the private staging file; the latter performs the bounded namespace operations.
+A Windows integration test stages, changes real settings, rejects the stale
+guard, and confirms the original survives and staging is cleaned up. The valid
+generation publishes successfully under the guard. These additions pass local
+tests; their full CI validation is pending. Filesystem metadata preservation and
+the complete production coordinator remain unfinished.
 
 1. Read metadata from complete native recordings. Require exact Spotify URI
    agreement and recognized complete-listen/capture provenance. Legacy or

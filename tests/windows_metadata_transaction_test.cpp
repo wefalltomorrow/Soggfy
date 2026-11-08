@@ -1,4 +1,6 @@
 #include "../native/metadata_refresh_transaction.h"
+// Initialize the real setters without launching persistence or touching user INI files.
+#include "../native/history_settings.cpp"
 #include <cassert>
 #include <iostream>
 #include <filesystem>
@@ -66,6 +68,26 @@ int main() {
     const auto alias=root+L"\\alias.flac";assert(CreateHardLinkW(alias.c_str(),path.c_str(),nullptr));
     {history::MetadataRefreshTransaction transaction;assert(!transaction.Open(path));assert(!transaction.Commit(updated,current).committed);}
     assert(Read(path)==old);assert(DeleteFileW(alias.c_str())&&DeleteFileW(path.c_str()));
+    history::settings_signal=CreateEventW(nullptr,FALSE,FALSE,nullptr);assert(history::settings_signal);
+    assert(history::SetDownloads(true)&&history::SetMetadata(true));
+    for(bool stale:{true,false}) {
+        Create(path,old);
+        {
+            const auto generation=history::GetSettings().generation;
+            history::MetadataRefreshTransaction transaction;assert(transaction.Open(path));
+            assert(!transaction.CommitStaged(current).committed);
+            assert(transaction.Stage(updated));
+            assert(!transaction.Stage(updated));
+            assert(Read(path)==old); // staging is invisible at the original name
+            if(stale)assert(history::SetEmbedLyrics(!history::GetSettings().embed_lyrics));
+            history::MetadataPublicationGuard guard(generation);
+            assert(bool(guard)!=stale);
+            if(guard)assert(transaction.CommitStaged(current).committed);
+        }
+        assert(Read(path)==(stale?old:updated));assert(DeleteFileW(path.c_str()));
+        assert(fs::is_empty(root));
+    }
+    CloseHandle(history::settings_signal);history::settings_signal=nullptr;
     assert(fs::is_empty(root));assert(RemoveDirectoryW(root.c_str()));
     std::cout<<"PASS: identity-held refresh, ancestor locks, cancellation, concurrent creation, rollback and retained originals\n";
 }
