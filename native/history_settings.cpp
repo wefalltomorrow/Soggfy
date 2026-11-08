@@ -245,6 +245,14 @@ void InitSettings(HMODULE proxy) {
 Settings GetSettings() {
     AcquireSRWLockShared(&lock); auto copy=settings; ReleaseSRWLockShared(&lock); return copy;
 }
+MetadataPublicationGuard::MetadataPublicationGuard(unsigned expected_generation) {
+    AcquireSRWLockShared(&lock);
+    held_=settings.generation==expected_generation&&settings.downloads&&settings.metadata;
+    if(!held_)ReleaseSRWLockShared(&lock);
+}
+MetadataPublicationGuard::~MetadataPublicationGuard() {
+    if(held_)ReleaseSRWLockShared(&lock);
+}
 unsigned LogLevel() {return unsigned(InterlockedCompareExchange(&log_level_value,0,0));}
 bool LoggingEnabled() { return LogLevel()!=0; }
 bool DebugLoggingEnabled() { return LogLevel()==4; }

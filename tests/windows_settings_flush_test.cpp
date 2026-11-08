@@ -26,6 +26,25 @@ int main() {
     assert(SetDebugLogging(true) && LogLevel()==4);
     assert(SetDebugLogging(false) && LogLevel()==2);
     assert(SetLogLevel(1) && SetDebugLogging(false) && LogLevel()==1);
+    assert(SetDownloads(true)&&SetMetadata(true));
+    const auto publication_generation=GetSettings().generation;
+    {
+        MetadataPublicationGuard guard(publication_generation);assert(bool(guard));
+        HANDLE contender=CreateThread(nullptr,0,[](LPVOID)->DWORD {
+            const bool acquired=TryAcquireSRWLockExclusive(&lock)!=0;
+            if(acquired)ReleaseSRWLockExclusive(&lock);
+            return acquired?1:0;
+        },nullptr,0,nullptr);
+        assert(contender&&WaitForSingleObject(contender,5000)==WAIT_OBJECT_0);
+        DWORD result=1;assert(GetExitCodeThread(contender,&result)&&result==0);CloseHandle(contender);
+    }
+    assert(TryAcquireSRWLockExclusive(&lock));ReleaseSRWLockExclusive(&lock);
+    assert(SetDownloads(false));
+    {MetadataPublicationGuard stale(publication_generation);assert(!bool(stale));}
+    {MetadataPublicationGuard disabled(GetSettings().generation);assert(!bool(disabled));}
+    assert(SetDownloads(true)&&SetMetadata(false));
+    {MetadataPublicationGuard disabled(GetSettings().generation);assert(!bool(disabled));}
+    assert(TryAcquireSRWLockExclusive(&lock));ReleaseSRWLockExclusive(&lock);
     CloseHandle(settings_signal);settings_signal=nullptr;
     puts("PASS: settings flush accepts coalesced snapshots, rejects failed/pending writes and handles generation wrap");
 }

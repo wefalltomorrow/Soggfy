@@ -153,6 +153,24 @@ transaction together.
 
 ## Remaining implementation and acceptance requirements
 
+The independent output verifier re-plans the exact permitted text delta, checks
+the resulting ordered fields/vendor, and compares codec headers and compressed
+audio byte-for-byte. Ogg comparison walks packet-by-packet, including audio
+granules/EOS/serial; FLAC comparison retains every non-padding/non-comment block
+and exact frame bytes. CRC-correct audio mutations and unauthorized custom-tag
+changes are rejected. All twelve real-audio cases pass this additional check.
+This transfers validity only from an already fully decoded, stable source; it
+does not independently establish the validity of synthetic container fixtures.
+
+A settings publication guard now holds the existing shared settings lock and
+requires the exact generation with downloads and metadata enabled. Its lifetime
+excludes setters; stale/disabled guards release the lock immediately. A Windows
+regression checks exclusion from another thread and reacquisition after scope
+exit. It must be acquired after staging and held only through final mutation.
+The transaction still requires splitting staging from mutation before this guard
+can be connected without blocking UI settings during disk work. These two
+additions pass local tests; their full CI validation is pending.
+
 1. Read metadata from complete native recordings. Require exact Spotify URI
    agreement and recognized complete-listen/capture provenance. Legacy or
    uncertain identity cannot authorize a rewrite. Metadata/header checks and

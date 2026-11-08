@@ -1,5 +1,6 @@
 #include "../native/metadata_refresh_plan.h"
 #include "../native/metadata_refresh_inspection.h"
+#include "../native/metadata_refresh_verification.h"
 #include "../native/flac_history_core.h"
 #include <ogg/ogg.h>
 #include <cassert>
@@ -123,6 +124,8 @@ static void Real(const char* input,const char* baseline,const char* refreshed) {
     MetadataInspection inspection;assert(InspectMetadataRefreshSource(tagged,uri,inspection));
     Tags delta;assert(PlanMetadataRefresh(inspection.comments,uri,Incoming(),delta)==MetadataPlanState::Changed);
     assert(tagger(tagged,delta,output,error));
+    assert(VerifyMetadataRefreshOutput(tagged,uri,Incoming(),output));
+    assert(!VerifyMetadataRefreshOutput(tagged,uri,Incoming(),tagged));
     MetadataInspection updated;assert(InspectMetadataRefreshSource(output,uri,updated));
     assert(updated.samples==inspection.samples&&updated.rate==inspection.rate&&updated.bits==inspection.bits);
     Check(inspection.comments,updated.comments);
@@ -153,6 +156,19 @@ int main(int argc,char** argv) {
     }
     assert(PlanMetadataRefresh(old,uri,Incoming(),delta)==MetadataPlanState::Changed);
     Bytes output;std::string error;assert(TagOgg(source,delta,output,error));
+    assert(VerifyMetadataRefreshOutput(source,uri,Incoming(),output));
+    bad=output;bad.back()^=1;
+    size_t last=0;
+    for(size_t at=0;at<bad.size();) {
+        last=at;size_t size=27+bad[at+26];
+        for(size_t i=27;i<27u+bad[at+26];++i)size+=bad[at+i];
+        at+=size;
+    }
+    Crc(bad,last); // CRC-valid audio mutation must still fail equivalence.
+    assert(!VerifyMetadataRefreshOutput(source,uri,Incoming(),bad));
+    Tags unauthorized=delta;unauthorized.fields.emplace_back("CUSTOM","replaced");
+    assert(TagOgg(source,unauthorized,bad,error));
+    assert(!VerifyMetadataRefreshOutput(source,uri,Incoming(),bad));
     assert(InspectMetadataRefreshSource(output,uri,inspection));
     auto before=ReadOgg(source),after=ReadOgg(output);assert(before.size()==4&&after.size()==4);
     for(size_t i:{0u,2u,3u})assert(before[i].bytes==after[i].bytes&&before[i].eos==after[i].eos);
@@ -177,6 +193,13 @@ int main(int argc,char** argv) {
     bad.insert(bad.end(),{255,248});Reject(bad); // ambiguous comments
     assert(PlanMetadataRefresh(old,uri,Incoming(),delta)==MetadataPlanState::Changed);
     assert(TagFlac(source,delta,output,error));
+    assert(VerifyMetadataRefreshOutput(source,uri,Incoming(),output));
+    bad=output;bad.back()^=1;assert(!VerifyMetadataRefreshOutput(source,uri,Incoming(),bad));
+    unauthorized=delta;unauthorized.fields.emplace_back("CUSTOM","replaced");
+    assert(TagFlac(source,unauthorized,bad,error));
+    assert(!VerifyMetadataRefreshOutput(source,uri,Incoming(),bad));
+    bad=output;bad[46]^=1; // opaque application metadata
+    assert(!VerifyMetadataRefreshOutput(source,uri,Incoming(),bad));
     assert(InspectMetadataRefreshSource(output,uri,inspection));
     auto original=Blocks(source),tagged=Blocks(output);assert(original.size()==tagged.size());
     for(size_t i=0;i<original.size();++i) {

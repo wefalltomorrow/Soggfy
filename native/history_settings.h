@@ -24,6 +24,20 @@ struct Settings {
 void InitSettings(HMODULE proxy);
 Settings GetSettings();
 
+// Hold only around the final namespace mutation, after decoding/staging.
+// A valid guard blocks setters and proves downloads/metadata remain enabled
+// at the exact generation used to prepare the update. Do not call settings
+// getters/setters or run arbitrary callbacks while holding this guard.
+class MetadataPublicationGuard {
+    bool held_=false;
+public:
+    explicit MetadataPublicationGuard(unsigned expected_generation);
+    ~MetadataPublicationGuard();
+    MetadataPublicationGuard(const MetadataPublicationGuard&)=delete;
+    MetadataPublicationGuard& operator=(const MetadataPublicationGuard&)=delete;
+    explicit operator bool()const{return held_;}
+};
+
 bool SetDownloads(bool enabled);
 bool SetOgg(bool enabled);
 bool SetFlac(bool enabled);
