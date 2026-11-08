@@ -25,6 +25,9 @@ for unit in framing bitwise; do
     "$CC" -std=c11 "${flags[@]}" "${includes[@]}" -c "native/vendor/libogg/src/$unit.c" -o "$object"
     objects+=("$object")
 done
+"$CC" -std=c11 -UNDEBUG "${flags[@]}" "${includes[@]}" \
+    tests/ogg_bitwise_test.c "$destination/ogg-bitwise.o" -o "$destination/ogg-bitwise-test.exe"
+"$destination/ogg-bitwise-test.exe"
 "$CXX" -std=c++17 -UNDEBUG -Wall -Wextra -Werror "${flags[@]}" "${includes[@]}" \
     tests/vorbis_validation_test.cpp native/vorbis_validation.cpp native/ogg_history_core.cpp \
     "${objects[@]}" -o "$destination/vorbis-validation-test.exe"
