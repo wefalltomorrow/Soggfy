@@ -26,6 +26,18 @@ int main() {
     auto current=[](history::RefreshTransactionStage){return true;};
     Create(path,old);
     {
+        // A mapped writer can outlive its original file handle. It must still
+        // prevent the transaction from claiming a stable source snapshot.
+        HANDLE writer=CreateFileW(path.c_str(),GENERIC_READ|GENERIC_WRITE,
+            FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,0,nullptr);
+        assert(writer!=INVALID_HANDLE_VALUE);
+        HANDLE mapping=CreateFileMappingW(writer,nullptr,PAGE_READWRITE,0,0,nullptr);assert(mapping);
+        auto view=MapViewOfFile(mapping,FILE_MAP_WRITE,0,0,old.size());assert(view);
+        CloseHandle(writer);
+        {history::MetadataRefreshTransaction transaction;assert(!transaction.Open(path));}
+        assert(UnmapViewOfFile(view));CloseHandle(mapping);
+    }
+    {
         history::MetadataRefreshTransaction transaction;assert(transaction.Open(path));
         Bytes bytes;assert(transaction.Read(bytes)&&bytes==old);
         assert(!DeleteFileW(path.c_str()));

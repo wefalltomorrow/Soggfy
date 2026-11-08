@@ -39,6 +39,15 @@ int wmain(int argc,wchar_t** argv) {
     auto malformed=expected;malformed[0]='g';rejected(path,malformed);
     rejected(L"worker.exe",expected);rejected(root,expected);
     rejected(path+L"-missing",expected);
+    {
+        HANDLE writer=CreateFileW(path.c_str(),GENERIC_READ|GENERIC_WRITE,
+            FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,0,nullptr);
+        assert(writer!=INVALID_HANDLE_VALUE);
+        HANDLE mapping=CreateFileMappingW(writer,nullptr,PAGE_READWRITE,0,0,nullptr);assert(mapping);
+        auto view=MapViewOfFile(mapping,FILE_MAP_WRITE,0,0,0);assert(view);
+        CloseHandle(writer);rejected(path,expected);
+        assert(UnmapViewOfFile(view));CloseHandle(mapping);
+    }
     assert(CreateHardLinkW(alias.c_str(),path.c_str(),nullptr));
     rejected(path,expected);assert(DeleteFileW(alias.c_str()));
     HANDLE file=CreateFileW(path.c_str(),GENERIC_WRITE,0,nullptr,OPEN_EXISTING,0,nullptr);
@@ -47,4 +56,5 @@ int wmain(int argc,wchar_t** argv) {
     rejected(path,expected);assert(DeleteFileW(path.c_str()));
     assert(std::filesystem::is_empty(root));assert(RemoveDirectoryW(root.c_str()));
     std::cout<<"PASS: build-pinned helper digest, immutable executable/ancestor names, locked launch, Unicode, mismatch and hard-link rejection\n";
+    return 0;
 }
