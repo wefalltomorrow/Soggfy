@@ -43,9 +43,9 @@ headers. No full decoded image is retained. Rejected input clears the output.
 Local diagnostic tests pass 90 generated layouts spanning legal PNG color/bit
 depth combinations and Adam7/noninterlaced images, independently decoded by
 FFmpeg to expected pixels. They also cover all five filters, ancillary chunks,
-split IDAT, chunk-count boundaries, and 100 malformed inputs (including every
+split IDAT, chunk-count boundaries, and 101 malformed inputs (including every
 truncated prefix, excess/short pixel data, CRC/Adler damage, invalid palette
-indexes and compressed metadata expansion). These tests are registered in all
+indexes and individual/aggregate compressed metadata expansion). These tests are registered in all
 four CI jobs; CI is pending. Full static PNG decoding is a foundation only:
 JPEG, supervised artwork worker integration, image-source provenance and
 replacement eligibility remain open. This code has no production caller and

@@ -30,5 +30,5 @@ for source in sources:
     subprocess.run([cc,'-std=c11',*flags,*includes,*definitions,'-c',str(source),'-o',str(obj)],check=True)
     objects.append(str(obj))
 subprocess.run([cc,'-std=c11','-UNDEBUG','-Wall','-Wextra','-Werror',*flags,*includes,*definitions,
-                'native/png_validation.c','tests/png_validation_test.c',*objects,
+                'native/png_validation.c','tests/png_validation_test.c',*objects,'-lm',
                 '-o',str(dest/'png-validation-test.exe')],check=True)

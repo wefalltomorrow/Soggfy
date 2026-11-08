@@ -47,6 +47,7 @@ bad={
     'invalid_chunk_character':image(between=chunk(b'ra1d',b'')),
     'bad_text_compression':image(between=chunk(b'zTXt',b'key\0\0invalid')),
     'large_text_expansion':image(between=chunk(b'zTXt',b'key\0\0'+zlib.compress(b'x'*(4*1024*1024+1)))),
+    'aggregate_memory_limit':image(between=chunk(b'zTXt',b'key\0\0'+zlib.compress(b'x'*(4*1024*1024-1)))*10),
 }
 for label,offset in [('ihdr',32),('idat',len(valid)-13),('iend',len(valid)-1)]:
     mutated=bytearray(valid);mutated[offset]^=1;bad['crc_'+label]=mutated
@@ -90,5 +91,6 @@ with tempfile.TemporaryDirectory(prefix='soggfy-png-') as directory:
     run('ancillary',image(between=chunk(b'tEXt',b'key\0value')+chunk(b'raNd',b'opaque')),0,'1 1 8 3')
     run('split_idat',signature+header()+chunk(b'IDAT',compressed[:6])+chunk(b'IDAT',compressed[6:])+chunk(b'IEND',b''),0,'1 1 8 3')
     run('chunk_limit',image(between=chunk(b'raNd',b'')*4093),0,'1 1 8 3')
+    run('bounded_metadata',image(between=chunk(b'zTXt',b'key\0\0'+zlib.compress(b'x'*(1024*1024)))*5),0,'1 1 8 3')
     for label,data in bad.items():run(label,data,1)
     print(f'PASS: PNG {count} independently decoded layouts, 5 filters, ancillary/split/boundary cases and {len(bad)} malformed inputs')
