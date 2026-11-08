@@ -202,6 +202,26 @@ validate SACLs, EFS, extended attributes, crash recovery or adversarial pathname
 replacement. The production coordinator remains disabled. Probe fixtures and
 reports are retained under outputs/replace-file-probes, outside release packages.
 
+A further isolated probe, `tools/probe_refresh_oplock.ps1`, tests whether an
+exclusive read/write/handle-caching oplock can close the preservation gap. On
+November 8, 2026, PowerShell 7.6.9 and Windows PowerShell 5.1 each passed ten
+synthetic cases on the local Windows 10.0.19044 filesystem: five mutations with
+share READ and the same five with share READ|WRITE|DELETE. Attribute changes,
+existing-stream edits and new-stream creation completed while the oplock was
+held without signaling a break. DACL changes and main-stream writes triggered
+successful break notifications and completed only after handle release. Exact
+audio/stream contents, Hidden state and DACL protection are checked afterward.
+The pending asynchronous request is canceled/drained before freeing its buffers.
+
+These are bounded local observations, not a guarantee for every filesystem or
+security operation. They disprove using only a default-stream oplock to freeze
+all metadata during publication. Separate locks for existing streams would
+still leave the observed new-stream and attribute cases unresolved. Production
+publication remains disabled. Reports are retained as
+`outputs/Soggfy-oplock-preservation-PS7-20261108.json` and
+`outputs/Soggfy-oplock-preservation-PS51-20261108.json`; synthetic fixtures remain
+under `outputs/oplock-probes`. No recording or installed client was modified.
+
 The text policy fills absent lyrics and preserves existing timed/custom lyrics.
 It now permits a plain-to-line-timed upgrade only when normalized line endings
 leave exactly the same words and every timestamp is monotonic and within the
