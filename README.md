@@ -24,6 +24,12 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
 
+RC82 packages a build-bound validation helper beside each DLL. The installer
+uses a filename containing its build hash and retains older helpers for rollback.
+Uninstall retains the matching helper when restoring a DLL backup. Saved-recording
+metadata rewriting remains disabled pending the preservation and coordination
+work described in METADATA_REFRESH_DESIGN.md. Keep the extracted package complete.
+
 RC75 adds installation-directory rollback, bounded event-driven manual watch
 conversion and native playlist save acknowledgements. Failed rollback retains
 recovery files; only confirmed publication reports Saved. See RELEASE_NOTES.md

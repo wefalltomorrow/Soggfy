@@ -120,8 +120,13 @@ jobs:
           WINDRES: windres
           STRIP: strip
           LD: ld
+          OBJDUMP: objdump
           PYTHON: python
-        run: bash build-native.sh
+        run: |
+          set -euo pipefail
+          bash build-native.sh
+          cmp build/validation-worker/validation-worker.exe build/windows-tests/validation-process/validation-worker.exe
+          echo 'Release helper matches the fully exercised test helper byte-for-byte.'
 
       - name: Package release
         shell: msys2 {0}
@@ -149,7 +154,7 @@ jobs:
           grep -Fq "  $archive" SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
           python - "$archive" <<'PY'
-          import sys, zipfile
+          import hashlib, re, sys, zipfile
           required = {
               "version.dll",
               "Launcher/Soggfy.exe",
@@ -164,9 +169,23 @@ jobs:
               "Scripts/PostProcess.ps1",
               "Scripts/ConverterProcess.cs",
               "Scripts/Diagnose.ps1",
+              "Scripts/ValidationWorker.ps1",
+              "VALIDATION_WORKER.txt",
+              "third-party/libvorbis/LICENSE.txt",
+              "third-party/libFLAC/LICENSE.txt",
           }
           with zipfile.ZipFile(sys.argv[1]) as z:
               names = set(z.namelist())
+              digest = z.read("VALIDATION_WORKER.txt").decode("ascii").strip()
+              assert re.fullmatch(r"[a-f0-9]{64}", digest)
+              worker = f"SoggfyValidation-{digest}.exe"
+              assert z.read(worker) == z.read("Launcher/" + worker)
+              assert hashlib.sha256(z.read(worker)).hexdigest() == digest
+              assert digest.encode() in z.read("version.dll")
+              assert z.read("version.dll") == z.read("Launcher/Soggfy.dll")
+              for line in z.read("SHA256SUMS.txt").decode().splitlines():
+                  expected, path = line.split("  ", 1)
+                  assert hashlib.sha256(z.read(path)).hexdigest() == expected, path
           missing = sorted(required - names)
           if missing:
               raise SystemExit("Missing release files: " + ", ".join(missing))

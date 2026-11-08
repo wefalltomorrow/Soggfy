@@ -36,7 +36,7 @@ trap {
     exit 1
 }
 
-$InstallerVersion = 'RC75'
+$InstallerVersion = 'RC82'
 $PinnedSpotifyVersion = '1.3.1.234'
 $PinnedSpotifyFullVersion = '1.3.1.234.g59d6bf59'
 
@@ -200,6 +200,8 @@ if (-not (Test-Path -LiteralPath $sourceDll -PathType Leaf) -or (Get-Item -Liter
     Fail "version.dll is missing or empty in '$packageRoot'. Extract the full release ZIP first."
 }
 $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceDll).Hash
+. (Join-Path $PSScriptRoot 'ValidationWorker.ps1')
+$validationWorker = Get-SoggfyValidationWorker $packageRoot
 
 $SpotifyPath = [Environment]::ExpandEnvironmentVariables($SpotifyPath)
 $SpotifyPath = [IO.Path]::GetFullPath($SpotifyPath).TrimEnd('\')
@@ -224,6 +226,10 @@ Write-Host "Spotify $installedVersion detected ($InstallerVersion baseline)."
 
 $targetDll = Join-Path $SpotifyPath 'version.dll'
 $backupDll = Join-Path $SpotifyPath 'version.dll.soggfy-backup'
+$installedWorker = Join-Path $SpotifyPath $validationWorker.Name
+if (Test-Path -LiteralPath $installedWorker) {
+    Assert-SoggfyValidationWorker $installedWorker $validationWorker.Hash
+}
 if ((Test-Path -LiteralPath $targetDll -PathType Leaf) -and
     (Get-FileHash -LiteralPath $targetDll -Algorithm SHA256).Hash -ne $sourceHash -and
     (Test-Path -LiteralPath $backupDll) -and -not $Force) {
@@ -358,6 +364,7 @@ if (Test-Path -LiteralPath $targetDll -PathType Leaf) {
     }
 }
 
+Install-SoggfyValidationWorker $validationWorker $SpotifyPath
 Copy-Item -LiteralPath $sourceDll -Destination $targetDll -Force
 if ((Get-FileHash -LiteralPath $targetDll -Algorithm SHA256).Hash -ne $sourceHash) {
     throw 'Installed DLL failed SHA256 verification.'

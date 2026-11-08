@@ -25,6 +25,7 @@ for unit in framing bitwise; do
     "$CC" -std=c11 "${flags[@]}" "${includes[@]}" -c "native/vendor/libogg/src/$unit.c" -o "$object"
     objects+=("$object")
 done
+if [[ "${SGF_CODEC_OBJECTS_ONLY:-0}" == 1 ]]; then exit 0; fi
 "$CC" -std=c11 -UNDEBUG "${flags[@]}" "${includes[@]}" \
     tests/ogg_bitwise_test.c "$destination/ogg-bitwise.o" -o "$destination/ogg-bitwise-test.exe"
 "$destination/ogg-bitwise-test.exe"

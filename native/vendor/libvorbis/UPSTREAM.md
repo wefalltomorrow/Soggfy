@@ -9,6 +9,7 @@ the upstream BSD license. No libvorbisenc tuning tables or libvorbisfile API
 are included. Core files include shared encoder code required by the upstream
 registry; Soggfy's validator uses synthesis APIs only.
 
-The new validation path is under development and is not yet linked into the
-shipping DLL. It must receive resource isolation and complete regression/CI
-coverage before it can authorize saved-file changes.
+RC82 links the codec into validation tests and the separately packaged helper,
+never the Spotify-loaded DLL. The isolated validation path has resource limits
+and regression/CI coverage; production saved-file refresh remains disabled
+pending filesystem preservation and coordinator work. COPYING ships with it.

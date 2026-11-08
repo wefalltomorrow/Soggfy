@@ -17,6 +17,8 @@ if (-not (Test-Path -LiteralPath $SpotifyExe -PathType Leaf)) {
 $targetDll = Join-Path $SpotifyPath 'version.dll'
 $backupDll = Join-Path $SpotifyPath 'version.dll.soggfy-backup'
 $sourceLock = $null
+$workerLock = $null
+$retainWorkerForBackup = $false
 try {
     if (Test-Path -LiteralPath $targetDll) {
         $packageDll = Join-Path $PSScriptRoot '../version.dll'
@@ -32,6 +34,16 @@ try {
             (Get-FileHash -LiteralPath $packageDll -Algorithm SHA256).Hash) {
             throw 'Soggfy uninstall: version.dll does not match this package. It may belong to another tool or release; DLL, backup and settings were retained. Use the matching Soggfy package.'
         }
+        . (Join-Path $PSScriptRoot 'ValidationWorker.ps1')
+        $worker = Get-SoggfyValidationWorker (Split-Path -Parent $PSScriptRoot)
+        $workerPath = Join-Path $SpotifyPath $worker.Name
+        if (Test-Path -LiteralPath $workerPath) {
+            $workerLock = New-Object Soggfy.ConversionSource($workerPath)
+            Assert-SoggfyValidationWorker $workerPath $worker.Hash
+        }
+        # A restored DLL may share this helper build. Retain it when a backup
+        # exists; removing rollback dependencies based on version is unsafe.
+        $retainWorkerForBackup = Test-Path -LiteralPath $backupDll
     } elseif (Test-Path -LiteralPath $backupDll) {
         throw 'Soggfy uninstall: version.dll is missing, so backup ownership cannot be verified. Backup and settings were retained for manual recovery.'
     }
@@ -54,6 +66,14 @@ try {
         Move-Item -LiteralPath $backupDll -Destination $targetDll
         Write-Host 'Restored the version.dll that existed before Soggfy.'
     }
+    if ($null -ne $workerLock) {
+        if ($retainWorkerForBackup) {
+            Write-Host 'Retained the validation helper for the restored DLL.'
+        } else {
+            $workerLock.DeleteValidatedSource()
+            Write-Host "Removed $workerPath"
+        }
+    }
 
     if ($RemoveSettings) {
         $ini = Join-Path $SpotifyPath 'SpotifyHistory.ini'
@@ -66,4 +86,5 @@ try {
     Write-Host 'Soggfy uninstalled. SpotX is managed separately and was not removed.'
 } finally {
     if ($null -ne $sourceLock) { $sourceLock.Dispose() }
+    if ($null -ne $workerLock) { $workerLock.Dispose() }
 }

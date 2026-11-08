@@ -1,4 +1,25 @@
-# Soggfy v3.0.0-rc.81 - validated metadata preparation (test build)
+# Soggfy v3.0.0-rc.82 - validation helper deployment foundation
+
+The release build compiles the pinned Vorbis/FLAC helper, strips it, verifies
+x64 PE imports, and embeds its finalized SHA-256 into the DLL trust entry point.
+Packaging requires that binding and includes identical helpers beside both DLL
+copies, their checksums, and the Vorbis/FLAC redistribution licenses. CI requires
+the release helper to match the exercised offline helper byte-for-byte.
+
+The installer copies the helper under a name containing its build hash before
+publishing the DLL. Missing/tampered package helpers and same-name conflicts fail
+before process control. Existing older helper builds are retained for rollback.
+Uninstall checks helper ownership before mutation, removes the current helper
+when no DLL backup exists, and retains it when restoring a backup that may depend
+on that helper build. The descriptor is installation metadata, not runtime trust.
+
+Saved-recording rewriting remains disabled. Filesystem security/stream/attribute
+preservation, incoming artwork policy and the production coordinator are still
+unfinished. Native playback identity and MP3 capture remain separate milestones.
+Full RC82 CI and independent artifact verification are pending at source commit;
+live installation, merge and official release require separate authorization.
+
+## RC81 background - validated metadata preparation
 
 The cached collector retains validated line-synchronized lyrics, including line
 start times supplied by syllable-synchronized cache data. Matching plain text

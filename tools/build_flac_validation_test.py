@@ -36,6 +36,8 @@ if windows:
     subprocess.run([cc, "-std=c11", *flags, *definitions, *includes, "-c",
                     str(root / "src/share/win_utf8_io/win_utf8_io.c"), "-o", str(obj)], check=True)
     objects.append(str(obj))
+if os.environ.get("SGF_CODEC_OBJECTS_ONLY") == "1":
+    raise SystemExit(0)
 obj = destination / "ogg-framing.o"
 subprocess.run([cc, "-std=c11", *flags, *includes, "-c",
                 "native/vendor/libogg/src/framing.c", "-o", str(obj)], check=True)

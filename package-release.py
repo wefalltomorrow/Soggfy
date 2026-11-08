@@ -36,17 +36,32 @@ def add_bytes(archive: zipfile.ZipFile, arcname: str, data: bytes) -> None:
     info.external_attr = 0o100644 << 16
     archive.writestr(info, data)
 
+worker = root / "build/validation-worker/validation-worker.exe"
+worker_hash = sha256(worker)
+if worker.stat().st_size == 0 or worker.stat().st_size > 64 * 1024 * 1024:
+    raise ValueError("Validation helper size rejected")
+if worker_hash.encode("ascii") not in dll.read_bytes():
+    raise ValueError("DLL does not contain this validation helper build digest")
+worker_name = f"SoggfyValidation-{worker_hash}.exe"
+worker_descriptor = (worker_hash + "\n").encode("ascii")
+
 binary_manifest = (
     f"{sha256(dll)}  version.dll\n"
     f"{sha256(launcher_exe)}  Launcher/Soggfy.exe\n"
     f"{sha256(launcher_dll)}  Launcher/Soggfy.dll\n"
     f"{sha256(build_info)}  BUILDINFO.txt\n"
+    f"{worker_hash}  {worker_name}\n"
+    f"{worker_hash}  Launcher/{worker_name}\n"
+    f"{hashlib.sha256(worker_descriptor).hexdigest()}  VALIDATION_WORKER.txt\n"
 ).encode("utf-8")
 
 files = [
     ("version.dll", dll),
     ("BUILDINFO.txt", build_info),
     ("SHA256SUMS.txt", None),
+    ("VALIDATION_WORKER.txt", None),
+    (worker_name, worker),
+    (f"Launcher/{worker_name}", worker),
     ("VERSION", root / "VERSION"),
     ("README.md", root / "README.md"),
     ("CHANGELOG.md", root / "CHANGELOG.md"),
@@ -58,6 +73,7 @@ files = [
     ("LICENSE", root / "LICENSE"),
     ("SpotifyHistory.ini", root / "SpotifyHistory.ini"),
     ("Scripts/Install.ps1", root / "Scripts" / "Install.ps1"),
+    ("Scripts/ValidationWorker.ps1", root / "Scripts" / "ValidationWorker.ps1"),
     ("Scripts/Uninstall.ps1", root / "Scripts" / "Uninstall.ps1"),
     ("Scripts/PostProcess.ps1", root / "Scripts" / "PostProcess.ps1"),
     ("Scripts/ConverterProcess.cs", root / "Scripts" / "ConverterProcess.cs"),
@@ -73,6 +89,9 @@ for vendor in ["minhook", "libogg", "cef", "soggfy"]:
             root / "native" / "vendor" / vendor / "LICENSE.txt",
         )
     )
+for vendor, license_name in [("libvorbis", "COPYING"), ("libFLAC", "COPYING.Xiph")]:
+    files.append((f"third-party/{vendor}/LICENSE.txt",
+                  root / "native/vendor" / vendor / license_name))
 
 archive_path = out / release_name
 # Keep previous packages and never expose a half-written replacement ZIP.
@@ -83,6 +102,8 @@ try:
         for arcname, path in files:
             if arcname == "SHA256SUMS.txt":
                 add_bytes(archive, arcname, binary_manifest)
+            elif arcname == "VALIDATION_WORKER.txt":
+                add_bytes(archive, arcname, worker_descriptor)
             else:
                 add_bytes(archive, arcname, path.read_bytes())
     os.replace(staging, archive_path)

@@ -15,11 +15,11 @@ try {
     $package = Join-Path $testRoot 'package'
     $scripts = Join-Path $package 'Scripts'
     [IO.Directory]::CreateDirectory($scripts) | Out-Null
-    foreach ($file in 'Uninstall.ps1','ConverterProcess.cs') {
+    foreach ($file in 'Uninstall.ps1','ConverterProcess.cs','ValidationWorker.ps1') {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot "../Scripts/$file") -Destination $scripts
     }
     $uninstaller = Join-Path $scripts 'Uninstall.ps1'
-    foreach ($case in 'matching','keep-settings','foreign','foreign-force','missing-package','missing-target','absent','running') {
+    foreach ($case in 'matching','clean','keep-settings','foreign','foreign-force','missing-package','missing-target','absent','running','worker-foreign','worker-missing-package','worker-missing-installed') {
         $folder = Join-Path $testRoot $case
         [IO.Directory]::CreateDirectory($folder) | Out-Null
         $target = Join-Path $folder 'version.dll'
@@ -27,19 +27,30 @@ try {
         $settings = Join-Path $folder 'SpotifyHistory.ini'
         $packageDll = Join-Path $package 'version.dll'
         [IO.File]::WriteAllText($packageDll, 'our-dll')
+        $packageWorker = Join-Path $package 'worker-temp'
+        [IO.File]::WriteAllText($packageWorker, 'our-worker')
+        $workerHash = (Get-FileHash -LiteralPath $packageWorker -Algorithm SHA256).Hash.ToLowerInvariant()
+        $workerName = 'SoggfyValidation-' + $workerHash + '.exe'
+        Move-Item -LiteralPath $packageWorker -Destination (Join-Path $package $workerName) -Force
+        [IO.File]::WriteAllText((Join-Path $package 'VALIDATION_WORKER.txt'), $workerHash)
+        $workerTarget = Join-Path $folder $workerName
+        if ($case -notin 'absent','worker-missing-installed') {
+            [IO.File]::WriteAllText($workerTarget, $(if ($case -eq 'worker-foreign') { 'foreign-worker' } else { 'our-worker' }))
+        }
+        if ($case -eq 'worker-missing-package') { Remove-Item -LiteralPath (Join-Path $package $workerName) }
         [IO.File]::WriteAllText((Join-Path $folder 'Spotify.exe'), 'test-only')
         [IO.File]::WriteAllText($settings, 'settings')
         if ($case -notin 'missing-target','absent') {
             [IO.File]::WriteAllText($target, $(if ($case -like 'foreign*') { 'another-tool' } else { 'our-dll' }))
         }
-        if ($case -ne 'absent') { [IO.File]::WriteAllText($backup, 'original-dll') }
+        if ($case -notin 'absent','clean') { [IO.File]::WriteAllText($backup, 'original-dll') }
         if ($case -eq 'missing-package') { Remove-Item -LiteralPath $packageDll }
         $uninstallTestState.queries = 0
         $uninstallTestState.running = $case -eq 'running'
         $failed = $false
         try { & $uninstaller -SpotifyPath $folder -RemoveSettings:($case -ne 'keep-settings') -Force:($case -eq 'foreign-force') }
         catch { $failed = $true; $failure = $_.Exception.Message }
-        $expectedFailure = $case -in 'foreign','foreign-force','missing-package','missing-target','running'
+        $expectedFailure = $case -in 'foreign','foreign-force','missing-package','missing-target','running','worker-foreign','worker-missing-package'
         if ($failed -and -not $expectedFailure) { throw "Unexpected failure for ${case}: $failure" }
         Assert ($failed -eq $expectedFailure) "Unexpected outcome: $case"
         if ($expectedFailure) {
@@ -48,9 +59,16 @@ try {
             if ($case -eq 'missing-target') { Assert (-not (Test-Path -LiteralPath $target)) 'Restored unverified backup' }
             else { Assert ([IO.File]::ReadAllText($target) -eq $(if ($case -like 'foreign*') { 'another-tool' } else { 'our-dll' })) "DLL changed: $case" }
             if ($case -ne 'running') { Assert ($uninstallTestState.queries -eq 0) 'Ownership failure reached process control' }
+        } elseif ($case -eq 'clean') {
+            Assert (-not (Test-Path -LiteralPath $target)) 'Clean uninstall kept DLL'
+            Assert (-not (Test-Path -LiteralPath $workerTarget)) 'Clean uninstall kept helper'
         } elseif ($case -ne 'absent') {
             Assert ([IO.File]::ReadAllText($target) -eq 'original-dll') 'Backup not restored'
             Assert (-not (Test-Path -LiteralPath $backup)) 'Backup was copied instead of moved'
+            if ($case -ne 'worker-missing-installed') { Assert ([IO.File]::ReadAllText($workerTarget) -eq 'our-worker') 'Rollback helper lost' }
+        }
+        if ($expectedFailure -and $case -ne 'absent') {
+            Assert ([IO.File]::ReadAllText($workerTarget) -eq $(if ($case -eq 'worker-foreign') { 'foreign-worker' } else { 'our-worker' })) 'Rejected uninstall changed helper'
         }
         if (-not $expectedFailure) { Assert ((Test-Path -LiteralPath $settings) -eq ($case -eq 'keep-settings')) 'Unexpected settings removal' }
     }

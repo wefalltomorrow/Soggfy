@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.82
+
+- Build the validation helper from pinned Vorbis/FLAC sources, finalize and inspect its dependencies before compiling its hash into the DLL.
+- Package identical helpers for automatic and launcher modes with codec licenses and checksums.
+- Install helpers under build-hash filenames; retain earlier builds for rollback and reject conflicting contents.
+- Extend installer rollback and uninstall ownership tests to helper deployment.
+- Keep saved-recording rewriting disabled pending filesystem preservation, artwork policy and production coordination.
+
 ## 3.0.0-rc.81
 
 - Retain validated cached line-synchronized lyrics without downgrading them to matching plain text.

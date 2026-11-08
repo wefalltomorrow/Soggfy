@@ -17,6 +17,9 @@ function Get-Item {
 }
 function Copy-Item {
     [CmdletBinding()]param([string]$LiteralPath, [string]$Destination, [switch]$Force)
+    if ($state.case -eq 'dll-failure' -and $LiteralPath -eq (Join-Path $state.package 'version.dll')) {
+        throw 'Injected DLL publication failure after helper installation'
+    }
     if ($state.case -in 'ini-failure','rollback-failure' -and $LiteralPath -eq (Join-Path $state.package 'SpotifyHistory.ini')) {
         $state.failRestore = $state.case -eq 'rollback-failure'
         throw 'Injected INI publication failure'
@@ -48,7 +51,7 @@ try {
     # Remove only the terminal UX trap so expected failures can be caught here.
     $trap = $ast.Find({param($node) $node -is [System.Management.Automation.Language.TrapStatementAst]}, $false)
     $installerText = [IO.File]::ReadAllText($source).Remove($trap.Extent.StartOffset, $trap.Extent.EndOffset-$trap.Extent.StartOffset)
-    foreach ($case in 'success','ini-failure','rollback-failure','spotx-failure','download-failure','wrong-version','backup-conflict') {
+    foreach ($case in 'success','ini-failure','dll-failure','rollback-failure','spotx-failure','download-failure','wrong-version','backup-conflict','worker-conflict','worker-missing','worker-tampered','worker-descriptor') {
         $state.case=$case; $state.failRestore=$false; $state.network=0
         $folder=Join-Path $testRoot $case
         $state.package=Join-Path $folder 'package'; $state.spotify=Join-Path $folder 'spotify'
@@ -56,6 +59,18 @@ try {
         [IO.Directory]::CreateDirectory($scripts) | Out-Null
         [IO.Directory]::CreateDirectory((Join-Path $state.spotify 'Apps')) | Out-Null
         [IO.File]::WriteAllText((Join-Path $scripts 'Install.ps1'),$installerText)
+        Microsoft.PowerShell.Management\Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../Scripts/ValidationWorker.ps1') -Destination $scripts
+        $workerBytes = [Text.Encoding]::ASCII.GetBytes('package-worker')
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try { $workerHash = [BitConverter]::ToString($sha.ComputeHash($workerBytes)).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
+        $workerName = 'SoggfyValidation-' + $workerHash + '.exe'
+        [IO.File]::WriteAllBytes((Join-Path $state.package $workerName), $workerBytes)
+        [IO.File]::WriteAllText((Join-Path $state.package 'VALIDATION_WORKER.txt'), $workerHash)
+        if ($case -eq 'worker-missing') { Remove-Item -LiteralPath (Join-Path $state.package $workerName) }
+        if ($case -eq 'worker-tampered') { [IO.File]::WriteAllText((Join-Path $state.package $workerName),'tampered') }
+        if ($case -eq 'worker-descriptor') { [IO.File]::WriteAllText((Join-Path $state.package 'VALIDATION_WORKER.txt'),'../escape') }
+        if ($case -eq 'worker-conflict') { [IO.File]::WriteAllText((Join-Path $state.spotify $workerName),'foreign-worker') }
+        [IO.File]::WriteAllText((Join-Path $state.spotify 'SoggfyValidation-previous.exe'),'previous-worker')
         foreach ($file in 'version.dll','SpotifyHistory.ini') { [IO.File]::WriteAllText((Join-Path $state.package $file),'package-'+$file) }
         foreach ($file in 'Spotify.exe','Spotify.dll','version.dll','keep.txt') { [IO.File]::WriteAllText((Join-Path $state.spotify $file),'original-'+$file) }
         [IO.File]::WriteAllText((Join-Path $state.spotify 'Apps/xpui.spa'),'original-damaged-xpui')
@@ -74,6 +89,10 @@ try {
         if ($case -eq 'success') {
             Assert ([IO.File]::ReadAllText((Join-Path $state.spotify 'version.dll')) -eq 'package-version.dll') 'DLL not installed'
             Assert ([IO.File]::ReadAllText((Join-Path $state.spotify 'version.dll.soggfy-backup')) -eq 'original-version.dll') 'Original DLL backup lost'
+            Assert ([IO.File]::ReadAllText((Join-Path $state.spotify $workerName)) -eq 'package-worker') 'Worker not installed'
+            Assert ([IO.File]::ReadAllText((Join-Path $state.spotify 'SoggfyValidation-previous.exe')) -eq 'previous-worker') 'Previous worker lost'
+            & (Join-Path $scripts 'Install.ps1') -SpotifyPath $state.spotify -SkipSpotX
+            Assert ([IO.File]::ReadAllText((Join-Path $state.spotify $workerName)) -eq 'package-worker') 'Repeated install changed helper'
         } elseif ($case -eq 'rollback-failure') {
             Assert ($failure -match "Recovery files retained at '([^']+)'") "Recovery location missing: $failure"
             $state.backup=$Matches[1]
@@ -85,7 +104,7 @@ try {
             foreach ($item in $after) { Assert ($before[$item.FullName] -eq (Get-FileHash -LiteralPath $item.FullName).Hash) "Content not restored: $case $($item.Name)" }
             Assert (-not (Test-Path -LiteralPath (Join-Path $state.spotify 'new-dir'))) 'New SpotX directory not removed'
         }
-        if ($case -in 'wrong-version','backup-conflict') { Assert ($state.network -eq 0) 'Preflight invoked SpotX' }
+        if ($case -in 'wrong-version','backup-conflict' -or $case -like 'worker-*') { Assert ($state.network -eq 0) 'Preflight invoked SpotX' }
     }
     Write-Host 'PASS: installation, INI failure, SpotX rollback, pre-repair snapshot, backup retention and preflight'
 } finally {

@@ -195,9 +195,8 @@ ancestor names until validation finishes. It rechecks file identity after
 locking the ancestors and exposes no path on a rejected open. Local Windows
 tests cover launching while locked, Unicode paths, attempted mutation/rename,
 digest mismatch, malformed requests and hard links. The supervisor accepts the
-held trust object. This is not yet deployment: the expected digest must be bound
-to the DLL build, not read from an adjacent mutable manifest. Static helper
-packaging/import verification and production caller integration remain open.
+held trust object. RC82 binds the expected digest to the DLL build; it is never
+read from an adjacent mutable manifest. Production caller integration remains open.
 
 The offline build now generates the helper SHA-256 header after linking the
 worker, then compiles that value into its supervisor and preparation test
@@ -206,7 +205,8 @@ acceptance of the exact build and rejection of a substituted executable even
 with an updated adjacent checksum file. Failed generation removes stale headers;
 missing, empty and oversized helpers fail the build. Both helper/source locks
 remain held during preparation. This closes the runtime-selected-digest gap in
-the offline harness; the shipping DLL/build/package do not yet include it.
+the offline harness. RC82 also compiles that digest and trust entry point into
+the release DLL and packages the finalized helper.
 
 The reusable offline worker builder now strips the linked executable, checks
 GNU objdump output for x64 PE format and exactly KERNEL32/MSVCRT imports with
@@ -214,8 +214,15 @@ an empty delay-import directory, then generates the digest. Unexpected dynamic
 codec, GCC or UCRT dependencies fail the build. It removes an older digest
 header before linking so a failed rebuild cannot retain a prior binding. Windows
 CI runs the decode/preparation tests against this finalized worker. This build
-policy is not a signature check or a security sandbox; shipping deployment and
-installer ownership remain separate unfinished work.
+policy is not a signature check or a security sandbox. RC82 adds automatic and
+launcher package copies plus codec licenses, and requires the release helper
+to equal the exercised offline helper byte-for-byte. Packaging checks the DLL's
+embedded digest. The installer uses SoggfyValidation-<sha256>.exe, validates
+existing same-name files, copies with CreateNew inside its installation-directory
+transaction, and retains older builds for DLL rollback. Uninstall checks both
+DLL and present helper ownership before mutation; a DLL backup retains the helper
+because the restored DLL may use the same build. These changes deploy the helper
+foundation without enabling the unfinished metadata-refresh coordinator.
 
 1. Read metadata from complete native recordings. Require exact Spotify URI
    agreement and recognized complete-listen/capture provenance. Legacy or
