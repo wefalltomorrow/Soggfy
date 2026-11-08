@@ -80,9 +80,9 @@ static std::vector<std::pair<unsigned,Bytes>> Blocks(const Bytes& bytes) {
     blocks.push_back({128,Bytes(bytes.begin()+at,bytes.end())});return blocks;
 }
 static void Reject(const Bytes& bytes) {
-    MetadataInspection stale;stale.samples=123;stale.comments.vendor="stale";
+    MetadataInspection stale;stale.samples=123;stale.comments.vendor="stale";stale.pictures.emplace_back();
     assert(!InspectMetadataRefreshSource(bytes,uri,stale));
-    assert(stale.format==NativeRecordingFormat::Unknown&&stale.samples==0&&stale.comments.vendor.empty());
+    assert(stale.format==NativeRecordingFormat::Unknown&&stale.samples==0&&stale.comments.vendor.empty()&&stale.pictures.empty());
 }
 static void Crc(Bytes& bytes,size_t at) {
     const size_t header=27+bytes[at+26];size_t body=0;
@@ -141,6 +141,15 @@ int main(int argc,char** argv) {
     assert(InspectMetadataRefreshSource(source,uri,inspection));
     assert(inspection.format==NativeRecordingFormat::Ogg&&inspection.samples==44100&&inspection.rate==44100);
     assert(inspection.comments.fields==old.fields);
+    assert(inspection.pictures.size()==1&&!inspection.pictures[0].envelope_valid);
+    auto artwork=old;
+    const std::string wire="AAAAAwAAAAlpbWFnZS9wbmcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAF4";
+    artwork.fields.push_back("metadata_block_picture="+wire);
+    artwork.fields.push_back("METADATA_BLOCK_PICTURE="+wire);
+    MetadataInspection art;assert(InspectMetadataRefreshSource(Ogg(artwork),uri,art));
+    assert(art.pictures.size()==3&&!art.pictures[0].envelope_valid);
+    for(size_t n:{1u,2u})assert(art.pictures[n].envelope_valid&&art.pictures[n].mime=="image/png"&&art.pictures[n].data_bytes==1);
+
     assert(!InspectMetadataRefreshSource(source,"spotify:track:abcdefghijkl0123456789",inspection));
     for(size_t n=0;n<source.size();++n)Reject(Bytes(source.begin(),source.begin()+n));
     auto bad=source;bad.push_back(0);Reject(bad);
@@ -169,6 +178,10 @@ int main(int argc,char** argv) {
     Tags unauthorized=delta;unauthorized.fields.emplace_back("CUSTOM","replaced");
     assert(TagOgg(source,unauthorized,bad,error));
     assert(!VerifyMetadataRefreshOutput(source,uri,Incoming(),bad));
+    unauthorized=delta;unauthorized.cover={1,2,3};unauthorized.mime="image/png";
+    assert(TagOgg(source,unauthorized,bad,error));
+    assert(!VerifyMetadataRefreshOutput(source,uri,Incoming(),bad)); // envelope validity grants no replacement
+
     assert(InspectMetadataRefreshSource(output,uri,inspection));
     auto before=ReadOgg(source),after=ReadOgg(output);assert(before.size()==4&&after.size()==4);
     for(size_t i:{0u,2u,3u})assert(before[i].bytes==after[i].bytes&&before[i].eos==after[i].eos);
@@ -184,6 +197,14 @@ int main(int argc,char** argv) {
     source.insert(source.end(),{255,248,1,2,3,4,5,6});
     assert(InspectMetadataRefreshSource(source,uri,inspection));
     assert(inspection.format==NativeRecordingFormat::Flac&&inspection.samples==44100&&inspection.bits==16);
+    assert(inspection.pictures.size()==2&&!inspection.pictures[0].envelope_valid&&!inspection.pictures[1].envelope_valid);
+    Bytes artBlock;assert(DecodePictureBase64(wire,artBlock));
+    Bytes artFlac={'f','L','a','C'};Block(artFlac,0,info);Block(artFlac,6,artBlock);Block(artFlac,128|4,comments);
+    artFlac.insert(artFlac.end(),{255,248});
+    assert(InspectMetadataRefreshSource(artFlac,uri,art));
+    assert(art.pictures.size()==2&&art.pictures[0].envelope_valid&&!art.pictures[1].envelope_valid);
+    assert(art.pictures[0].mime=="image/png"&&art.pictures[0].data_bytes==1);
+
     assert(inspection.comments.fields==old.fields);
     const size_t metadata_end=source.size()-8;
     for(size_t n=0;n<metadata_end+2;++n)Reject(Bytes(source.begin(),source.begin()+n));
@@ -198,6 +219,10 @@ int main(int argc,char** argv) {
     unauthorized=delta;unauthorized.fields.emplace_back("CUSTOM","replaced");
     assert(TagFlac(source,unauthorized,bad,error));
     assert(!VerifyMetadataRefreshOutput(source,uri,Incoming(),bad));
+    unauthorized=delta;unauthorized.cover={1,2,3};unauthorized.mime="image/png";
+    assert(TagFlac(source,unauthorized,bad,error));
+    assert(!VerifyMetadataRefreshOutput(source,uri,Incoming(),bad)); // envelope validity grants no replacement
+
     bad=output;bad[46]^=1; // opaque application metadata
     assert(!VerifyMetadataRefreshOutput(source,uri,Incoming(),bad));
     assert(InspectMetadataRefreshSource(output,uri,inspection));

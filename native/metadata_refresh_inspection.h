@@ -3,6 +3,7 @@
 #include "flac_history_core.h"
 #include "ogg_history_core.h"
 #include "existing_quality_core.h"
+#include "picture_envelope.h"
 #include <cstring>
 
 namespace history {
@@ -12,6 +13,10 @@ struct MetadataInspection {
     VorbisComments comments;
     uint64_t samples=0;
     unsigned rate=0,channels=0,bits=0;
+    // Native FLAC picture blocks first, then comment pictures in stored order.
+    // Invalid/custom blocks remain opaque entries. This is not image decoding
+    // or replacement permission; the output verifier still preserves exact bytes.
+    std::vector<PictureSummary> pictures;
 };
 // Complete-container structural inspection only. This deliberately does not
 // claim audio validity: the caller must decode the entire stable source and
@@ -34,6 +39,7 @@ inline bool InspectMetadataRefreshSource(const std::vector<uint8_t>& source,
                 if(comments||!ParseVorbisComments(source.data()+at,length,false,found.comments))return false;
                 comments=true;
             }
+            if(kind==6)found.pictures.push_back(SummarizePicture(source.data()+at,length));
             at+=length;
         }
         if(!comments)return false;
@@ -84,6 +90,12 @@ inline bool InspectMetadataRefreshSource(const std::vector<uint8_t>& source,
     metadata_plan_detail::Fields fields;
     for(const auto& field:found.comments.fields) {
         const auto eq=field.find('=');
+        if(metadata_plan_detail::Key(std::string_view(field).substr(0,eq))=="METADATA_BLOCK_PICTURE") {
+            std::vector<uint8_t> decoded;
+            if(eq!=std::string::npos&&DecodePictureBase64(std::string_view(field).substr(eq+1),decoded))
+                found.pictures.push_back(SummarizePicture(decoded.data(),decoded.size()));
+            else found.pictures.emplace_back();
+        }
         if(eq==std::string::npos)fields[metadata_plan_detail::Key(field)].push_back("<opaque field>");
         else fields[metadata_plan_detail::Key(field.substr(0,eq))].push_back(field.substr(eq+1));
     }

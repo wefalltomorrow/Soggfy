@@ -49,6 +49,8 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/repeat_identity_test.cpp native/o
 build/repeat-identity-test
 g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/vorbis_comments_test.cpp -o build/vorbis-comments-test
 build/vorbis-comments-test
+g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/picture_envelope_test.cpp -o build/picture-envelope-test
+build/picture-envelope-test
 g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/metadata_refresh_plan_test.cpp native/rich_metadata.cpp -o build/metadata-refresh-plan-test
 build/metadata-refresh-plan-test
 g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/listen_metadata_test.cpp native/ogg_history_core.cpp -o build/listen-metadata-test

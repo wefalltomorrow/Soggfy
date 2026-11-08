@@ -238,6 +238,37 @@ warning in the test program's wmain; an explicit success return fixes that
 compiler portability issue. CI 42449594271 subsequently validated the helper and
 transaction together, including the MinGW build and package checks.
 
+## Artwork envelope inspection checkpoint
+
+The offline inspector now inventories native FLAC PICTURE blocks and
+METADATA_BLOCK_PICTURE comments (including repeated and mixed-case tags).
+`picture_envelope.h` reads bounded big-endian length fields, checks the defined
+picture-type range, printable media-type bytes and strict UTF-8 descriptions,
+and distinguishes embedded payloads from the `-->` external-link marker.
+Its Ogg base64 decoder requires canonical padding and zero unused bits and
+rejects whitespace, alternate alphabets, trailing data and oversized blocks.
+Failed parsing clears stale output. Inspection results own their summaries;
+borrowed payload views never escape into a recording inspection result.
+
+Malformed or unsupported blocks remain opaque entries and their original bytes
+are still preserved by text-only refresh. Duplicate pictures retain their order
+within native blocks and comments. No link is fetched. A valid envelope does not
+establish valid image data, trustworthy dimensions, provenance or replacement
+eligibility: a deliberately non-image payload is accepted in the envelope-only
+regression to enforce this distinction. RFC 9639 section 8.8 explicitly treats
+its dimension fields as informational; future decoders must establish actual
+dimensions independently. Full bounded image decoding and trusted source/content
+comparison remain required before replacement can be enabled.
+
+Local diagnostic tests cover every truncated fixture prefix, UINT32_MAX length
+fields, UTF-8 edge cases, canonical base64 vectors, bounds, stale-result clearing,
+10,000 deterministic envelope mutations and mixed opaque/parsed Ogg/FLAC entries.
+The tests are registered in native, Windows and both sanitizer suites. CI and
+independent artifact verification for this checkpoint are pending. Production
+refresh remains disconnected; the shipped image-writing behavior is unchanged.
+
+Primary format contract: https://www.rfc-editor.org/rfc/rfc9639.html#section-8.8
+
 ## Remaining implementation and acceptance requirements
 
 The independent output verifier re-plans the exact permitted text delta, checks
