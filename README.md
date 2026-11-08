@@ -133,7 +133,10 @@ By default the validated native Ogg/FLAC is retained after conversion. Scripts\P
 
 The manual converter supports Windows PowerShell 5.1 and PowerShell 7. Keep
 Scripts/ConverterProcess.cs beside PostProcess.ps1. FFmpegPath accepts an .exe or
-.ps1 wrapper. Encoding and full output validation share one deadline: by default,
+.ps1 wrapper. Successful converters and wrappers must leave stderr empty;
+informational wrapper output can use stdout. FFmpeg runs at error log level,
+and any stderr byte rejects that attempt even if its exit code is zero. Encoding
+and full output validation share one deadline: by default,
 five minutes plus one second per 64 KiB of source data, capped at six hours.
 Use -TimeoutSeconds 900 to choose a 15-minute budget per file. A timed-out file is
 retained; watch mode continues to other files and retries it with bounded backoff.

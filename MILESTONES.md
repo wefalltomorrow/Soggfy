@@ -1,13 +1,13 @@
 # Engineering milestones
 
-Updated November 8, 2026. RC85 passed all four jobs in CI 42461370789 and
-independent artifact verification at source 89abeba4c351c21358184e741fe72ddc22955672.
+Updated November 8, 2026. RC86 passed all four jobs in CI 42475271762 and
+independent artifact verification at source 2d5e9f0cc9f90d47acdb7f7f1a8ff618324535ca.
 It is a checkpoint, not completion of all work.
 
 | Milestone | State | Completion evidence still required |
 | --- | --- | --- |
 | RC63-74 selective reliability work | CI/package checkpoints complete | Pinned-client acceptance remains separate |
-| Converter error reporting | RC86 local regression complete | Native and both PowerShell versions reject zero-exit stderr errors and pipe-filling diagnostics in encoding/validation. CI, MinGW package verification and live acceptance remain |
+| Converter error reporting | RC86 CI/package verified | Native and both PowerShell versions reject zero-exit stderr errors and pipe-filling diagnostics in encoding/validation. A real damaged MP3 is rejected even when its wrapper masks the decoder exit status. All four CI jobs and independent MinGW package verification passed; live acceptance remains |
 | Installation-directory transaction | RC75 CI/package verified | Live installation acceptance |
 | Manual watch scan cost | RC75 CI/package verified | Live acceptance |
 | Native playlist save result | RC75 CI/package verified | Live save dialog |
@@ -44,7 +44,14 @@ decodes identical PCM. Header, stored CRC and side-info corruption in middle
 frames are rejected by both implementations. Another 72 real-stream mutations
 exercise the two side-information constraints with matching rejection causes.
 Synthetic tests cover every granule/channel record and every protected bit.
-CI and independent MinGW package verification for this follow-up remain pending.
+All four jobs passed in CI 42474262462 at source
+30281a92f15cb52166b754c98eaf2f1104e3cd97. Each job ran the 36 original
+fixtures, 18 protected PCM-equivalence cases and 72 side-information mutations;
+the two sanitizer campaigns also completed 40,000 seeded iterations in total.
+Independent MinGW package verification matched the source/merge tree, scripts,
+hash manifest, helper binding and PE dependencies. The DLL, launcher and helper
+are byte-identical to the original RC85 binaries. Package SHA256:
+3af36c5c4b03bb236f59c4fbc892c50dfad409bacfb013d60db6dbdbd095b8ad.
 
 Primary implementation cross-check: FFmpeg commit
 cc583787bbecd4914fee7c2bf7f09463113822fe, libavcodec/mpegaudiodec_template.c,
@@ -52,3 +59,29 @@ handle_crc and Layer III side-information parsing. Retained source SHA256:
 ebc2a30146f84bb7bc8cb67ea28cc2af444cdfebd22e4013adbeab6ecf9a5430.
 These additions remain offline; no native MP3 capture or production audio
 validation was enabled.
+
+## MP3 decoder candidate audit
+
+On November 8, 2026, minimp3 commit
+ea99364f61c14656440e8d77e9c233ccf3124633 was evaluated locally, outside the
+shipping build. Header SHA256:
+57e437c5c1f0e8b243885d3929c8973b5e6c778451e0100ab4251d19915cb3ad.
+It is not sufficient as a strict validator through its unmodified public API.
+
+A real MPEG-1 mono encoding was mutated at frame 10, granule zero: the declared
+part2_3 length was set to zero while scalefac_compress was set to 15. Its long
+block requires 74 scalefactor bits before Huffman data, so the declaration is
+inconsistent. The current structural inspector still accepts it. minimp3
+consumes all 59 frames and returns all 67,968 nominal samples without an empty
+decode or skipped frame, just as for the original. Local FFmpeg 9.0.2 also
+returns zero without error-level diagnostics, but produces different PCM.
+This is a separate limitation from RC86's handling of reported decoder errors.
+
+Source inspection confirms L3_decode has no error return for scalefactor
+overrun; L3_huffman restores the declared granule bit position. Counting
+decoded samples and forbidding resynchronization cannot establish strict
+payload validity. Do not connect this candidate to production validation
+without explicit semantic rejection and independent malformed-stream tests.
+The reproducible local candidate audit and fixture hashes are preserved in
+outputs/Soggfy-MP3-decoder-candidate-audit.json, with the harness under work/.
+No decoder dependency, native MP3 publication, or new runtime hook was added.

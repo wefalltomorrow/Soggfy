@@ -13,8 +13,12 @@ keep stderr empty on success; informational output can use stdout.
 
 Local native, PowerShell 7 and PowerShell 5.1 tests cover zero-exit diagnostics
 and pipe-filling output in both stages, clean real FFmpeg conversion, original
-retention, conflicts, deadlines and descendant cleanup. Full CI and independent
-MinGW package verification remain pending at source commit. No live install,
+retention, conflicts, deadlines and descendant cleanup. A real damaged-MP3
+regression proves rejection when a wrapper masks the decoder exit status.
+All four jobs passed in CI 42475271762 at source
+2d5e9f0cc9f90d47acdb7f7f1a8ff618324535ca. Independent MinGW package verification
+passed for SHA256 73aadca9632c7ad87d51e096d23429b271b46aa7d83754d526028c29700f8825.
+The validation helper and launcher match the original RC85 binaries. No live install,
 Spotify restart, merge or official release is implied.
 
 ## RC85 background - reject ambiguous late retention
