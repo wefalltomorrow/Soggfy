@@ -1,6 +1,6 @@
 # Engineering milestones
 
-Updated November 8, 2026. RC78 is a checkpoint, not completion of all work.
+Updated November 8, 2026. RC79 is a checkpoint, not completion of all work.
 
 | Milestone | State | Completion evidence still required |
 | --- | --- | --- |
@@ -12,8 +12,8 @@ Updated November 8, 2026. RC78 is a checkpoint, not completion of all work.
 | Ad/DJ/interstitial isolation | Open | Trustworthy identity plus transition/live evidence |
 | Native podcast MP3 capture | Open | Parser, complete validation, lifecycle integration |
 | Concurrent capture/cross-format association | Partial | Identity-aware lifecycle and conflicting capture tests |
-| Playback metadata refresh/instance-bound skip | Partial | RC78 binds Classic queue work to observed playback; metadata refresh and native current-track skip remain open |
-| Log levels 0/1/2/4 and bounded lanes | Implemented | Local settings, concurrency and file-isolation tests passed; RC77 CI/package pending |
+| Playback metadata refresh/instance-bound skip | Partial | RC78 queue fencing verified; RC79 exact-instance active/final/pending metadata refresh implemented, CI/package pending; native current-track skip remains open |
+| Log levels 0/1/2/4 and bounded lanes | RC78 CI/package verified | RC77 test collision corrected in RC78; live acceptance remains separate; both lanes share one disk worker |
 | Deterministic sanitizer/fuzz campaign | RC76 campaigns passed | 40,000 seeded iterations plus regressions; does not prove live callback safety |
 | NetworkPatch policy | Separate decision | Explicit opt-in design; no silent default change |
 | Pinned Spotify live acceptance/stalls | Separate gate | Authorized exact-artifact restart and walkthrough |

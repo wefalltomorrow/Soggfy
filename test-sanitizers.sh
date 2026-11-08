@@ -13,11 +13,11 @@ export ASAN_OPTIONS=detect_leaks=1:allocator_may_return_null=1
 export UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
 build/sanitizers/mutations "${1:-20000}" "${2:-4043931417}"
 # Exercise exact regression scenarios under the same instrumentation.
-for test in log_queue history_core recording_identity decoder_context client_playback compressed_buffer spotify_hook_discovery flac_history ogg_tags; do
+for test in log_queue history_core recording_identity listen_metadata decoder_context client_playback compressed_buffer spotify_hook_discovery flac_history ogg_tags; do
   extra=()
   case "$test" in
     flac_history|ogg_tags) extra=(native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/sanitizers/ogg.o);;
-    history_core|recording_identity) extra=(native/ogg_history_core.cpp);;
+    history_core|recording_identity|listen_metadata) extra=(native/ogg_history_core.cpp);;
     decoder_context) extra=(tests/decoder_context_probe.cpp);;
     client_playback) extra=(native/rich_metadata.cpp native/ogg_history_core.cpp);;
     spotify_hook_discovery) extra=(native/spotify_hook_discovery.cpp);;

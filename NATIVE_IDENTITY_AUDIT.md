@@ -31,3 +31,11 @@ lifetime are not verified. The pump's +0x78 access uses a helper, requiring
 further analysis. Pointer reuse, preloading, staged transitions and interstitial
 attribution need dedicated fixtures and pinned-client acceptance. No stall fix
 or comprehensive ad isolation is claimed.
+
+Follow-up static inspection: pump RVA 0xe5d587 loads member +0x78 and calls
+0x13b51b8, which selects a front pointer through container-like indexing.
+Constructor 0xe5b088 stores its third argument at +0x78; caller 0xe423cc
+forwards an external argument. This has not resolved the concrete object type.
+It neither validates nor disproves the upstream pointer path: a container can
+be a prefix of a larger object, and literal displacement searches cannot prove
+the absence of composed offsets. No runtime hooks were added by this audit.

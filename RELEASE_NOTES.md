@@ -1,3 +1,24 @@
+# Soggfy v3.0.0-rc.79 - same-instance metadata refresh (test build)
+
+When a listen completes by pausing at its natural end, its final corroborated
+metadata now updates the completed snapshot. Further observations may refresh
+a completed candidate while it is still waiting for audio association. The
+client URI/playback ID and listen generation must both match; legacy labels,
+repeats and transitions cannot refresh another listen. Completion coverage and
+duration stay fixed, and already queued publication jobs remain immutable.
+
+Missing optional fields no longer erase previously observed artwork, track,
+genre or album artist for the same exact instance. Active snapshots move the
+incoming artwork without another copy. The portable Media value type supports
+regressions in native, Windows and ASan/UBSan suites.
+
+RC78 passed all four CI jobs and independent MinGW package verification at
+commit e7ec7bbbb5c2df8ccf59629e8d5f933607050fdb, run 42442391256. RC77 and the
+initial RC78 attempt failed on a test-only C signal name collision; the fixture
+was qualified and the corrected run passed. No RC77 package was produced.
+RC79 CI/package verification is pending. Native identity/capture milestones
+and separately authorized live acceptance, merge and release remain open.
+
 # Soggfy v3.0.0-rc.78 - playback-bound Classic queue work (test build)
 
 Classic queue lookups and retained queue events now belong to the cached player's

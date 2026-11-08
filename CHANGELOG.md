@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.0-rc.79
+
+- Include final corroborated metadata at same-instance completion and refresh pending candidates.
+- Fence refreshes by exact client URI/playback ID and listen generation; preserve completed coverage.
+- Retain optional fields when temporarily absent, without an extra active artwork copy.
+- Exercise the portable snapshot/refresh policy in native, Windows and sanitizer suites.
+
 ## 3.0.0-rc.78
 
 - Reject stale Classic queue lookups/events after playback identity or skip policy changes.

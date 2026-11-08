@@ -22,6 +22,7 @@
 #include "existing_quality.h"
 #include "file_publication.h"
 #include "media_session.h"
+#include "listen_metadata.h"
 #include "spotify_hook_discovery.h"
 #include "vendor/minhook/include/MinHook.h"
 #include <algorithm>
@@ -217,7 +218,10 @@ struct Capture {
     double Duration() const { return lossless && flac.rate ? double(coverage.samples)/flac.rate : stream.Duration(); }
     Quality Encoding() const { return lossless ? Quality{Codec::Flac,flac.rate,flac.channels,flac.bits,0} : Quality{Codec::Vorbis,stream.rate,stream.channels,0,stream.bitrate}; }
 };
-struct Heard { Media media; double start=0,finish=0; uint64_t generation=0; };
+struct Heard {
+    Media media; double start=0,finish=0; uint64_t generation=0;
+    std::string identity;bool exact_identity=false;
+};
 static Catalog CatalogFor(const Media& media) {
     Catalog c; c.title=media.title; c.album=media.album; c.track=media.track;
     c.album_artist=media.album_artist;
@@ -691,6 +695,11 @@ static DWORD WINAPI Worker(LPVOID) {
                     Log(line);
                 }
                 std::string done=listen.Observe(listen_key,media.position,media.duration,media.playing,observed_at,playback_rate,!client.instance.empty());
+                const MetadataInstance prior_metadata{previous,previous_instance,!client.instance.empty()};
+                const MetadataInstance latest_metadata{listen.identity,listen.generation,!client.instance.empty()};
+                if(!listen.transient)for(auto& completed:heard)
+                    RefreshListenMetadata(completed.media,media,
+                        {completed.identity,completed.generation,completed.exact_identity},latest_metadata,true);
                 if(previous_instance!=listen.generation || previous_phase!=listen.phase || previous!=listen.identity) {
                     char line[512];snprintf(line,sizeof(line),
                         "listen_instance generation=%llu previous=%llu phase=%u previous_phase=%u relabeled=%d completed=%llu start=%.3f wrap=%.3f",
@@ -714,8 +723,14 @@ static DWORD WINAPI Worker(LPVOID) {
                         SetClassicTrackStatus(current,"IGNORED","Ignored");
                         LogActivity("finished",Utf8(current.artist)+" - "+Utf8(current.title)+" (ignored)");
                     } else {
-                        auto completed_media=current;completed_media.duration=listen.completed_duration;
-                        heard.push_back({std::move(completed_media),listen.completed_start,listen.completed_time,listen.completed_generation});
+                        auto completed_media=current;
+                        // A pause at the natural end completes this same instance.
+                        // Include its final corroborated metadata; a transition or
+                        // repeat must never label the preceding listen.
+                        RefreshListenMetadata(completed_media,media,prior_metadata,latest_metadata,true);
+                        completed_media.duration=listen.completed_duration;
+                        heard.push_back({std::move(completed_media),listen.completed_start,listen.completed_time,
+                            listen.completed_generation,done,prior_metadata.exact});
                         char line[1024];snprintf(line,sizeof(line),
                             "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f elapsed_wall=%.3f rate=%.3f ready=%zu active=%zu generation=%llu confirmation_delay=%.3f",
                             Utf8(current.artist).c_str(),Utf8(current.title).c_str(),prior_position,current.raw_position,
@@ -747,7 +762,7 @@ static DWORD WINAPI Worker(LPVOID) {
                         listen.start_time,!done.empty(),Now());
                 }
                 if(listen.transient) {if(previous_phase!=listen.phase)Log("timeline reset at natural end; waiting for title or repeat confirmation");}
-                else current=std::move(media);
+                else if(!RefreshListenMetadata(current,std::move(media),prior_metadata,latest_metadata))current=std::move(media);
             } else if(observation==MediaRead::Failed || Now()-last_media>3) {
                 const bool was_eligible=listen.eligible;
                 listen.Invalidate(); quality.Media({},L"",0,0,Now());client_quality.clear();
