@@ -28,6 +28,22 @@ podcast paths, cached PlayerAPI, per-entry UIDs, 1x-30x, Downloads-off effective
 1x with selected speed retained, MP3 320 kbps and strict Ogg/FLAC validation.
 Only MinGW CI binaries ship. Preserve earlier packages and source archives.
 
+## Offline artwork decoding checkpoint
+
+The bounded PNG decoder passed all four jobs in CI 42481391151 at source
+790de51ab4662c57c751320ecf55af210c786415. Independent package verification
+matched source/merge trees, scripts, embedded Classic, PE imports, hashes and
+helper binding. The DLL, launcher and helper remain identical to CI190. The
+package SHA-256 is b5b4378b9ef28b66cbe96452dac1f4687d47a80f26d79fe9759785bbea5633c5.
+Ninety PNG layouts and 101 malformed cases run in each job. The preceding run
+failed on missing math-library linkage; this run includes the corrected link.
+
+JPEG now has an offline bounded decoder and regression corpus. Both image
+decoders still need supervised-worker integration and source/replacement policy.
+Progressive JPEG scan-boundary probes demonstrate that valid decoding alone
+cannot prove original download completeness. JPEG CI is pending; no production
+artwork replacement or saved-recording metadata refresh is enabled.
+
 ## MP3 protected-frame follow-up
 
 The offline Layer III inspector now validates protected-frame CRC over the

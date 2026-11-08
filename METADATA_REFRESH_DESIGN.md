@@ -45,11 +45,46 @@ depth combinations and Adam7/noninterlaced images, independently decoded by
 FFmpeg to expected pixels. They also cover all five filters, ancillary chunks,
 split IDAT, chunk-count boundaries, and 101 malformed inputs (including every
 truncated prefix, excess/short pixel data, CRC/Adler damage, invalid palette
-indexes and individual/aggregate compressed metadata expansion). These tests are registered in all
-four CI jobs; CI is pending. Full static PNG decoding is a foundation only:
-JPEG, supervised artwork worker integration, image-source provenance and
+indexes and individual/aggregate compressed metadata expansion). All four jobs
+passed in CI 42481391151, including both ASan/UBSan campaigns. Independent
+package verification passed at source 790de51ab4662c57c751320ecf55af210c786415;
+the DLL, launcher and deployed helper match the earlier CI190 binaries.
+Full static PNG decoding is a foundation only: supervised artwork worker integration, image-source provenance and
 replacement eligibility remain open. This code has no production caller and
 the release binaries do not link the new dependencies.
+
+The offline JPEG validator uses pinned libjpeg-turbo 3.2.1 commit
+7b4993786d856cbccabfc0ed2f923ba000e326cc. It supports single-frame 8-bit
+Huffman sequential/progressive images. Marker framing, dimensions, explicit
+Huffman tables at each scan and exact EOI termination are checked before
+decoding every row with fatal errors/warnings. It does not use the decoder's
+implicit MJPEG Huffman-table fallback. Arithmetic, lossless and higher-precision
+JPEG are unsupported. APP/COM data stays opaque; EXIF/ICC validity is not proved.
+Limits are 4 MiB input, 8192 per dimension, 16 Mi pixels, 4096 markers, 128 scans
+and 32 MiB of tracked decoder allocations including allocation headers. A
+per-decoder system allocator caps the initial control block and all decode pools;
+the ordinary max_memory_to_use setting alone is not a total allocation cap.
+No backing files or full decoded image are retained. Failure clears the result.
+The fixed-size context and caller-owned encoded input are outside the reported
+decoder allocation count. CPU deadlines and cancellation still require a worker.
+
+Local diagnostics accepted six valid encodings and rejected 1695 malformed or
+truncated variants. An allocation probe passed 334 quota/persistent-failure
+cases with no outstanding tracked allocations. A 98,940-byte progressive image
+required 50,660,371 tracked bytes with a larger diagnostic quota, and was rejected
+under 32 MiB; the equivalent sequential image fit in 323,638 bytes. These figures
+are local probe observations, not peak total-process memory guarantees.
+
+Fourteen progressive images ended after earlier complete scans were accepted by
+both strict libjpeg and FFmpeg without diagnostics, yet decoded differently from
+the originals. Thus successful JPEG decoding cannot establish original scan
+coverage or source provenance, and must not authorize artwork replacement by
+itself. Evidence is saved in outputs/Soggfy-JPEG-*-probe.json; diagnostic sources
+remain under work. The committed corpus includes these valid shorter images,
+malformed/truncated inputs, marker/input/dimension limits and a progressive image
+that exceeds the allocation quota. CI validation of the JPEG implementation is
+pending. JPEG is not linked into the DLL or packaged worker; no replacement
+policy or saved-file refresh coordinator has been enabled.
 
 ## Verified foundation
 
