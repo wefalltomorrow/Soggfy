@@ -117,7 +117,12 @@ artwork. Adding artwork to a file with no picture still needs trustworthy source
 association; the title/artist/album cache alone cannot supply it. This is separate
 from the existing new-recording tagger and does not enable saved-file mutation.
 
-## Supervised artwork validation candidate
+## Supervised artwork validation checkpoint
+
+RC87 passed all four jobs in CI 42485859840 at source
+4376d13fbf893b1fb252101e047195570592cd3c. Independent MinGW package verification
+passed for SHA-256 5236268bc1cd3f2c478fb151506de95198c975faa8d220f26506e6eb7260201f.
+This verifies decoder/supervisor deployment, not saved-file replacement policy.
 
 RC87 uses the existing same-build SHA-256-bound worker and held trust object.
 PNG/JPEG requests have a separate 32-byte version-2 reply containing format,
@@ -138,8 +143,11 @@ Local diagnostic Windows tests cover PNG depth/channel variants, six pinned
 JPEG variants, malformed/truncated input, empty and oversized input, the large
 progressive allocation rejection, source locks/position, malformed replies,
 handle isolation, memory limits, cancellation and timeout. Existing audio
-supervisor fixtures pass against the enlarged helper. CI and independent MinGW
-package verification are pending; local Zig executables do not ship.
+supervisor fixtures pass against the enlarged helper. These checks also passed
+in Windows CI. The independently verified CI helper subsequently passed the
+same image corpus and Ogg/FLAC supervisor fixtures on the local Windows machine.
+Only the diagnostic callers were built with Zig; the tested helper is the
+unchanged MinGW artifact. Local Zig executables do not ship.
 
 ## Verified foundation
 

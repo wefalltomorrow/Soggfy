@@ -13,8 +13,10 @@ Valid progressive JPEGs may end after an earlier complete scan, so successful
 decoding does not establish original download completeness or provenance.
 Saved-file metadata refresh and artwork replacement remain disabled.
 
-This candidate requires CI and independent MinGW package verification. Live
-installation, Spotify restart, merge and official release remain separate gates.
+All four jobs passed in CI 42485859840 at source
+4376d13fbf893b1fb252101e047195570592cd3c. Independent MinGW package verification
+passed for SHA-256 5236268bc1cd3f2c478fb151506de95198c975faa8d220f26506e6eb7260201f.
+Live installation, Spotify restart, merge and official release remain separate gates.
 
 ## RC86 background - retain originals when FFmpeg reports errors
 

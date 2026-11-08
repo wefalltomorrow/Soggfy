@@ -3,7 +3,9 @@
 Updated November 8, 2026. RC86 passed all four jobs in CI 42475271762 and
 independent artifact verification at source 2d5e9f0cc9f90d47acdb7f7f1a8ff618324535ca.
 It is a checkpoint, not completion of all work. RC87 adds supervised artwork
-validation to the packaged helper; its CI/package verification is pending.
+validation to the packaged helper. All four jobs passed in CI 42485859840 at
+source 4376d13fbf893b1fb252101e047195570592cd3c, and independent MinGW package
+verification passed. Live acceptance remains separate.
 
 | Milestone | State | Completion evidence still required |
 | --- | --- | --- |
@@ -17,7 +19,7 @@ validation to the packaged helper; its CI/package verification is pending.
 | Native podcast MP3 capture | Structural, CRC and reservoir-extent prototype | Bounded MPEG-1/2/2.5 layout, ID3 extents and reservoir bit-range accounting; 36 real mono/stereo CBR/VBR fixtures and missing-prefix rejection locally verified. All four jobs passed in CI 42469354367 after using the runner MSYS2 installation (the preceding run hit HTTP 504 during setup). Native and both sanitizer jobs exercised the 36 real fixtures; each sanitizer campaign completed 20,000 seeded iterations. The MinGW package was independently verified at source f34da7d7b94c43dea22463a3302db9babc3e4d09; its DLL and validation helper match the original RC85 binaries. Protected-frame CRC and selected side-information constraints now pass local independent-decoder checks (follow-up below). Full compressed-payload and remaining side-information semantics, gapless/completeness validation and lifecycle integration remain; no production capture enabled |
 | Concurrent capture/cross-format association | RC84 shared-ready rejection and RC85 retention-conflict fix CI/package verified | Late first retention now rejects candidates shared by queued listens, including competing ready captures. Native identity-aware lifecycle, future-listen/preload and live transition evidence remain |
 | Playback metadata refresh/instance-bound skip | Partial | RC78 queue fencing and RC79 exact-instance active/final/pending metadata refresh CI/packages verified; native current-track skip remains open |
-| Saved-recording metadata refresh/preservation | Offline preparation and RC82 helper deployment verified | Inspection, isolated Ogg/FLAC decoding, minimal text/lyrics policy, output verification and preparation passed CI. RC82 DLL-bound helper packaging and installation passed CI/artifact verification. Local probes demonstrate concurrent ADS, attribute and DACL mutation despite the source lock. Same-file stream swaps preserve tested metadata but expose an empty default stream; even a reader can block publication and rollback. That approach remains disabled. Artwork envelope inventory is implemented offline; filesystem metadata preservation, full artwork decoding/replacement policy and production coordinator remain; see METADATA_REFRESH_DESIGN.md |
+| Saved-recording metadata refresh/preservation | Offline preparation and RC82 helper deployment verified | Inspection, isolated Ogg/FLAC decoding, minimal text/lyrics policy, output verification and preparation passed CI. RC82 DLL-bound helper packaging and installation passed CI/artifact verification. Local probes demonstrate concurrent ADS, attribute and DACL mutation despite the source lock. Same-file stream swaps preserve tested metadata but expose an empty default stream; even a reader can block publication and rollback. That approach remains disabled. Artwork envelope inventory and RC87 supervised PNG/JPEG decoding are CI/package verified; filesystem metadata preservation, artwork source/replacement policy and production coordinator remain; see METADATA_REFRESH_DESIGN.md |
 | Log levels 0/1/2/4 and bounded lanes | RC78 CI/package verified | RC77 test collision corrected in RC78; live acceptance remains separate; both lanes share one disk worker |
 | Deterministic sanitizer/fuzz campaign | RC76 campaigns passed | 40,000 seeded iterations plus regressions; does not prove live callback safety |
 | NetworkPatch policy | RC83 and RC84 CI/package verified | Explicit default-off startup opt-in, strict bounded INI parsing, preserved external edits and disabled IAT bypass. Upgrade behavior documented. Pinned-client acceptance remains |
@@ -43,8 +45,8 @@ JPEG now has a bounded decoder and regression corpus. The standalone decoder
 passed all four jobs in CI 42483537187 at source
 4cb2f1dc09dd8965d741b017db26b61f7ba6438e. Each job covers 22 valid/scan-boundary
 and 1722 malformed/resource-limit cases. Independent package verification passed;
-the DLL, launcher and audio helper match CI190. Both image decoders still need
-verified supervised-worker integration and source/replacement policy.
+the DLL, launcher and audio helper match CI190. RC87 subsequently verifies
+supervised-worker integration; source/replacement policy remains unfinished.
 Progressive JPEG scan-boundary probes demonstrate that valid decoding alone
 cannot prove original download completeness. No production
 artwork replacement or saved-recording metadata refresh is enabled.
@@ -55,7 +57,15 @@ source/worker locking and handle restrictions, and enforces cancellation and a
 deadline. Artwork has a 4 MiB input cap and 128 MiB process limit in addition to
 each decoder's 32 MiB allocation quota. Local Windows diagnostic tests cover
 valid/malformed images and supervisor faults; existing audio supervisor tests
-also pass. CI and independent MinGW package verification are pending.
+also pass. All four jobs passed in CI 42485859840, including 10 valid and 32
+malformed/resource-limit images through the actual Windows supervisor plus
+reply, resource-limit, handle-isolation, cancellation and deadline faults.
+Independent verification matched the source/merge tree, embedded Classic,
+scripts, hashes, codec licenses, helper binding and PE dependencies.
+Package SHA-256: 5236268bc1cd3f2c478fb151506de95198c975faa8d220f26506e6eb7260201f.
+The helper SHA-256 is 16a4edcbf8458acbbc00682123653fe498dbbc49961c471d771fb14469aa6fb0.
+Saved-file refresh and artwork replacement remain disabled. The separately
+staged RC86 live-acceptance target has not been replaced or installed.
 
 ## MP3 protected-frame follow-up
 
