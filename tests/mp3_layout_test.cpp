@@ -12,6 +12,14 @@ static Bytes Frame(unsigned second=0xfb,unsigned third=0x90,size_t size=417,unsi
     Bytes bytes(size);bytes[0]=0xff;bytes[1]=uint8_t(second);bytes[2]=uint8_t(third);bytes[3]=uint8_t(mode);return bytes;
 }
 static void Append(Bytes& a,const Bytes& b){a.insert(a.end(),b.begin(),b.end());}
+static void SetBits(Bytes& b,size_t byte,size_t bit,unsigned count,unsigned value) {
+    assert(count<=16&&value<(1u<<count));
+    for(unsigned i=0;i<count;++i) {
+        const size_t position=bit+i;const auto mask=uint8_t(1u<<(7-position%8));
+        b.at(byte+position/8)=uint8_t((b.at(byte+position/8)&~mask)|
+            (((value>>(count-1-i))&1)?mask:0));
+    }
+}
 static void Reject(const Bytes& bytes) {
     Mp3Layout info;info.frames=999;info.rate=123;const char* error=nullptr;
     assert(!InspectMp3Layout(bytes,info,error)&&error&&*error);
@@ -52,6 +60,39 @@ int main(int argc,char** argv) {
         assert(InspectMp3Layout(low,info,error)&&info.frames==1&&info.nominal_samples==576);
         assert(info.rate==(low[1]==0xf3?22050u:11025u)&&info.channels==(low[1]==0xf3?1u:2u));
     }
+    // Independently chosen byte/bit boundaries cover every side-info layout,
+    // with and without a CRC word. These are extent fixtures, not valid audio.
+    for(unsigned second:{0xfbu,0xf3u,0xe3u})for(unsigned channels:{1u,2u})for(bool crc:{false,true}) {
+        const bool high=second==0xfb;const size_t frame_size=high?417:208;
+        const unsigned third=high?0x90:second==0xf3?0x80:0x40;
+        const unsigned prefix=crc?6:4,back_bits=high?9:8;
+        const unsigned side_size=high?(channels==1?17:32):(channels==1?9:17);
+        const unsigned first_length=high?(channels==1?18:20):(channels==1?9:10);
+        const unsigned stride=high?59:63,records=channels*(high?2:1);
+        const unsigned payload=unsigned(frame_size)-prefix-side_size;
+        auto first=Frame(second-(crc?1:0),third,frame_size,channels==1?0xc0:0);
+        auto bad=first;SetBits(bad,prefix,0,back_bits,1);Reject(bad);
+        for(unsigned record=0;record<records;++record) {
+            bad=first;SetBits(bad,prefix,first_length+record*stride,12,payload*8+1);Reject(bad);
+        }
+        if(records>1) {
+            bad=first;SetBits(bad,prefix,first_length,12,payload*4+1);
+            SetBits(bad,prefix,first_length+stride,12,payload*4+1);Reject(bad);
+        }
+        // Leave one reservoir byte after a partially consumed byte. The next
+        // frame may start at the following byte, but not one byte earlier.
+        SetBits(first,prefix,first_length,12,(payload-2)*8+1);
+        auto second_frame=Frame(second-(crc?1:0),third,frame_size,channels==1?0xc0:0);
+        SetBits(second_frame,prefix,0,back_bits,1);
+        SetBits(second_frame,prefix,first_length,12,(payload+1)*8);
+        auto good=first;Append(good,second_frame);
+        assert(InspectMp3Layout(good,info,error)&&info.frames==2);
+        CompressedBuffer reservoir_blocks;assert(reservoir_blocks.Append(good.data(),good.size(),65536));
+        assert(InspectMp3Layout(reservoir_blocks,info,error));
+        bad=good;SetBits(bad,frame_size+prefix,0,back_bits,2);Reject(bad);
+        bad=good;SetBits(bad,frame_size+prefix,first_length,12,(payload+1)*8+1);Reject(bad);
+        Reject(second_frame); // missing predecessor despite complete framing
+    }
     for(unsigned version:{3u,4u}) {
         Bytes tag={'I','D','3',uint8_t(version),0,0,0,0,0,3,0,0,0};
         auto tagged=tag;Append(tagged,bytes);
@@ -76,6 +117,6 @@ int main(int argc,char** argv) {
         if(InspectMp3Layout(mutated,info,error))assert(!error&&info.frames&&info.audio_offset<=mutated.size()&&info.audio_size<=mutated.size()-info.audio_offset);
         else assert(error&&!info.frames&&!info.audio_size);
     }
-    std::cout<<"PASS: bounded MP3 layout, ID3 extents/footer, fixed blocks, truncation and mutations; not an audio validator\n";
+    std::cout<<"PASS: bounded MP3 layout, reservoir extents, ID3 extents/footer, fixed blocks, truncation and mutations; not an audio validator\n";
     return 0;
 }

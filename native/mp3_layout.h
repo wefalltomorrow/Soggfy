@@ -5,7 +5,8 @@
 namespace history {
 // Structural information only. Frame boundaries and nominal sample counts do
 // not establish valid audio or a complete recording. A file truncated exactly
-// at a frame boundary can pass. Decode, reservoir, gapless timing, provenance
+// at a frame boundary can pass. Reservoir extents are checked, not compressed
+// payload semantics. Decode, gapless timing, provenance
 // and listening/lifecycle checks remain separate requirements for publication.
 struct Mp3Layout {
     unsigned rate=0,channels=0,frames=0;
@@ -24,6 +25,17 @@ bool Match(const Bytes& b,size_t at,const char* text,size_t length) {
     for(size_t i=0;i<length;++i)if(b[at+i]!=uint8_t(text[i]))return false;
     return true;
 }
+// Called only within a side-information extent already checked by the frame
+// parser. Layer III has fixed side-information record widths in both modes.
+template<class Bytes>
+unsigned Bits(const Bytes& b,size_t byte,size_t bit,unsigned count) {
+    unsigned value=0;
+    for(unsigned i=0;i<count;++i) {
+        const size_t position=bit+i;
+        value=(value<<1)|((b[byte+position/8]>>(7-position%8))&1);
+    }
+    return value;
+}
 }
 // Works directly on fixed-block CompressedBuffer and contiguous byte vectors.
 // No allocations, resynchronization, tolerance for junk, or partial results.
@@ -35,6 +47,7 @@ bool InspectMp3Layout(const Bytes& bytes,Mp3Layout& output,const char*& error) {
     const auto size=bytes.size();
     if(size<4||size>256ull*1024*1024)return fail("MP3 input size rejected");
     size_t at=0,end=size;
+    uint64_t main_bytes=0,used_end=0;
     using mp3_layout_detail::Match;
     if(Match(bytes,0,"ID3",3)) {
         if(size<10)return fail("truncated ID3 header");
@@ -70,8 +83,27 @@ bool InspectMp3Layout(const Bytes& bytes,Mp3Layout& output,const char*& error) {
         const unsigned channels=((h>>6)&3)==3?1:2;
         const size_t length=(version==3?144000u:72000u)*(version==3?high:low)[index]/rate+((h>>9)&1);
         const unsigned side_info=version==3?(channels==1?17:32):(channels==1?9:17);
-        if(length<4+side_info+((h&(1u<<16))?0:2)||length>end-at)
+        const unsigned prefix=4+((h&(1u<<16))?0:2);
+        if(length<prefix+side_info||length>end-at)
             return fail("truncated MP3 frame");
+        // Treat main data as one byte sequence with frame headers, CRC words
+        // and side information removed. Each frame points backwards into
+        // that sequence; its declared bit range must be present and disjoint
+        // from previously consumed bits. Gaps/stuffing are permitted.
+        const size_t side=at+prefix;
+        const unsigned back=mp3_layout_detail::Bits(bytes,side,0,version==3?9:8);
+        size_t bit=version==3?(channels==1?18:20):(channels==1?9:10);
+        unsigned data_bits=0;
+        for(unsigned i=0;i<channels*(version==3?2:1);++i) {
+            data_bits+=mp3_layout_detail::Bits(bytes,side,bit,12);
+            bit+=version==3?59:63;
+        }
+        if(back>main_bytes)return fail("MP3 reservoir starts before recording");
+        const uint64_t start=(main_bytes-back)*8;
+        main_bytes+=length-prefix-side_info;
+        if(start<used_end)return fail("MP3 reservoir overlaps prior frame data");
+        if(data_bits>main_bytes*8-start)return fail("MP3 main data exceeds available reservoir");
+        used_end=start+data_bits;
         if(!found.frames){found.rate=rate;found.channels=channels;}
         else if(found.rate!=rate||found.channels!=channels)return fail("MP3 format changed");
         if(found.frames==1000000)return fail("MP3 frame limit exceeded");

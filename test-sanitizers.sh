@@ -28,6 +28,7 @@ for test in log_queue history_core recording_identity vorbis_comments metadata_r
   "$CXX" -std=c++17 -UNDEBUG "${flags[@]}" -pthread -I native/vendor/libogg/include "tests/${test}_test.cpp" "${extra[@]}" -o "build/sanitizers/$test"
   "build/sanitizers/$test"
 done
+python3 tests/mp3_layout_decode_test.py build/sanitizers/mp3_layout
 CC="$CC" CXX="$CXX" SGF_SANITIZE=1 bash tools/build_vorbis_validation_test.sh build/sanitizers/vorbis-validation
 CC="$CC" CXX="$CXX" SGF_SANITIZE=1 python3 tools/build_flac_validation_test.py build/sanitizers/flac-validation
 python3 tests/metadata_refresh_decode_test.py build/sanitizers/metadata_refresh_container ffmpeg build/sanitizers/vorbis-validation/vorbis-validation-test.exe build/sanitizers/flac-validation/flac-validation-test.exe
