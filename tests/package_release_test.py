@@ -10,6 +10,7 @@ root = pathlib.Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix="soggfy-package-test-") as folder:
     fixture = pathlib.Path(folder)
     for name in ("VERSION", "README.md", "CHANGELOG.md", "RELEASE_NOTES.md", "UPSTREAMS.md",
+                 "MILESTONES.md", "NATIVE_IDENTITY_AUDIT.md",
                  "LICENSE", "SpotifyHistory.ini", "package-release.py"):
         shutil.copy2(root / name, fixture / name)
     shutil.copytree(root / "Scripts", fixture / "Scripts")
