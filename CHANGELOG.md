@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0-rc.81
+
+- Retain validated cached line-synchronized lyrics without downgrading them to matching plain text.
+- Add owned native-recording inspection, minimal text/lyrics planning and independent output verification.
+- Add pinned full Vorbis/FLAC payload validators and a resource-limited Windows validation worker prototype.
+- Exercise held-identity publication, rollback and settings-generation fencing in isolated Windows fixtures.
+- Join inspection, isolated decoding, exact coverage checks and verified staging in an offline preparation path.
+- Keep saved-recording rewriting and the worker out of production pending filesystem preservation and deployment work.
+
 ## 3.0.0-rc.80
 
 - Share bounded Vorbis-comment parsing across Ogg/FLAC tags and native recording identity.

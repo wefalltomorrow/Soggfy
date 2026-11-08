@@ -39,3 +39,13 @@ forwards an external argument. This has not resolved the concrete object type.
 It neither validates nor disproves the upstream pointer path: a container can
 be a prefix of a larger object, and literal displacement searches cannot prove
 the absence of composed offsets. No runtime hooks were added by this audit.
+
+A bounded indirect-reference follow-up found the constructor caller at slot
++0x10 of the pointer table at RVA 0x1a52c00 (entry RVA 0x1a52c10). Functions
+0xe41cd4 and 0xe422f8 allocate 0x118 bytes and store that table pointer at the
+object's start. This suggests an indirect callable object and explains why the
+earlier direct-call search was insufficient; the actual invocation and concrete
+argument provenance are still unresolved. Evidence was obtained with the local
+Python/Capstone scripts against a byte-verified PE mapping. It is not REA provider
+evidence: Ghidra was unavailable. No playback-ID layout or lifetime is inferred
+from this table observation.

@@ -1,3 +1,27 @@
+# Soggfy v3.0.0-rc.81 - validated metadata preparation (test build)
+
+The cached collector retains validated line-synchronized lyrics, including line
+start times supplied by syllable-synchronized cache data. Matching plain text
+does not discard that timing. Syllable-level timing is not represented.
+
+Offline saved-recording work now includes owned-file inspection, bounded minimal
+text changes, full reference Vorbis/FLAC decoding, isolated Windows validation,
+exact decoded coverage agreement, independent output verification and private
+staging. Transaction fixtures exercise held identities, rollback, competing
+creators and a real settings-generation publication guard. The preparation path
+passes twelve real-audio cases locally with byte-identical decoded audio.
+
+These prototypes do not rewrite saved recordings in production. Filesystem
+security/streams/attributes, trusted helper deployment and production coordination
+remain unfinished; incoming artwork is currently ignored and existing artwork
+retained. The validation worker is not included in this package. Native playback
+identity, podcast MP3 capture and other open work remain in MILESTONES.md.
+
+RC80 remains independently package-verified. CI 42449594271 passed all four jobs
+for the earlier validator/lyrics/transaction work. Subsequent integration and
+this exact RC81 package require their own full CI and independent verification.
+Live installation, launch, merge and official release remain separate gates.
+
 # Soggfy v3.0.0-rc.80 - bounded native metadata comments (test build)
 
 Ogg/FLAC taggers now use the same bounded comment reader as native recording
