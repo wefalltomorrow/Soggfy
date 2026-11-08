@@ -39,10 +39,14 @@ package SHA-256 is b5b4378b9ef28b66cbe96452dac1f4687d47a80f26d79fe9759785bbea563
 Ninety PNG layouts and 101 malformed cases run in each job. The preceding run
 failed on missing math-library linkage; this run includes the corrected link.
 
-JPEG now has a bounded decoder and regression corpus. Both image
-decoders still need supervised-worker integration and source/replacement policy.
+JPEG now has a bounded decoder and regression corpus. The standalone decoder
+passed all four jobs in CI 42483537187 at source
+4cb2f1dc09dd8965d741b017db26b61f7ba6438e. Each job covers 22 valid/scan-boundary
+and 1722 malformed/resource-limit cases. Independent package verification passed;
+the DLL, launcher and audio helper match CI190. Both image decoders still need
+verified supervised-worker integration and source/replacement policy.
 Progressive JPEG scan-boundary probes demonstrate that valid decoding alone
-cannot prove original download completeness. JPEG CI is pending; no production
+cannot prove original download completeness. No production
 artwork replacement or saved-recording metadata refresh is enabled.
 
 RC87 integrates both image decoders into the build-pinned helper with a distinct

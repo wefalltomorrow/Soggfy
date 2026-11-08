@@ -83,10 +83,39 @@ coverage or source provenance, and must not authorize artwork replacement by
 itself. Evidence is saved in outputs/Soggfy-JPEG-*-probe.json; diagnostic sources
 remain under work. The committed corpus includes these valid shorter images,
 malformed/truncated inputs, marker/input/dimension limits and a progressive image
-that exceeds the allocation quota. CI validation of the JPEG implementation is
-pending. RC87 links JPEG and PNG into the packaged worker, with their licenses,
+that exceeds the allocation quota. The standalone JPEG implementation passed
+all four jobs in CI 42483537187 at source
+4cb2f1dc09dd8965d741b017db26b61f7ba6438e, with 22 valid/scan-boundary cases
+and 1722 malformed/resource-limit cases in each job. Independent package
+verification passed; its DLL, launcher and audio helper match CI190.
+RC87 links JPEG and PNG into the packaged worker, with their licenses,
 but not into the DLL. No replacement policy or saved-file refresh coordinator
 has been enabled.
+
+## Artwork source and replacement eligibility
+
+The current source is the Windows media-session thumbnail in
+native/media_session.cpp. Artwork() bounds its reported size to 4 MiB, requires
+an exact-length read and recognizes PNG/JPEG magic before copying the bytes.
+MediaReader caches that cover by Media::Key(), which combines title, artist
+and album. That key is not a Spotify resource identity: distinct recordings
+can have the same display fields. The thumbnail result has no stable source
+identifier or evidence that an existing picture belongs to Soggfy.
+
+Consequently, a successful worker decode only establishes the supported image
+structure and decoded properties. Neither it, a larger resolution, nor a
+matching display-field key authorizes saved-artwork replacement. A content hash
+could identify equal bytes but would not establish source ownership or freshness.
+The current refresh planner ignores incoming artwork, and output verification
+requires exact preservation of existing picture comments and FLAC picture
+blocks. Empty, opaque, custom and repeated picture entries retain that policy.
+
+A future replacement policy needs a resource identity tied to the recording,
+an identified artwork source and explicit eligibility for the old image, plus
+validation of the proposed image. Missing provenance must preserve existing
+artwork. Adding artwork to a file with no picture still needs trustworthy source
+association; the title/artist/album cache alone cannot supply it. This is separate
+from the existing new-recording tagger and does not enable saved-file mutation.
 
 ## Supervised artwork validation candidate
 

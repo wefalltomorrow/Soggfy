@@ -86,4 +86,5 @@ int wmain(int argc,wchar_t** argv) {
     CloseHandle(source);
     assert(!ValidateArtworkProcess(INVALID_HANDLE_VALUE,trusted,format,reply,error));
     std::cout<<"PASS: artwork supervisor reply bounds, source lock, handle isolation, memory, cancellation and deadline\n";
+    return 0;
 }
