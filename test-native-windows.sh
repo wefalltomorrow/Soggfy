@@ -22,6 +22,9 @@ for source in buffer hook trampoline hde/hde64; do
         "native/vendor/minhook/src/$source.c" -o "build/windows-tests/minhook-${source//\//-}.o"
 done
 common=(-std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static)
+"$CXX" "${common[@]}" -municode tests/windows_validation_worker_trust_test.cpp native/validation_worker_trust.cpp -lbcrypt -o "$floggfy_test_root/validation-worker-trust-test.exe"
+worker_test_hash="$(sha256sum "$floggfy_test_root/validation-worker-trust-test.exe" | cut -d' ' -f1)"
+"$floggfy_test_root/validation-worker-trust-test.exe" "$worker_test_hash"
 "$CXX" "${common[@]}" tests/mp3_layout_test.cpp native/compressed_buffer.cpp -o "$floggfy_test_root/mp3-layout-test.exe"
 "$floggfy_test_root/mp3-layout-test.exe"
 python3 tests/mp3_layout_decode_test.py "$floggfy_test_root/mp3-layout-test.exe"

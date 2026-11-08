@@ -189,6 +189,16 @@ immediate cancellation and throwing cancellation. All four jobs in CI
 42450663860 passed, including the MinGW preparation path. It is not
 production-connected or packaged.
 
+The helper trust prototype now checks SHA-256 against a caller-supplied trusted
+build digest, retains a read-shared executable handle and locks resolved local
+ancestor names until validation finishes. It rechecks file identity after
+locking the ancestors and exposes no path on a rejected open. Local Windows
+tests cover launching while locked, Unicode paths, attempted mutation/rename,
+digest mismatch, malformed requests and hard links. The supervisor accepts the
+held trust object. This is not yet deployment: the expected digest must be bound
+to the DLL build, not read from an adjacent mutable manifest. Static helper
+packaging/import verification and production caller integration remain open.
+
 1. Read metadata from complete native recordings. Require exact Spotify URI
    agreement and recognized complete-listen/capture provenance. Legacy or
    uncertain identity cannot authorize a rewrite. Metadata/header checks and
