@@ -10,7 +10,7 @@ It is a checkpoint, not completion of all work.
 | Installation-directory transaction | RC75 CI/package verified | Live installation acceptance |
 | Manual watch scan cost | RC75 CI/package verified | Live acceptance |
 | Native playlist save result | RC75 CI/package verified | Live save dialog |
-| Native playback/decoder identity | Static discovery compatible; one parent/argument path traced | Constructor fallback gives a conditional out-of-allocation upstream ID read; runtime path and later mutation unverified. External state type, playback-ID ABI, lifetime, integration and transition fixtures remain; see NATIVE_IDENTITY_AUDIT.md |
+| Native playback/decoder identity | Static discovery compatible; conditional null and non-null state paths traced | Null fallback places the upstream read outside its allocation; a traced non-null path spans separate byte fields and part of an ownership pointer. Actual runtime path, correct playback-ID field, lifetime, integration and transitions remain unverified; see NATIVE_IDENTITY_AUDIT.md |
 | Ad/DJ/interstitial isolation | Open | Trustworthy identity plus transition/live evidence |
 | Native podcast MP3 capture | Structural prototype | Bounded MPEG-1/2/2.5 layout and ID3 extents; 36 real mono/stereo CBR/VBR fixtures locally verified. Payload/reservoir/gapless/completeness validation and lifecycle integration remain; no production capture enabled |
 | Concurrent capture/cross-format association | RC84 shared-ready rejection and RC85 retention-conflict fix CI/package verified | Late first retention now rejects candidates shared by queued listens, including competing ready captures. Native identity-aware lifecycle, future-listen/preload and live transition evidence remain |

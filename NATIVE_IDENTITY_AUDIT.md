@@ -103,3 +103,40 @@ dereferences its corresponding incoming pointer and forwards the result.
 0x19a4a28. Thus these additional edges preserve external provenance; they
 still do not identify the concrete state type or establish non-nullability.
 The reproducible probe includes these instruction windows as well.
+
+## Non-null state path and field boundaries
+
+The next trace identifies a concrete non-null argument path, conditional on
+the manager retaining the callable installed by the inspected construction:
+
+1. Factory 0xc45a30 installs table 0x1a29430 on a 0x2f8-byte callable. Its
+   invoke slot +0x10 is 0xc47bcc. The callable is passed to constructor
+   0xc5afac through stack +0x48 and transferred into manager member +0x228
+   by 0x5ca48. The heap callable pointer consequently occupies manager +0x260.
+2. Helper 0xc6b560 loads that member, invokes slot +0x10, and supplies the
+   address of a temporary pointer as its seventh argument. That pointer is
+   incoming r8 +8 when r8 is non-null, and null otherwise. Caller 0xc88514
+   supplies its own object as r8 and obtains the manager from object +0x20.
+3. Together with the already traced forwarding chain through 0xc47bcc,
+   0xc46264 and 0xe42aec, the external state is therefore invoking object +8.
+   The upstream read at state +0x9b8 selects object +0x9c0 through +0x9cf.
+4. Caller 0xc894b8 updates a tagged payload at object +0x7b8, then calls
+   0xc88514 for variant tag 1. The read is thus payload +0x208 through +0x217.
+   The variant helper 0xc7e5b4 calls either construction routine 0xc80988 or
+   assignment routine 0xc82948. Both expose the same field boundaries.
+
+| Region selected by upstream | Static field evidence |
+| --- | --- |
+| Payload +0x208, +0x209 | Separate byte fields copied by 0xc81b50 / 0xc82b9c at nested offset +0x1e0 / +0x1e1, with nested base payload +0x28 |
+| Payload +0x20a through +0x20f | Not assigned by those field-copy sequences; apparent padding, not proven initialized ID bytes |
+| Payload +0x210 through +0x217 | First word of an ownership pair at +0x210 / +0x218; assignment via 0x50714 moves both words and releases the old reference-counted owner |
+
+This contradicts treating those 16 bytes as a demonstrated playback ID on
+this particular path. A nonzero test could accept mixed fields containing
+pointer bytes. It does not establish which path actual playback takes, rule
+out later object/member replacement, identify the correct ID field, or prove
+any lifetime or transition behavior. The null fallback and this non-null
+case are separate conditional findings, not universal incompatibility claims.
+The probe now verifies 120 selected instructions plus table entries against
+the pinned DLL and records both inferences with their conditions. Production
+identity integration remains disabled pending a verified field and lifecycle.
