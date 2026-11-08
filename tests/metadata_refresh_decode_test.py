@@ -1,5 +1,6 @@
 """Decode real generated audio before/after the native metadata policy."""
 import pathlib
+import hashlib
 import itertools
 import os
 import shutil
@@ -34,6 +35,9 @@ validator = str(pathlib.Path(sys.argv[3]).resolve()) if len(sys.argv) > 3 else N
 flac_validator = str(pathlib.Path(sys.argv[4]).resolve()) if len(sys.argv) > 4 else None
 process_validator = str(pathlib.Path(sys.argv[5]).resolve()) if len(sys.argv) > 5 else None
 worker = pathlib.Path(sys.argv[6]).resolve() if len(sys.argv) > 6 else None
+# Only fixtures derive trust from the executable under test. Production must
+# use a digest embedded by its trusted build, not hash the installed helper.
+worker_digest = hashlib.sha256(worker.read_bytes()).hexdigest() if worker else None
 preparer = str(pathlib.Path(sys.argv[7]).resolve()) if len(sys.argv) > 7 else None
 with tempfile.TemporaryDirectory(prefix="soggfy-metadata-") as directory:
     root = pathlib.Path(directory)
@@ -66,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix="soggfy-metadata-") as directory:
         if process_validator:
             assert worker is not None
             for path in (source, before, after):
-                run(process_validator, path, worker)
+                run(process_validator, path, worker, worker_digest)
         decoded = []
         for path in (source, before, after):
             decoded.append(run(ffmpeg, "-hide_banner", "-loglevel", "error",

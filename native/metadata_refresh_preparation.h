@@ -1,6 +1,7 @@
 #pragma once
 #include "metadata_refresh_transaction.h"
 #include "ogg_tags.h"
+#include "validation_worker_trust.h"
 namespace history {
 enum class MetadataPreparation { Rejected, Unchanged, Staged };
 // Offline prototype. The caller opens and retains the transaction throughout.
@@ -10,4 +11,9 @@ enum class MetadataPreparation { Rejected, Unchanged, Staged };
 MetadataPreparation PrepareMetadataRefresh(MetadataRefreshTransaction& transaction,
     const std::string& uri,const Tags& incoming,const std::wstring& worker,
     std::string& error,const std::function<bool()>& canceled={});
+inline MetadataPreparation PrepareMetadataRefresh(MetadataRefreshTransaction& transaction,
+    const std::string& uri,const Tags& incoming,const ValidationWorkerTrust& worker,
+    std::string& error,const std::function<bool()>& canceled={}) {
+    return PrepareMetadataRefresh(transaction,uri,incoming,worker.Path(),error,canceled);
+}
 }

@@ -28,7 +28,10 @@ int wmain(int argc,wchar_t** argv) {
         if(!wcscmp(mode,L"extra"))WriteFile(pipe,&reply,1,&written,nullptr);
         return 0;
     }
-    assert(argc==3);
+    assert(argc==4);
+    std::string expected;for(const auto* p=argv[3];*p;++p)expected+=char(*p);
+    history::ValidationWorkerTrust trusted;std::string trust_error;
+    assert(trusted.Open(argv[2],expected,trust_error));
     HANDLE source=CreateFileW(argv[1],GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
     assert(source!=INVALID_HANDLE_VALUE);
     HANDLE mutation=CreateFileW(argv[1],GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
@@ -39,7 +42,7 @@ int wmain(int argc,wchar_t** argv) {
     auto format=magic[0]=='f'?history::ValidationFormat::Flac:history::ValidationFormat::Vorbis;
     LARGE_INTEGER before{};assert(SetFilePointerEx(source,{},&before,FILE_CURRENT));
     history::ValidationReply reply;std::string error;
-    if(!history::ValidateRecordingProcess(source,argv[2],format,reply,error)) {
+    if(!history::ValidateRecordingProcess(source,trusted,format,reply,error)) {
         std::cerr<<error<<"\n";return 1;
     }
     assert(history::ValidReply(reply,format));
