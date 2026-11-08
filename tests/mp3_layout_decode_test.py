@@ -12,7 +12,7 @@ import tempfile
 from fractions import Fraction
 
 
-def run(*args, expected_return=0):
+def run(*args, expected_return=0, expected_stderr=None):
     if os.name != "nt":
         executable = pathlib.Path(shutil.which(str(args[0])) or args[0])
         with executable.open("rb") as stream:
@@ -24,11 +24,56 @@ def run(*args, expected_return=0):
             args = tuple(subprocess.check_output([mapper, "-w", str(arg)], text=True).strip()
                          if isinstance(arg, pathlib.Path) else arg for arg in args)
     result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
-    if result.returncode != expected_return:
+    matches = result.returncode != 0 if expected_return is None else result.returncode == expected_return
+    if not matches:
         sys.stderr.write(result.stderr.decode("utf-8", errors="replace"))
         result.check_returncode()
         raise AssertionError(f"expected exit {expected_return}, got {result.returncode}")
+    if expected_stderr is not None:
+        assert expected_stderr in result.stderr, result.stderr
     return result.stdout
+
+
+def protect_frames(source, packets, rate, channels):
+    """Reframe reservoir-disabled CBR audio with CRC and additional stuffing.
+
+    Compressed data is preserved. A larger bitrate provides room for the CRC;
+    no main-data bytes are removed. FFmpeg independently checks CRC and PCM.
+    """
+    result = bytearray()
+    for packet in packets:
+        at, size = int(packet["pos"]), int(packet["size"])
+        frame = source[at:at + size]
+        assert frame[1] & 1, "expected unprotected encoder output"
+        high = ((frame[1] >> 3) & 3) == 3
+        side = (17 if channels == 1 else 32) if high else (9 if channels == 1 else 17)
+        back = (frame[4] << 1) | (frame[5] >> 7) if high else frame[4]
+        assert back == 0, "reframing requires disabled reservoir"
+        index = (frame[2] >> 4) + 1
+        rates = (0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320) if high else (0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160)
+        assert index < len(rates)
+        length = (144000 if high else 72000) * rates[index] // rate + ((frame[2] >> 1) & 1)
+        assert length >= size + 2
+        protected = bytearray(frame[:4])
+        protected[1] &= 0xfe
+        protected[2] = (index << 4) | (protected[2] & 15)
+        protected.extend(b"\0\0" + frame[4:] + bytes(length - size - 2))
+        message = protected[2:4] + protected[6:6 + side]
+        # Integer polynomial division, independent of the C++ CRC bit loop.
+        remainder = (0xffff << (len(message) * 8)) ^ (int.from_bytes(message, "big") << 16)
+        while remainder.bit_length() > 16:
+            remainder ^= 0x18005 << (remainder.bit_length() - 17)
+        protected[4:6] = remainder.to_bytes(2, "big")
+        result.extend(protected)
+    return result
+
+
+def set_bits(data, byte, bit, count, value):
+    for index in range(count):
+        position = bit + index
+        mask = 1 << (7 - position % 8)
+        at = byte + position // 8
+        data[at] = (data[at] & ~mask) | (mask if value & (1 << (count - index - 1)) else 0)
 
 
 test = str(pathlib.Path(sys.argv[1]).resolve())
@@ -36,6 +81,7 @@ ffmpeg = sys.argv[2] if len(sys.argv) > 2 else "ffmpeg"
 ffprobe = sys.argv[3] if len(sys.argv) > 3 else "ffprobe"
 with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
     missing_predecessors = 0
+    protected_cases = 0
     for rate in (8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000):
         for channels in (1, 2):
             for vbr in (False, True):
@@ -63,6 +109,25 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
                           "-i", path, "-map", "0:a:0", "-f", "s16le", "-")
                 assert len(pcm) == samples * channels * 2
                 source = path.read_bytes()
+                middle = int(packets[len(packets) // 2]["pos"])
+                assert source[middle + 1] & 1
+                high = ((source[middle + 1] >> 3) & 3) == 3
+                first_record = (18 if channels == 1 else 20) if high else (9 if channels == 1 else 10)
+                for kind, native_error, decoder_error in (
+                    ("pairs", b"coefficient pair count", b"big_values too big"),
+                    ("block", b"switched block type", b"invalid block type"),
+                ):
+                    damaged = bytearray(source)
+                    if kind == "pairs":
+                        set_bits(damaged, middle + 4, first_record + 12, 9, 289)
+                    else:
+                        set_bits(damaged, middle + 4, first_record + (33 if high else 38), 3, 4)
+                    malformed = pathlib.Path(directory) / "side-info.mp3"
+                    malformed.write_bytes(damaged)
+                    run(test, malformed, expected_return=1, expected_stderr=native_error)
+                    run(ffmpeg, "-v", "error", "-nostdin", "-xerror", "-err_detect", "explode",
+                        "-i", malformed, "-f", "null", "-", expected_return=None,
+                        expected_stderr=decoder_error)
                 corrupted = bytearray(source)
                 # A complete first frame may not refer to absent preceding
                 # main-data bytes. Flip only its side-info back-reference.
@@ -83,5 +148,41 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
                         run(test, bad, expected_return=1)
                         missing_predecessors += 1
                         break
+                if not vbr:
+                    plain = pathlib.Path(directory) / "no-reservoir.mp3"
+                    run(ffmpeg, "-v", "error", "-nostdin", "-y", "-f", "lavfi", "-i",
+                        f"anoisesrc=r={rate}:d=0.37:seed=12345", "-ac", str(channels),
+                        "-c:a", "libmp3lame", "-b:a", "64k", "-reservoir", "0",
+                        "-write_xing", "0", "-id3v2_version", "0", plain)
+                    plain_packets = json.loads(run(ffprobe, "-v", "error", "-show_packets",
+                                                   "-select_streams", "a:0", "-of", "json", plain))["packets"]
+                    protected = protect_frames(plain.read_bytes(), plain_packets, rate, channels)
+                    protected_path = pathlib.Path(directory) / "protected.mp3"
+                    protected_path.write_bytes(protected)
+                    result = list(map(int, run(test, protected_path).split()))
+                    assert result[:3] == [rate, channels, len(plain_packets)]
+                    assert result[4:] == [0, len(protected)]
+                    def decode(path):
+                        return run(ffmpeg, "-v", "error", "-nostdin", "-xerror",
+                                   "-err_detect", "crccheck+explode", "-i", path,
+                                   "-map", "0:a:0", "-f", "s16le", "-")
+                    assert decode(protected_path) == decode(plain)
+                    # Corrupt a middle frame so rejection cannot be attributed
+                    # only to demuxer probing of the first frame.
+                    protected_packets = json.loads(run(ffprobe, "-v", "error", "-show_packets",
+                                                       "-select_streams", "a:0", "-of", "json", protected_path))["packets"]
+                    middle = int(protected_packets[len(protected_packets) // 2]["pos"])
+                    for byte in (middle + 3, middle + 4, middle + 6):
+                        damaged = bytearray(protected)
+                        damaged[byte] ^= 1
+                        bad.write_bytes(damaged)
+                        run(test, bad, expected_return=1)
+                        run(ffmpeg, "-v", "error", "-nostdin", "-xerror", "-err_detect",
+                            "crccheck+explode", "-i", bad, "-f", "null", "-",
+                            expected_return=None, expected_stderr=b"CRC mismatch")
+                    protected_cases += 1
     assert missing_predecessors == 36, missing_predecessors
+    assert protected_cases == 18, protected_cases
     print("PASS: 36 real MPEG-1/2/2.5 mono/stereo CBR/VBR layouts agree with FFprobe and decoded sample counts; missing reservoir prefixes rejected")
+    print("PASS: 18 CRC-protected reframed streams preserve decoded PCM; header, checksum and side-info corruption rejected by native inspection and FFmpeg")
+    print("PASS: 72 real-stream side-information mutations rejected by native inspection and FFmpeg with matching causes")

@@ -5,8 +5,9 @@
 namespace history {
 // Structural information only. Frame boundaries and nominal sample counts do
 // not establish valid audio or a complete recording. A file truncated exactly
-// at a frame boundary can pass. Reservoir extents are checked, not compressed
-// payload semantics. Decode, gapless timing, provenance
+// at a frame boundary can pass. CRC, selected side-information constraints
+// and reservoir extents are checked, not compressed payload semantics.
+// Decode, gapless timing, provenance
 // and listening/lifecycle checks remain separate requirements for publication.
 struct Mp3Layout {
     unsigned rate=0,channels=0,frames=0;
@@ -35,6 +36,19 @@ unsigned Bits(const Bytes& b,size_t byte,size_t bit,unsigned count) {
         value=(value<<1)|((b[byte+position/8]>>(7-position%8))&1);
     }
     return value;
+}
+// MPEG Layer III protection covers the last 16 header bits and all side
+// information, excluding the stored CRC word and compressed main data.
+template<class Bytes>
+uint16_t ProtectedCrc(const Bytes& b,size_t frame,unsigned side_size) {
+    uint16_t crc=0xffff;
+    for(unsigned i=0;i<side_size+2;++i) {
+        const unsigned value=b[frame+(i<2?i+2:i+4)];
+        crc^=uint16_t(value<<8);
+        for(unsigned bit=0;bit<8;++bit)
+            crc=uint16_t((unsigned(crc)<<1)^((crc&0x8000)?0x8005:0));
+    }
+    return crc;
 }
 }
 // Works directly on fixed-block CompressedBuffer and contiguous byte vectors.
@@ -86,6 +100,8 @@ bool InspectMp3Layout(const Bytes& bytes,Mp3Layout& output,const char*& error) {
         const unsigned prefix=4+((h&(1u<<16))?0:2);
         if(length<prefix+side_info||length>end-at)
             return fail("truncated MP3 frame");
+        if(prefix==6&&mp3_layout_detail::ProtectedCrc(bytes,at,side_info)!=
+            ((unsigned(bytes[at+4])<<8)|bytes[at+5]))return fail("MP3 protected CRC mismatch");
         // Treat main data as one byte sequence with frame headers, CRC words
         // and side information removed. Each frame points backwards into
         // that sequence; its declared bit range must be present and disjoint
@@ -96,6 +112,12 @@ bool InspectMp3Layout(const Bytes& bytes,Mp3Layout& output,const char*& error) {
         unsigned data_bits=0;
         for(unsigned i=0;i<channels*(version==3?2:1);++i) {
             data_bits+=mp3_layout_detail::Bits(bytes,side,bit,12);
+            if(mp3_layout_detail::Bits(bytes,side,bit+12,9)>288)
+                return fail("MP3 coefficient pair count exceeds granule");
+            const size_t switched=bit+(version==3?33:38);
+            if(mp3_layout_detail::Bits(bytes,side,switched,1)&&
+               !mp3_layout_detail::Bits(bytes,side,switched+1,2))
+                return fail("MP3 switched block type is zero");
             bit+=version==3?59:63;
         }
         if(back>main_bytes)return fail("MP3 reservoir starts before recording");

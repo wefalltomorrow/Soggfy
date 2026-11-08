@@ -8,8 +8,22 @@
 #include <vector>
 using namespace history;
 using Bytes=std::vector<uint8_t>;
+static void Crc(Bytes& bytes,size_t at=0) {
+    if(bytes.at(at+1)&1)return;
+    const bool high=((bytes.at(at+1)>>3)&3)==3,mono=(bytes.at(at+3)>>6)==3;
+    const unsigned side=high?(mono?17:32):(mono?9:17);
+    // Independent polynomial long division, including the initial remainder.
+    const size_t bits=(side+2)*8;std::vector<unsigned> dividend(bits+16);
+    for(size_t i=0;i<bits;++i)
+        dividend[i]=(bytes.at(at+(i/8<2?i/8+2:i/8+4))>>(7-i%8))&1;
+    for(size_t i=0;i<16;++i)dividend[i]^=1;
+    for(size_t i=0;i<bits;++i)if(dividend[i])
+        for(size_t j=0;j<=16;++j)dividend[i+j]^=(0x18005u>>(16-j))&1;
+    unsigned crc=0;for(size_t i=bits;i<bits+16;++i)crc=(crc<<1)|dividend[i];
+    bytes.at(at+4)=uint8_t(crc>>8);bytes.at(at+5)=uint8_t(crc);
+}
 static Bytes Frame(unsigned second=0xfb,unsigned third=0x90,size_t size=417,unsigned mode=0) {
-    Bytes bytes(size);bytes[0]=0xff;bytes[1]=uint8_t(second);bytes[2]=uint8_t(third);bytes[3]=uint8_t(mode);return bytes;
+    Bytes bytes(size);bytes[0]=0xff;bytes[1]=uint8_t(second);bytes[2]=uint8_t(third);bytes[3]=uint8_t(mode);Crc(bytes);return bytes;
 }
 static void Append(Bytes& a,const Bytes& b){a.insert(a.end(),b.begin(),b.end());}
 static void SetBits(Bytes& b,size_t byte,size_t bit,unsigned count,unsigned value) {
@@ -71,27 +85,47 @@ int main(int argc,char** argv) {
         const unsigned stride=high?59:63,records=channels*(high?2:1);
         const unsigned payload=unsigned(frame_size)-prefix-side_size;
         auto first=Frame(second-(crc?1:0),third,frame_size,channels==1?0xc0:0);
-        auto bad=first;SetBits(bad,prefix,0,back_bits,1);Reject(bad);
+        auto bad=first;SetBits(bad,prefix,0,back_bits,1);Crc(bad);Reject(bad);
         for(unsigned record=0;record<records;++record) {
-            bad=first;SetBits(bad,prefix,first_length+record*stride,12,payload*8+1);Reject(bad);
+            const size_t record_bit=first_length+record*stride;
+            bad=first;SetBits(bad,prefix,record_bit,12,payload*8+1);Crc(bad);Reject(bad);
+            bad=first;SetBits(bad,prefix,record_bit+12,9,289);Crc(bad);Reject(bad);
+            bad=first;SetBits(bad,prefix,record_bit+12,9,288);Crc(bad);
+            assert(InspectMp3Layout(bad,info,error)); // layout boundary, not valid audio
+            const size_t switched=record_bit+(high?33:38);
+            bad=first;SetBits(bad,prefix,switched,1,1);Crc(bad);Reject(bad);
+            for(unsigned type:{1u,2u,3u}) {
+                SetBits(bad,prefix,switched+1,2,type);Crc(bad);
+                assert(InspectMp3Layout(bad,info,error));
+            }
         }
         if(records>1) {
             bad=first;SetBits(bad,prefix,first_length,12,payload*4+1);
-            SetBits(bad,prefix,first_length+stride,12,payload*4+1);Reject(bad);
+            SetBits(bad,prefix,first_length+stride,12,payload*4+1);Crc(bad);Reject(bad);
         }
         // Leave one reservoir byte after a partially consumed byte. The next
         // frame may start at the following byte, but not one byte earlier.
         SetBits(first,prefix,first_length,12,(payload-2)*8+1);
+        Crc(first);
         auto second_frame=Frame(second-(crc?1:0),third,frame_size,channels==1?0xc0:0);
         SetBits(second_frame,prefix,0,back_bits,1);
         SetBits(second_frame,prefix,first_length,12,(payload+1)*8);
+        Crc(second_frame);
         auto good=first;Append(good,second_frame);
         assert(InspectMp3Layout(good,info,error)&&info.frames==2);
         CompressedBuffer reservoir_blocks;assert(reservoir_blocks.Append(good.data(),good.size(),65536));
         assert(InspectMp3Layout(reservoir_blocks,info,error));
-        bad=good;SetBits(bad,frame_size+prefix,0,back_bits,2);Reject(bad);
-        bad=good;SetBits(bad,frame_size+prefix,first_length,12,(payload+1)*8+1);Reject(bad);
+        bad=good;SetBits(bad,frame_size+prefix,0,back_bits,2);Crc(bad,frame_size);Reject(bad);
+        bad=good;SetBits(bad,frame_size+prefix,first_length,12,(payload+1)*8+1);Crc(bad,frame_size);Reject(bad);
         Reject(second_frame); // missing predecessor despite complete framing
+        if(crc) {
+            // Every protected bit and stored checksum bit must be covered.
+            for(size_t byte=2;byte<prefix+side_size;++byte)for(unsigned bit=0;bit<8;++bit) {
+                bad=first;bad[byte]^=uint8_t(1u<<bit);Reject(bad);
+            }
+            bad=first;bad[prefix+side_size]^=128;
+            assert(InspectMp3Layout(bad,info,error)); // CRC excludes main data
+        }
     }
     for(unsigned version:{3u,4u}) {
         Bytes tag={'I','D','3',uint8_t(version),0,0,0,0,0,3,0,0,0};
@@ -117,6 +151,6 @@ int main(int argc,char** argv) {
         if(InspectMp3Layout(mutated,info,error))assert(!error&&info.frames&&info.audio_offset<=mutated.size()&&info.audio_size<=mutated.size()-info.audio_offset);
         else assert(error&&!info.frames&&!info.audio_size);
     }
-    std::cout<<"PASS: bounded MP3 layout, reservoir extents, ID3 extents/footer, fixed blocks, truncation and mutations; not an audio validator\n";
+    std::cout<<"PASS: bounded MP3 layout, protected CRC, side constraints, reservoir extents, ID3 extents/footer, fixed blocks, truncation and mutations; not an audio validator\n";
     return 0;
 }
