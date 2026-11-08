@@ -6,11 +6,11 @@ It is a checkpoint, not completion of all work.
 
 | Milestone | State | Completion evidence still required |
 | --- | --- | --- |
-| RC63–74 selective reliability work | CI/package checkpoints complete | Pinned-client acceptance remains separate |
+| RC63â€“74 selective reliability work | CI/package checkpoints complete | Pinned-client acceptance remains separate |
 | Installation-directory transaction | RC75 CI/package verified | Live installation acceptance |
 | Manual watch scan cost | RC75 CI/package verified | Live acceptance |
 | Native playlist save result | RC75 CI/package verified | Live save dialog |
-| Native playback/decoder identity | Static candidate traced through consumer, configured generator and conditional recovery invocation | Null fallback places the upstream read outside its allocation; a traced non-null path spans separate byte fields and part of an ownership pointer. A separate candidate has playback-ID consumer, hex-encoding and configured 16-byte generator evidence. Audio-driver recovery has a conditional synchronous replacement-callback path. Actual runtime path, lifetime, synchronization, integration and transitions remain unverified; see NATIVE_IDENTITY_AUDIT.md |
+| Native playback/decoder identity | Static candidate traced through consumer, configured generator, recovery invocation and teardown | Null fallback places the upstream read outside its allocation; a traced non-null path spans separate byte fields and part of an ownership pointer. A separate candidate has playback-ID consumer, hex-encoding and configured 16-byte generator evidence. Audio-driver recovery has a conditional synchronous replacement-callback path; teardown replaces a shared byte flag and conditionally destroys the native object when its strong count reaches zero. One callback checks the token before using its stored pointers; other consumers, callback completion, actual runtime path, lifetime, synchronization, integration and transitions remain unverified; see NATIVE_IDENTITY_AUDIT.md |
 | Ad/DJ/interstitial isolation | Open | Trustworthy identity plus transition/live evidence |
 | Native podcast MP3 capture | Structural prototype | Bounded MPEG-1/2/2.5 layout and ID3 extents; 36 real mono/stereo CBR/VBR fixtures locally verified. Payload/reservoir/gapless/completeness validation and lifecycle integration remain; no production capture enabled |
 | Concurrent capture/cross-format association | RC84 shared-ready rejection and RC85 retention-conflict fix CI/package verified | Late first retention now rejects candidates shared by queued listens, including competing ready captures. Native identity-aware lifecycle, future-listen/preload and live transition evidence remain |
@@ -23,6 +23,6 @@ It is a checkpoint, not completion of all work.
 | Merge/official release | Separate gate | Review, acceptance and authorization |
 
 Preserve Classic UI, file-based status, Unicode/multiple artists, custom/legacy/
-podcast paths, cached PlayerAPI, per-entry UIDs, 1x–30x, Downloads-off effective
+podcast paths, cached PlayerAPI, per-entry UIDs, 1xâ€“30x, Downloads-off effective
 1x with selected speed retained, MP3 320 kbps and strict Ogg/FLAC validation.
 Only MinGW CI binaries ship. Preserve earlier packages and source archives.

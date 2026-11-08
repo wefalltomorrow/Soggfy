@@ -248,6 +248,42 @@ executing it. The full effects of the preceding helpers, receiver lifetime,
 decoder cancellation, delayed callbacks and cross-thread ordering remain
 unverified.
 
-The probe now verifies 388 unique instructions, pointer/table entries and
+The probe now verifies 553 unique instructions, pointer/table entries and
 four literals. It records generator and recovery inferences separately from
 the checked observations. No production offsets or runtime hooks were added.
+
+## Recovery teardown and shared byte invalidation
+
+Variant-1 destructor 0xc821b8 passes payload +0x320 to 0x7c608. That
+helper constructs a reference-counted byte initialized to zero, then calls
+0x7c1dc and 0x7c260 to replace the stored pointer/control-block pair. The
+exchange returns the old pair; instruction 0x7c678 writes 1 to its byte
+before releasing its reference. The exchange is bracketed by calls to
+0x17f82ec and 0x17f82fc; their complete synchronization semantics are not
+established by these checks.
+
+The setup routine 0xc88514 obtains a reference-counted copy of the pair
+at payload +0x320 through 0x181930 and 0x180aa4. Thus the destructor
+changes the byte reachable through previously copied pairs rather than
+merely clearing its own member. This is an invalidation mechanism. No
+callback-drain guarantee follows from the byte write.
+
+One consumer is now traced. On the payload +0x20 nonzero branch, 0xc88514
+builds a callable with table 0x1a2cb90, a copied token at callable +8, the
+object at +0x18 and payload at +0x20, then passes it to 0xc6ab84. Its
+invoke entry 0xc83428 calls 0x1816e8 on the token. That helper copies the
+pair, returns true for a null pointer or a nonzero pointed-to byte, and
+otherwise returns false. The invoke entry skips its work on true. Only
+after a false result does it load the object/payload pointers and dispatch
+to 0xc893f8 or 0xc882e8 according to payload +0x220. This establishes
+one guarded callback, not all consumers or actual runtime scheduling. A
+callback already past the check is not shown to be stopped by invalidation.
+
+Separately, 0xc88514 stores the native result pair from 0xc6b560 at
+payload +0x220/+0x228. The destructor decrements the control block's
+strong count at 0xc822a5 and only calls its destruction entry when that
+count reaches zero. Releasing this payload's ownership therefore does not
+by itself establish immediate destruction of the native playback object.
+Other owners, remaining token consumers, outstanding callbacks and the ordering of
+decoder teardown relative to ID replacement remain open. These are static
+observations on the pinned artifact, not observed client execution.
