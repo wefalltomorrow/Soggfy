@@ -44,9 +44,16 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/repeat_identity_test.cpp native/o
 build/repeat-identity-test
 g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/vorbis_comments_test.cpp -o build/vorbis-comments-test
 build/vorbis-comments-test
+g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/metadata_refresh_plan_test.cpp native/rich_metadata.cpp -o build/metadata-refresh-plan-test
+build/metadata-refresh-plan-test
 g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/listen_metadata_test.cpp native/ogg_history_core.cpp -o build/listen-metadata-test
 build/listen-metadata-test
 gcc -std=c11 -O2 -I native/vendor/libogg/include -c native/vendor/libogg/src/framing.c -o build/ogg-framing-test.o
+g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -I native/vendor/libogg/include \
+    tests/metadata_refresh_container_test.cpp native/rich_metadata.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/metadata-refresh-container-test
+build/metadata-refresh-container-test
+bash tools/build_vorbis_validation_test.sh build/vorbis-validation
+python3 tests/metadata_refresh_decode_test.py build/metadata-refresh-container-test ffmpeg build/vorbis-validation/vorbis-validation-test.exe
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include \
     tests/ogg_tags_test.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/ogg-tags-test
 build/ogg-tags-test

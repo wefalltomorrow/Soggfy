@@ -26,6 +26,8 @@ fp_runtime="$("$CXX" -print-file-name=CRT_fp10.o)"
 test -f "$fp_runtime"
 "$CXX" "${common[@]}" tests/vorbis_comments_test.cpp -o "$floggfy_test_root/vorbis-comments-test.exe"
 "$floggfy_test_root/vorbis-comments-test.exe"
+"$CXX" "${common[@]}" tests/metadata_refresh_plan_test.cpp native/rich_metadata.cpp -o "$floggfy_test_root/metadata-refresh-plan-test.exe"
+"$floggfy_test_root/metadata-refresh-plan-test.exe"
 "$CXX" "${common[@]}" tests/listen_metadata_test.cpp native/ogg_history_core.cpp -o "$floggfy_test_root/listen-metadata-test.exe"
 "$floggfy_test_root/listen-metadata-test.exe"
 "$CXX" "${common[@]}" tests/windows_decoder_hook_test.cpp tests/decoder_context_probe.cpp native/playback_speed_compat.cpp build/windows-tests/minhook-*.o -o "$floggfy_test_root/windows-decoder-hook-test.exe"
@@ -39,6 +41,10 @@ test -f "$fp_runtime"
 "$CXX" "${common[@]}" tests/windows_log_test.cpp native/async_log.cpp \
  native/history_settings.cpp -lole32 -luuid -lshell32 -o "$floggfy_test_root/windows-log-test.exe"
 "$CC" -std=c11 -O2 -I native/vendor/libogg/include -c native/vendor/libogg/src/framing.c -o build/windows-tests/metadata-ogg.o
+"$CXX" "${common[@]}" -I native/vendor/libogg/include tests/metadata_refresh_container_test.cpp native/rich_metadata.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/windows-tests/metadata-ogg.o -o "$floggfy_test_root/metadata-refresh-container-test.exe"
+"$floggfy_test_root/metadata-refresh-container-test.exe"
+CC="$CC" CXX="$CXX" bash tools/build_vorbis_validation_test.sh "$floggfy_test_root/vorbis-validation"
+python3 tests/metadata_refresh_decode_test.py "$floggfy_test_root/metadata-refresh-container-test.exe" ffmpeg "$floggfy_test_root/vorbis-validation/vorbis-validation-test.exe"
 "$CXX" "${common[@]}" tests/windows_metadata_identity_test.cpp -I native/vendor/libogg/include \
  native/rich_metadata.cpp native/cached_metadata.cpp native/cached_metadata_windows.cpp native/history_settings.cpp native/async_log.cpp \
  native/classic_ui_backend.cpp native/classic_status_backend.cpp native/classic_path_match.cpp native/library_layout.cpp native/existing_quality.cpp native/file_publication.cpp \

@@ -4,7 +4,7 @@ This is unfinished engineering work, separate from RC79 playback snapshots.
 The current publication path skips equal/higher-quality native recordings before
 constructing tags. It can retry conversion but does not refresh the saved tags.
 
-## Implemented foundation, awaiting CI
+## Verified foundation
 
 `vorbis_comments.h` supplies one bounded reader/writer for native Ogg/FLAC
 comments. Retagging and recording-identity parsing share the reader. The writer
@@ -14,9 +14,81 @@ readers rejected. Raw vendor text, field order, duplicates, casing, Unicode
 and unknown custom fields survive the common representation. Container limits
 remain enforced by each tagger. This validates metadata structure only.
 
-Local strict diagnostic builds and parser, Ogg, FLAC and identity regressions
-pass. The new parser regression is registered in native, Windows and sanitizer
-suites. This change has not yet received CI or package verification.
+RC80 passed native, Windows and both sanitizer jobs in CI run 42444451379,
+followed by independent package verification. The source and CI merge share
+tree fa7275cb67d840182c935a45cb20d89d1a29ca0f. The package/report is preserved.
+
+## Text policy under development
+
+`metadata_refresh_plan.h` proposes a minimal replacement set for the existing
+taggers. It requires exact nonempty Spotify URI agreement and recognized
+complete/native provenance markers, rejects conflicting album identities,
+preserves populated/custom/repeated fields and all capture/quality evidence,
+fills missing text, and refines compatible DATE precision with coherent YEAR.
+Conflicting, invalid or ambiguous dates are retained without a date update.
+Numeric track/disc values must be positive; candidate text must be valid UTF-8.
+The planner checks input and prospective output limits, including the default
+vendor inserted by the Ogg tagger. It returns no artwork replacement.
+
+Local strict diagnostic policy and Ogg/FLAC round-trip tests pass. The latter
+exercise the production taggers and check retained vendor/custom/repeated tags,
+artwork, provenance, stream headers and audio bytes. Their synthetic payloads
+test container preservation, not audio decoding. These regressions are now
+registered in native, Windows and sanitizer scripts; this development change
+has not yet run in CI or been connected to saved-file publication.
+
+`metadata_refresh_inspection.h` now reads complete native-container metadata.
+It checks strict quality headers, every Ogg page CRC, exact serial/sequence,
+continuation, EOS and absence of trailing data, bounded header packets, unique
+FLAC comment blocks, and exact identity/provenance agreement. Sample count,
+rate and bit depth markers must agree with the container, including duplicates.
+It clears stale output on failure. It does not decode compressed audio; an
+apparently complete FLAC header with corrupt frames still requires rejection by
+the future full-payload validator. No production publication caller uses it yet.
+
+Local tests reject every truncated prefix of the synthetic Ogg fixture and
+every incomplete FLAC metadata prefix, plus Ogg replay/gaps, wrong continuation,
+serial changes, CRC errors, trailing data and conflicting provenance. The new
+real-audio regression generates twelve FFmpeg fixtures (Ogg/FLAC, short and
+longer durations, stereo/mono, tones/silence/noise, 22.05/44.1/48/96 kHz).
+Original, initially tagged and refreshed files decode to byte-identical PCM
+within each of the twelve local cases. This test is required by native, Windows
+and sanitizer CI scripts but has not yet run in CI. Local Zig builds remain
+diagnostic; RC80 is still the latest verified MinGW package.
+
+The real Ogg fixtures exposed a coverage-validation issue with FFmpeg's
+demux/decode path: the short 44.1 kHz fixtures decode to 128 fewer samples than
+their final granules; the 22.05 kHz fixture also differs from its final granule.
+Xiph's direct reference decoder returns the exact 44,100 samples for the same
+one-second file. The Vorbis specification appendix A defines initial/final
+trimming; libvorbis block.c explicitly treats a first-and-last audio page as
+end trimming. Do not use an arbitrary tolerance around FFmpeg's decoded count.
+
+`vorbis_validation.cpp` now prototypes full reference-codec synthesis for one
+zero-origin native stream. It checks CRCs/sequence/continuation, bounded packet
+sizes, all three codec headers, decoder return values, bitreader overrun, finite
+PCM, decoded count at every known packet granule and final EOS coverage. Output
+is cleared on failure/cancellation. The six real Ogg cases pass for original,
+tagged and refreshed files. CRC-valid cases with missing/shortened audio packets
+or inflated final granules are rejected, alongside truncation/gaps/cancellation.
+
+The reference codec is pinned to Xiph commit
+c2aa86b05e981c96bf381fc6aa11cdd03eccc2fb, copied unchanged with license and
+per-file SHA256 hashes; libogg 1.3.5 bitwise.c supports it. This dependency and
+validator are linked into tests only. Before shipping, run the decoder in an
+isolated helper with memory/time/cancellation limits; bounded compressed input
+alone does not bound codec allocation or CPU. Add strict FLAC payload decoding,
+stable-source supervision and publication integration as the next steps.
+
+Reference sources inspected:
+- https://xiph.org/vorbis/doc/Vorbis_I_spec.html (appendix A)
+- https://github.com/xiph/vorbis/blob/c2aa86b05e981c96bf381fc6aa11cdd03eccc2fb/lib/block.c
+- https://github.com/FFmpeg/FFmpeg/blob/n8.0/libavformat/oggparsevorbis.c
+
+The text policy fills absent lyrics and preserves existing lyrics. Upgrading
+plain lyrics to a verified synchronized version remains required. Full payload
+validation, artwork comparison and the transaction below remain necessary
+before any actual saved recording may be changed.
 
 ## Remaining implementation and acceptance requirements
 

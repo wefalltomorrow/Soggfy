@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install test dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential python3 nodejs
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3 nodejs ffmpeg
       - name: Run native regression suite
         run: bash test-native.sh
 
@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install sanitizer toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang
+        run: sudo apt-get update && sudo apt-get install -y clang ffmpeg
       - name: Run deterministic ASan and UBSan campaign
         env:
           CC: clang
