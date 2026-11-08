@@ -332,11 +332,42 @@ at caller stack +0x30 to 0xc42d2c. That constructor stores it at temporary
 identified merely by following this service-table entry.
 
 At 0xc46f61 the registration routine loads the provider, invokes virtual
-slot +0x20 and retains the returned receiver. It copies the configuration
+slot +0x20 and retains the returned receiver. It moves the configuration
 through 0x82c538 and passes the result to 0xc47044. That function loads
 the receiver's callable pointer at +0x38 and invokes its slot +0x10, or
 takes a separate null path. This identifies the dispatch boundary and
-its provider source; the provider implementation, configuration-copy
-semantics, callback scheduling/completion and actual runtime selection
+its provider source; the provider implementation, receiver consumption,
+callback scheduling/completion and actual runtime selection
 still require evidence. The pinned probe now verifies 693 unique
 instruction locations plus its table entries and literals.
+
+## Dispatch configuration move and cleanup
+
+The subsequent audit refines the description of 0x82c538: it transfers ownership
+rather than independently copying all configuration members. Caller 0xc46f71
+passes rbp +0x2e0 as source. Therefore the candidate at rbp +0x340 is
+configuration +0x60 and the callback wrapper at rbp +0x380 is configuration
++0xa0. Instructions 0x82c57c/0x82c580 copy the 16-byte candidate field.
+
+For the wrapper, 0x82c538 loads its manager from source +0xb0 and calls it with
+operation 1, destination wrapper in rdx and source wrapper in r8. Constructor
+0xc41fb8 installed manager 0xbe280. Its operation-1 branch copies the owned
+heap-wrapper pointer. The mover then copies the invoke entry (+0x18 relative
+to the wrapper) and clears the source manager. Thus this transfer retains the
+same heap wrapper and guarded callback clone; it does not make a new clone.
+
+After the dispatch receiver invocation returns, 0xc47044 calls 0x82cdc0 on
+the moved configuration. When its callback manager remains non-null, cleanup
+calls it with operation 0. The configured manager conditionally destroys the
+nested callable via table slot +0x20, then frees the 0x40-byte wrapper. The
+source configuration is also cleaned up by the caller, with its transferred
+manager already cleared.
+
+This establishes a conditional move/cleanup path, not asynchronous retention
+or callback completion. The receiver may consume or move the configuration;
+its implementation is still unresolved. No inference that a returned dispatch
+means all audio callbacks are drained follows from this cleanup. Exception
+paths, runtime selection, outstanding consumers and synchronization remain open.
+The pinned probe passes 752 unique instruction checks plus tables and literals;
+report: outputs/Soggfy-native-config-move-20261108.json. No production reader
+or runtime hook is enabled.

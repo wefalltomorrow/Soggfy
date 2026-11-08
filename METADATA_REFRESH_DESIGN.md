@@ -326,7 +326,15 @@ picture blocks could expand a bounded metadata region into millions of summary
 objects. Files exceeding the cap fail inspection with cleared output; they are
 never rewritten. Local diagnostic boundary tests cover exactly the combined
 limit, one excess comment picture and excess native blocks, plus all 12 PCM
-fixtures. CI for this follow-up is pending.
+fixtures. All four jobs passed in CI 42472714776 at source
+495c42024cbac3c6977aeedcd8f6f6dd51cb3c4c, including these boundary regressions
+and all 12 PCM fixtures. Both sanitizer campaigns completed 20,000 iterations.
+Independent archive, manifest, source/merge-tree, scripts, PE imports and helper
+binding verification passed. Package SHA256:
+d30a12c230dc45c309c768c127487065630f11be5ef75c7846a583be9ebc8803.
+Evidence and package are preserved separately in outputs/CI-run186. DLL, launcher
+and helper are byte-identical to the original RC85 acceptance package; this
+offline inspection fix does not enable production refresh.
 
 Primary format contract: https://www.rfc-editor.org/rfc/rfc9639.html#section-8.8
 
