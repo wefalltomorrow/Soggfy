@@ -71,7 +71,7 @@ It is not sufficient as a strict validator through its unmodified public API.
 A real MPEG-1 mono encoding was mutated at frame 10, granule zero: the declared
 part2_3 length was set to zero while scalefac_compress was set to 15. Its long
 block requires 74 scalefactor bits before Huffman data, so the declaration is
-inconsistent. The current structural inspector still accepts it. minimp3
+inconsistent. The RC86 structural inspector accepts it. minimp3
 consumes all 59 frames and returns all 67,968 nominal samples without an empty
 decode or skipped frame, just as for the original. Local FFmpeg 9.0.2 also
 returns zero without error-level diagnostics, but produces different PCM.
@@ -85,3 +85,23 @@ without explicit semantic rejection and independent malformed-stream tests.
 The reproducible local candidate audit and fixture hashes are preserved in
 outputs/Soggfy-MP3-decoder-candidate-audit.json, with the harness under work/.
 No decoder dependency, native MP3 publication, or new runtime hook was added.
+
+## MP3 scalefactor-bound follow-up
+
+The offline inspector now rejects granules whose declared part2_3 bit budget
+cannot contain their scalefactors. It accounts for all MPEG-1 compression
+values and second-granule reuse flags; short blocks do not use those flags.
+MPEG-2/2.5 ordinary and intensity-stereo compression ranges use the appropriate
+long, short or mixed partition sizes. Intensity coding applies only to the
+right channel in joint stereo. No compressed audio is decoded by this check.
+
+Local cross-checking against actual scalefactor consumption in the pinned
+minimp3 source passed all 20,480 version/compression/reuse/block/intensity
+combinations. Synthetic frame tests exercise exact and one-bit-short budgets,
+CRC/non-CRC layouts, every granule/channel and intensity mode isolation.
+The real-corpus regression adds 72 impossible scalefactor declarations across
+all MPEG versions, mono/stereo and CBR/VBR, while preserving acceptance of the
+36 original files and 18 protected PCM-equivalence fixtures. CI and package
+verification are pending for this follow-up. Full Huffman semantics, gapless
+timing, completeness and capture lifetime remain open; production MP3 capture
+is still disabled.

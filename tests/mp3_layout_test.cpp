@@ -39,6 +39,66 @@ static void Reject(const Bytes& bytes) {
     assert(!InspectMp3Layout(bytes,info,error)&&error&&*error);
     assert(!info.frames&&!info.rate&&!info.audio_size&&!info.nominal_samples);
 }
+static void Scalefactors() {
+    // Independent boundary expectations for the six LSF encoding ranges and
+    // MPEG-1 group reuse. Columns are long, short and mixed scalefactor bits.
+    struct Case {bool high,intensity;unsigned compress,reuse,long_bits,short_bits,mixed_bits;};
+    const Case cases[]={
+        {true,false,15,0,74,126,122},{true,false,15,8,50,126,122},
+        {true,false,15,4,54,126,122},{true,false,15,2,59,126,122},
+        {true,false,15,1,59,126,122},{true,false,15,15,0,126,122},
+        {false,false,399,0,74,126,114},{false,false,400,0,0,0,0},
+        {false,false,499,0,65,108,96},{false,false,500,0,0,0,0},
+        {false,false,511,0,53,90,81},{false,true,359,0,98,168,159},
+        {false,true,360,0,0,0,0},{false,true,487,0,54,90,81},
+        {false,true,488,0,0,0,0},{false,true,511,0,40,69,54}};
+    Mp3Layout info;const char*error=nullptr;
+    for(const auto& c:cases)for(unsigned block:{0u,1u,2u,3u})for(bool mixed:{false,true}) {
+        unsigned expected=block==2?(mixed?c.mixed_bits:c.short_bits):c.long_bits;
+        assert(mp3_layout_detail::ScalefactorBits(c.high,c.compress,block,mixed,c.reuse,c.intensity)==expected);
+        for(unsigned version:{3u,2u,0u}) {
+            if((version==3)!=c.high)continue;
+            for(unsigned channels:{1u,2u})for(bool crc:{false,true}) {
+                if(c.intensity&&channels!=2)continue;
+                for(unsigned record=0;record<channels*(c.high?2:1);++record) {
+                    if(c.intensity&&record%channels!=1)continue;
+                    const unsigned second=0xe3|(version<<3),prefix=crc?6:4;
+                    auto frame=Frame(second-(crc?1:0),c.high?0x90:version==2?0x80:0x40,
+                                     c.high?417:208,channels==1?0xc0:c.intensity?0x50:0);
+                    const unsigned start=c.high?(channels==1?18:20):(channels==1?9:10);
+                    const unsigned bit=start+record*(c.high?59:63),switched=bit+(c.high?33:38);
+                    if(c.high)SetBits(frame,prefix,(channels==1?14:12)+4*(record%channels),4,c.reuse);
+                    SetBits(frame,prefix,bit+29,c.high?4:9,c.compress);
+                    if(block) {
+                        SetBits(frame,prefix,switched,1,1);
+                        SetBits(frame,prefix,switched+1,2,block);
+                        SetBits(frame,prefix,switched+3,1,mixed);
+                    }
+                    // First granule cannot reuse; its long block still needs 74.
+                    unsigned needed=c.high&&record<channels&&block!=2?74:expected;
+                    SetBits(frame,prefix,bit,12,needed);Crc(frame);
+                    assert(InspectMp3Layout(frame,info,error));
+                    if(needed) {
+                        SetBits(frame,prefix,bit,12,needed-1);Crc(frame);
+                        assert(!InspectMp3Layout(frame,info,error));
+                        assert(std::strcmp(error,"MP3 scalefactors exceed granule bit budget")==0);
+                        assert(!info.frames&&!info.audio_size);
+                    }
+                }
+            }
+        }
+    }
+    // Mode-extension bits apply to intensity stereo only in joint stereo,
+    // and only to the right channel. 359 needs 54 ordinary long-block bits.
+    for(unsigned mode:{0u,0x10u,0x40u,0x50u})for(unsigned channel:{0u,1u}) {
+        auto frame=Frame(0xf3,0x80,208,mode);unsigned bit=10+63*channel;
+        SetBits(frame,4,bit+29,9,359);
+        unsigned need=mode==0x50&&channel==1?98:54;
+        SetBits(frame,4,bit,12,need);assert(InspectMp3Layout(frame,info,error));
+        SetBits(frame,4,bit,12,need-1);Reject(frame);
+    }
+    std::cout<<"PASS: scalefactor budgets, MPEG-1 reuse, all LSF ranges, intensity channel/mode, switched/mixed blocks and CRC layouts\n";
+}
 int main(int argc,char** argv) {
     if(argc==2) {
         std::ifstream input(argv[1],std::ios::binary);assert(input);
@@ -48,7 +108,7 @@ int main(int argc,char** argv) {
         std::cout<<info.rate<<' '<<info.channels<<' '<<info.frames<<' '<<info.nominal_samples<<' '<<info.audio_offset<<' '<<info.audio_size<<'\n';
         return 0;
     }
-    assert(argc==1);Mp3Layout info;const char* error="stale";
+    assert(argc==1);Scalefactors();Mp3Layout info;const char* error="stale";
     auto bytes=Frame();Append(bytes,Frame(0xfa,0xa2,523));Append(bytes,Frame());
     assert(InspectMp3Layout(bytes,info,error)&&!error);
     assert(info.rate==44100&&info.channels==2&&info.frames==3&&info.nominal_samples==3456&&info.audio_offset==0&&info.audio_size==1357);

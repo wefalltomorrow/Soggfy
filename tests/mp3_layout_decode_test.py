@@ -87,6 +87,7 @@ ffprobe = sys.argv[3] if len(sys.argv) > 3 else "ffprobe"
 with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
     missing_predecessors = 0
     protected_cases = 0
+    scalefactor_cases = 0
     for rate in (8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000):
         for channels in (1, 2):
             for vbr in (False, True):
@@ -118,6 +119,20 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
                 assert source[middle + 1] & 1
                 high = ((source[middle + 1] >> 3) & 3) == 3
                 first_record = (18 if channels == 1 else 20) if high else (9 if channels == 1 else 10)
+                # A declared zero-bit granule cannot contain nonzero-width
+                # scalefactors. Permissive decoders can silently accept this;
+                # rejection must come from our semantic bounds, not exit code.
+                for record in range(channels * (2 if high else 1)):
+                    damaged = bytearray(source)
+                    bit = first_record + record * (59 if high else 63)
+                    set_bits(damaged, middle + 4, bit, 12, 0)
+                    set_bits(damaged, middle + 4, bit + 29, 4 if high else 9, 15 if high else 399)
+                    if high:
+                        set_bits(damaged, middle + 4, (14 if channels == 1 else 12) + 4 * (record % channels), 4, 0)
+                    malformed = pathlib.Path(directory) / "scalefactors.mp3"
+                    malformed.write_bytes(damaged)
+                    run(test, malformed, expected_return=1, expected_stderr=b"scalefactors exceed granule bit budget")
+                    scalefactor_cases += 1
                 for kind, native_error, decoder_error in (
                     ("pairs", b"coefficient pair count", b"big_values too big"),
                     ("block", b"switched block type", b"invalid block type"),
@@ -191,6 +206,8 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
                     protected_cases += 1
     assert missing_predecessors == 36, missing_predecessors
     assert protected_cases == 18, protected_cases
+    assert scalefactor_cases == 72, scalefactor_cases
     print("PASS: 36 real MPEG-1/2/2.5 mono/stereo CBR/VBR layouts agree with FFprobe and decoded sample counts; missing reservoir prefixes rejected")
     print("PASS: 18 CRC-protected reframed streams preserve decoded PCM; header, checksum and side-info corruption rejected by native inspection and FFmpeg")
     print("PASS: 72 real-stream side-information mutations rejected by native inspection and FFmpeg with matching causes")
+    print("PASS: 72 real-stream impossible scalefactor declarations rejected across all granules/channels and MPEG versions")

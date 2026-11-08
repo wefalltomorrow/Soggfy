@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include "mp3_scalefactors.h"
 
 namespace history {
 // Structural information only. Frame boundaries and nominal sample counts do
@@ -111,13 +112,24 @@ bool InspectMp3Layout(const Bytes& bytes,Mp3Layout& output,const char*& error) {
         size_t bit=version==3?(channels==1?18:20):(channels==1?9:10);
         unsigned data_bits=0;
         for(unsigned i=0;i<channels*(version==3?2:1);++i) {
-            data_bits+=mp3_layout_detail::Bits(bytes,side,bit,12);
+            const unsigned part_bits=mp3_layout_detail::Bits(bytes,side,bit,12);
+            data_bits+=part_bits;
             if(mp3_layout_detail::Bits(bytes,side,bit+12,9)>288)
                 return fail("MP3 coefficient pair count exceeds granule");
             const size_t switched=bit+(version==3?33:38);
             if(mp3_layout_detail::Bits(bytes,side,switched,1)&&
                !mp3_layout_detail::Bits(bytes,side,switched+1,2))
                 return fail("MP3 switched block type is zero");
+            const bool split=mp3_layout_detail::Bits(bytes,side,switched,1)!=0;
+            const unsigned block=split?mp3_layout_detail::Bits(bytes,side,switched+1,2):0;
+            const bool mixed=split&&mp3_layout_detail::Bits(bytes,side,switched+3,1);
+            const unsigned compress=mp3_layout_detail::Bits(bytes,side,bit+29,version==3?4:9);
+            const unsigned channel=i%channels;
+            const unsigned reuse=version==3&&i>=channels?
+                mp3_layout_detail::Bits(bytes,side,(channels==1?14:12)+4*channel,4):0;
+            const bool intensity=((h>>6)&3)==1&&(h&16)&&channel==1;
+            if(mp3_layout_detail::ScalefactorBits(version==3,compress,block,mixed,reuse,intensity)>part_bits)
+                return fail("MP3 scalefactors exceed granule bit budget");
             bit+=version==3?59:63;
         }
         if(back>main_bytes)return fail("MP3 reservoir starts before recording");
