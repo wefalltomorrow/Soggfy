@@ -38,6 +38,54 @@ static void Reject(const Bytes& bytes) {
     Mp3Layout info;info.frames=999;info.rate=123;const char* error=nullptr;
     assert(!InspectMp3Layout(bytes,info,error)&&error&&*error);
     assert(!info.frames&&!info.rate&&!info.audio_size&&!info.nominal_samples);
+    assert(!info.xing.present&&!info.xing.flags&&!info.xing.audio_frames&&!info.xing.stream_bytes);
+}
+static void Put32(Bytes& bytes,size_t at,uint32_t value) {
+    for(unsigned i=0;i<4;++i)bytes.at(at+i)=uint8_t(value>>(24-8*i));
+}
+static void Xing() {
+    Mp3Layout info;const char* error=nullptr;
+    for(unsigned version:{3u,2u,0u})for(unsigned channels:{1u,2u})
+    for(bool crc:{false,true})for(const char* magic:{"Xing","Info"}) {
+        const bool high=version==3;
+        const unsigned side=high?(channels==1?17:32):(channels==1?9:17);
+        const unsigned length=high?417:208,third=high?0x90:version==2?0x80:0x40;
+        auto audio=Frame((0xe3|(version<<3))-(crc?1:0),third,length,channels==1?0xc0:0);
+        for(unsigned flags=0;flags<16;++flags) {
+            auto tag=audio;std::memcpy(tag.data()+4+side,magic,4);
+            Put32(tag,8+side,flags);size_t cursor=12+side;
+            if(flags&1){Put32(tag,cursor,2);cursor+=4;}
+            if(flags&2){Put32(tag,cursor,3*length);cursor+=4;}
+            if(flags&4)cursor+=100;
+            if(flags&8){Put32(tag,cursor,50);cursor+=4;}
+            Crc(tag);
+            auto complete=tag;Append(complete,audio);Append(complete,audio);
+            assert(InspectMp3Layout(complete,info,error));
+            assert(info.frames==3&&info.xing.present&&info.xing.flags==flags);
+            assert(info.xing.audio_frames==((flags&1)?2u:0u));
+            assert(info.xing.stream_bytes==((flags&2)?3*length:0u));
+            CompressedBuffer blocks;assert(blocks.Append(complete.data(),complete.size(),65536));
+            assert(InspectMp3Layout(blocks,info,error)&&info.xing.present);
+            Reject(tag);
+            if(flags&3) {
+                auto short_file=complete;short_file.resize(2*length);Reject(short_file);
+                auto long_file=complete;Append(long_file,audio);Reject(long_file);
+            }
+            // Optional fields must fit in the FIRST frame, even when the
+            // caller supplies a longer file with bytes beyond that frame.
+            for(size_t bound=8+side;bound<cursor;++bound) {
+                Mp3XingInfo x;error=nullptr;
+                assert(!mp3_layout_detail::ReadXing(complete,0,bound,side,x,error));
+                assert(error&&!x.present);
+            }
+            auto bad=complete;Put32(bad,8+side,16);Crc(bad);Reject(bad);
+            if(flags&1){bad=complete;Put32(bad,12+side,0);Crc(bad);Reject(bad);}
+            if(flags&2){bad=complete;Put32(bad,12+side+((flags&1)?4:0),0);Crc(bad);Reject(bad);}
+            // The first audio frame cannot borrow bytes from the seek frame.
+            bad=complete;SetBits(bad,length+(crc?6:4),0,high?9:8,1);Crc(bad,length);Reject(bad);
+        }
+    }
+    std::cout<<"PASS: Xing/Info counts, all flag combinations, bounded optional fields, protected frames, fixed blocks and seek-frame reservoir isolation\n";
 }
 static void Scalefactors() {
     // Independent boundary expectations for the six LSF encoding ranges and
@@ -108,7 +156,7 @@ int main(int argc,char** argv) {
         std::cout<<info.rate<<' '<<info.channels<<' '<<info.frames<<' '<<info.nominal_samples<<' '<<info.audio_offset<<' '<<info.audio_size<<'\n';
         return 0;
     }
-    assert(argc==1);Scalefactors();Mp3Layout info;const char* error="stale";
+    assert(argc==1);Scalefactors();Xing();Mp3Layout info;const char* error="stale";
     auto bytes=Frame();Append(bytes,Frame(0xfa,0xa2,523));Append(bytes,Frame());
     assert(InspectMp3Layout(bytes,info,error)&&!error);
     assert(info.rate==44100&&info.channels==2&&info.frames==3&&info.nominal_samples==3456&&info.audio_offset==0&&info.audio_size==1357);

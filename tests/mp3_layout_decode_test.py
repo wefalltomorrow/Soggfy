@@ -81,6 +81,68 @@ def set_bits(data, byte, bit, count, value):
         data[at] = (data[at] & ~mask) | (mask if value & (1 << (count - index - 1)) else 0)
 
 
+def xing_case(directory, rate, channels, quality, vbr):
+    path = pathlib.Path(directory) / "tagged.mp3"
+    run(ffmpeg, "-v", "error", "-nostdin", "-y", "-f", "lavfi", "-i",
+        f"anoisesrc=r={rate}:d=0.37:seed=12345", "-ac", str(channels),
+        "-c:a", "libmp3lame", *quality, "-write_xing", "1", path)
+    actual_rate, actual_channels, frames, samples, offset, size = map(int, run(test, path).split())
+    source = path.read_bytes()
+    probe = json.loads(run(ffprobe, "-v", "error", "-show_packets", "-select_streams", "a:0", "-of", "json", path))
+    packets = probe["packets"]
+    high = ((source[offset + 1] >> 3) & 3) == 3
+    side = (17 if channels == 1 else 32) if high else (9 if channels == 1 else 17)
+    tag = offset + 4 + side
+    assert source[tag:tag + 4] == (b"Xing" if vbr else b"Info")
+    assert int.from_bytes(source[tag + 4:tag + 8], "big") == 15
+    assert actual_rate == rate and actual_channels == channels
+    assert frames == len(packets) + 1
+    assert samples == frames * (1152 if high else 576)
+    assert int.from_bytes(source[tag + 8:tag + 12], "big") == len(packets)
+    assert int.from_bytes(source[tag + 12:tag + 16], "big") == size
+    assert offset + size == len(source)
+    first = int(packets[0]["pos"])
+    assert first - offset + sum(int(p["size"]) for p in packets) == size
+    def mutation(data, error):
+        damaged = pathlib.Path(directory) / "xing-malformed.mp3"
+        damaged.write_bytes(data)
+        run(test, damaged, expected_return=1, expected_stderr=error)
+    mutation(source[:int(packets[-1]["pos"])], b"Xing frame count mismatch")
+    for value in (0, len(packets) - 1, len(packets) + 1, 0xffffffff):
+        data = bytearray(source)
+        data[tag + 8:tag + 12] = value.to_bytes(4, "big")
+        mutation(data, b"zero MP3 Xing frame count" if value == 0 else b"Xing frame count mismatch")
+    for value in (0, size - 1, size + 1, 0xffffffff):
+        data = bytearray(source)
+        data[tag + 12:tag + 16] = value.to_bytes(4, "big")
+        mutation(data, b"zero MP3 Xing byte count" if value == 0 else b"Xing byte count mismatch")
+    data = bytearray(source)
+    set_bits(data, first + 4, 0, 9 if high else 8, 1)
+    mutation(data, b"reservoir starts before recording")
+    # ID3 metadata outside the MPEG stream does not count toward Xing bytes.
+    retagged = pathlib.Path(directory) / "xing-retagged.mp3"
+    retagged.write_bytes(source[offset:] + b"TAG" + bytes(125))
+    values = tuple(map(int, run(test, retagged).split()))
+    assert values == (rate, channels, frames, samples, 0, size)
+    # LAME leaves Xing at the SAME fixed offset for protected frames. Its
+    # first two marker bytes overlap nominal side info, so that frame must
+    # be recognized as metadata before interpreting audio side information.
+    data = bytearray(source)
+    data[offset + 1] &= 0xfe
+    message = data[offset + 2:offset + 4] + data[offset + 6:offset + 6 + side]
+    remainder = (0xffff << (len(message) * 8)) ^ (int.from_bytes(message, "big") << 16)
+    while remainder.bit_length() > 16:
+        remainder ^= 0x18005 << (remainder.bit_length() - 17)
+    data[offset + 4:offset + 6] = remainder.to_bytes(2, "big")
+    protected = pathlib.Path(directory) / "xing-protected.mp3"
+    protected.write_bytes(data)
+    assert run(test, protected) == run(test, path)
+    def pcm(file):
+        return run(ffmpeg, "-v", "error", "-nostdin", "-xerror", "-err_detect", "crccheck+explode",
+                   "-i", file, "-map", "0:a:0", "-f", "s16le", "-")
+    assert pcm(protected) == pcm(path)
+
+
 test = str(pathlib.Path(sys.argv[1]).resolve())
 ffmpeg = sys.argv[2] if len(sys.argv) > 2 else "ffmpeg"
 ffprobe = sys.argv[3] if len(sys.argv) > 3 else "ffprobe"
@@ -88,11 +150,14 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
     missing_predecessors = 0
     protected_cases = 0
     scalefactor_cases = 0
+    xing_cases = 0
     for rate in (8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000):
         for channels in (1, 2):
             for vbr in (False, True):
                 path = pathlib.Path(directory) / f"{rate}-{channels}-{vbr}.mp3"
                 quality = ("-q:a", "4") if vbr else ("-b:a", "64k")
+                xing_case(directory, rate, channels, quality, vbr)
+                xing_cases += 1
                 # Omit the seek frame so every frame is a demuxed packet.
                 # Seek headers and gapless timing require separate work.
                 run(ffmpeg, "-v", "error", "-nostdin", "-f", "lavfi", "-i",
@@ -207,7 +272,9 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
     assert missing_predecessors == 36, missing_predecessors
     assert protected_cases == 18, protected_cases
     assert scalefactor_cases == 72, scalefactor_cases
+    assert xing_cases == 36, xing_cases
     print("PASS: 36 real MPEG-1/2/2.5 mono/stereo CBR/VBR layouts agree with FFprobe and decoded sample counts; missing reservoir prefixes rejected")
     print("PASS: 18 CRC-protected reframed streams preserve decoded PCM; header, checksum and side-info corruption rejected by native inspection and FFmpeg")
     print("PASS: 72 real-stream side-information mutations rejected by native inspection and FFmpeg with matching causes")
     print("PASS: 72 real-stream impossible scalefactor declarations rejected across all granules/channels and MPEG versions")
+    print("PASS: 36 real Xing/Info streams, 360 count/truncation/reservoir mutations, ID3 exclusion and protected seek-frame PCM equivalence")

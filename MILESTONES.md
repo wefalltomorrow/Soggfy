@@ -105,3 +105,27 @@ all MPEG versions, mono/stereo and CBR/VBR, while preserving acceptance of the
 verification are pending for this follow-up. Full Huffman semantics, gapless
 timing, completeness and capture lifetime remain open; production MP3 capture
 is still disabled.
+
+## MP3 Xing/Info extent follow-up
+
+The offline inspector now bounds first-frame Xing/Info optional fields and
+compares declared audio-frame and stream-byte counts with observed extents.
+Counts exclude ID3 and include the seek frame only in the byte extent. The
+seek frame is excluded from reservoir history; the first audio frame cannot
+borrow its metadata bytes. Protected seek frames retain the fixed Xing offset
+used by LAME and still require a valid MPEG header/side-information CRC.
+
+Local synthetic cases cover all 16 flag combinations, optional-field bounds,
+all MPEG versions/channel layouts, protected frames and fixed-block input.
+Another 36 real tagged encodings cover mono/stereo and CBR/VBR at all nine
+supported sample rates. They pass independent packet-count comparisons, 360
+count/truncation/reservoir rejection cases, ID3 exclusion and protected seek
+header PCM-equivalence checks. CI and package verification are pending.
+
+These are consistency checks on untrusted declarations. A stripped or rewritten
+tag cannot establish completeness; absent counts remain unknown. Nominal sample
+counts still include physical metadata frames and are not presentation timing.
+Encoder delay/padding, LAME extension CRC, VBRI, iTunSMPB, full Huffman semantics,
+provenance and capture lifecycle remain separate work. No native capture enabled.
+Primary cross-checks: FFmpeg cc583787bbecd4914fee7c2bf7f09463113822fe,
+libavformat/mp3dec.c and mp3enc.c; LAME libmp3lame/VbrTag.c, lame_get_lametag_frame.

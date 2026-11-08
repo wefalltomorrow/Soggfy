@@ -2,11 +2,12 @@
 #include <cstddef>
 #include <cstdint>
 #include "mp3_scalefactors.h"
+#include "mp3_xing.h"
 
 namespace history {
 // Structural information only. Frame boundaries and nominal sample counts do
-// not establish valid audio or a complete recording. A file truncated exactly
-// at a frame boundary can pass. CRC, selected side-information constraints
+// not establish valid audio or a complete recording. Without a retained Xing
+// declaration, truncation exactly at a frame boundary can pass. CRC, selected side-information constraints
 // and reservoir extents are checked, not compressed payload semantics.
 // Decode, gapless timing, provenance
 // and listening/lifecycle checks remain separate requirements for publication.
@@ -14,6 +15,7 @@ struct Mp3Layout {
     unsigned rate=0,channels=0,frames=0;
     uint64_t nominal_samples=0;
     size_t audio_offset=0,audio_size=0;
+    Mp3XingInfo xing;
 };
 namespace mp3_layout_detail {
 struct View {
@@ -103,41 +105,48 @@ bool InspectMp3Layout(const Bytes& bytes,Mp3Layout& output,const char*& error) {
             return fail("truncated MP3 frame");
         if(prefix==6&&mp3_layout_detail::ProtectedCrc(bytes,at,side_info)!=
             ((unsigned(bytes[at+4])<<8)|bytes[at+5]))return fail("MP3 protected CRC mismatch");
-        // Treat main data as one byte sequence with frame headers, CRC words
-        // and side information removed. Each frame points backwards into
-        // that sequence; its declared bit range must be present and disjoint
-        // from previously consumed bits. Gaps/stuffing are permitted.
-        const size_t side=at+prefix;
-        const unsigned back=mp3_layout_detail::Bits(bytes,side,0,version==3?9:8);
-        size_t bit=version==3?(channels==1?18:20):(channels==1?9:10);
-        unsigned data_bits=0;
-        for(unsigned i=0;i<channels*(version==3?2:1);++i) {
-            const unsigned part_bits=mp3_layout_detail::Bits(bytes,side,bit,12);
-            data_bits+=part_bits;
-            if(mp3_layout_detail::Bits(bytes,side,bit+12,9)>288)
-                return fail("MP3 coefficient pair count exceeds granule");
-            const size_t switched=bit+(version==3?33:38);
-            if(mp3_layout_detail::Bits(bytes,side,switched,1)&&
-               !mp3_layout_detail::Bits(bytes,side,switched+1,2))
-                return fail("MP3 switched block type is zero");
-            const bool split=mp3_layout_detail::Bits(bytes,side,switched,1)!=0;
-            const unsigned block=split?mp3_layout_detail::Bits(bytes,side,switched+1,2):0;
-            const bool mixed=split&&mp3_layout_detail::Bits(bytes,side,switched+3,1);
-            const unsigned compress=mp3_layout_detail::Bits(bytes,side,bit+29,version==3?4:9);
-            const unsigned channel=i%channels;
-            const unsigned reuse=version==3&&i>=channels?
-                mp3_layout_detail::Bits(bytes,side,(channels==1?14:12)+4*channel,4):0;
-            const bool intensity=((h>>6)&3)==1&&(h&16)&&channel==1;
-            if(mp3_layout_detail::ScalefactorBits(version==3,compress,block,mixed,reuse,intensity)>part_bits)
-                return fail("MP3 scalefactors exceed granule bit budget");
-            bit+=version==3?59:63;
+        if(!found.frames&&!mp3_layout_detail::ReadXing(bytes,at,length,side_info,found.xing,error))return false;
+        // A recognized seek frame is metadata. Its bytes must not provide
+        // reservoir history to the first audio frame. Nominal samples still
+        // count physical frames; they are never a gapless duration claim.
+        const bool seek_frame=!found.frames&&found.xing.present;
+        if(!seek_frame) {
+            // Treat main data as one byte sequence with frame headers, CRC words
+            // and side information removed. Each frame points backwards into
+            // that sequence; its declared bit range must be present and disjoint
+            // from previously consumed bits. Gaps/stuffing are permitted.
+            const size_t side=at+prefix;
+            const unsigned back=mp3_layout_detail::Bits(bytes,side,0,version==3?9:8);
+            size_t bit=version==3?(channels==1?18:20):(channels==1?9:10);
+            unsigned data_bits=0;
+            for(unsigned i=0;i<channels*(version==3?2:1);++i) {
+                const unsigned part_bits=mp3_layout_detail::Bits(bytes,side,bit,12);
+                data_bits+=part_bits;
+                if(mp3_layout_detail::Bits(bytes,side,bit+12,9)>288)
+                    return fail("MP3 coefficient pair count exceeds granule");
+                const size_t switched=bit+(version==3?33:38);
+                if(mp3_layout_detail::Bits(bytes,side,switched,1)&&
+                   !mp3_layout_detail::Bits(bytes,side,switched+1,2))
+                    return fail("MP3 switched block type is zero");
+                const bool split=mp3_layout_detail::Bits(bytes,side,switched,1)!=0;
+                const unsigned block=split?mp3_layout_detail::Bits(bytes,side,switched+1,2):0;
+                const bool mixed=split&&mp3_layout_detail::Bits(bytes,side,switched+3,1);
+                const unsigned compress=mp3_layout_detail::Bits(bytes,side,bit+29,version==3?4:9);
+                const unsigned channel=i%channels;
+                const unsigned reuse=version==3&&i>=channels?
+                    mp3_layout_detail::Bits(bytes,side,(channels==1?14:12)+4*channel,4):0;
+                const bool intensity=((h>>6)&3)==1&&(h&16)&&channel==1;
+                if(mp3_layout_detail::ScalefactorBits(version==3,compress,block,mixed,reuse,intensity)>part_bits)
+                    return fail("MP3 scalefactors exceed granule bit budget");
+                bit+=version==3?59:63;
+            }
+            if(back>main_bytes)return fail("MP3 reservoir starts before recording");
+            const uint64_t start=(main_bytes-back)*8;
+            main_bytes+=length-prefix-side_info;
+            if(start<used_end)return fail("MP3 reservoir overlaps prior frame data");
+            if(data_bits>main_bytes*8-start)return fail("MP3 main data exceeds available reservoir");
+            used_end=start+data_bits;
         }
-        if(back>main_bytes)return fail("MP3 reservoir starts before recording");
-        const uint64_t start=(main_bytes-back)*8;
-        main_bytes+=length-prefix-side_info;
-        if(start<used_end)return fail("MP3 reservoir overlaps prior frame data");
-        if(data_bits>main_bytes*8-start)return fail("MP3 main data exceeds available reservoir");
-        used_end=start+data_bits;
         if(!found.frames){found.rate=rate;found.channels=channels;}
         else if(found.rate!=rate||found.channels!=channels)return fail("MP3 format changed");
         if(found.frames==1000000)return fail("MP3 frame limit exceeded");
@@ -146,7 +155,15 @@ bool InspectMp3Layout(const Bytes& bytes,Mp3Layout& output,const char*& error) {
         at+=length;
     }
     if(!found.frames)return fail("MP3 has no frames");
-    found.audio_size=end-found.audio_offset;output=found;return true;
+    found.audio_size=end-found.audio_offset;
+    if(found.xing.present) {
+        if(found.frames<2)return fail("MP3 Xing header has no audio frames");
+        if((found.xing.flags&1)&&uint64_t(found.xing.audio_frames)+1!=found.frames)
+            return fail("MP3 Xing frame count mismatch");
+        if((found.xing.flags&2)&&found.xing.stream_bytes!=found.audio_size)
+            return fail("MP3 Xing byte count mismatch");
+    }
+    output=found;return true;
 }
 inline bool InspectMp3Layout(const uint8_t* bytes,size_t size,Mp3Layout& output,const char*& error) {
     if(!bytes){output={};error="null MP3 input";return false;}
