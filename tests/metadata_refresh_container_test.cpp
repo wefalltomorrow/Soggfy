@@ -94,7 +94,12 @@ static void Real(const char* input,const char* baseline,const char* refreshed) {
     std::ifstream file(input,std::ios::binary);assert(file);
     Bytes source{std::istreambuf_iterator<char>(file),std::istreambuf_iterator<char>()};
     assert(source.size()>4);const bool flac=source[0]=='f';
-    const auto old=Original(flac?"native compressed FLAC input":"native compressed Ogg pages");
+    auto old=Original(flac?"native compressed FLAC input":"native compressed Ogg pages");
+    // Real decode fixtures carry a valid, generated 1x1 red RGB PNG (24 bits).
+    // Keep the deliberately opaque/malformed picture in synthetic tests only:
+    // otherwise FFmpeg reports artwork errors even when audio PCM matches.
+    for(auto& field:old.fields)if(field=="METADATA_BLOCK_PICTURE=opaque")
+        field="METADATA_BLOCK_PICTURE=AAAAAwAAAAlpbWFnZS9wbmcAAAAAAAAAAQAAAAEAAAAYAAAAAAAAAEWJUE5HDQoaCgAAAA1JSERSAAAAAQAAAAEIAgAAAJB3U94AAAAMSURBVHicY/jPwAAAAwEBAMn+ku8AAAAASUVORK5CYII=";
     uint64_t samples=0;Quality quality;
     assert(ParseExistingQualityHeader(source.data(),source.size(),quality));
     if(flac) {FlacInfo info;size_t audio;assert(ParseFlacMetadata(source,info,audio)==FlacParse::Valid);samples=info.total_samples;}

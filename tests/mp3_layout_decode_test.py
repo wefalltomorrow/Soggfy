@@ -36,6 +36,10 @@ def run(*args, expected_return=0, expected_stderr=None):
         raise AssertionError(f"expected exit {expected_return}, got {result.returncode}")
     if expected_stderr is not None:
         assert expected_stderr in result.stderr, result.stderr
+    elif expected_return == 0:
+        # Every positive encoder/probe/decode uses error-level logging. A
+        # zero exit does not make reported errors acceptable fixture evidence.
+        assert not result.stderr, result.stderr
     return result.stdout
 
 
@@ -146,6 +150,13 @@ def xing_case(directory, rate, channels, quality, vbr):
 test = str(pathlib.Path(sys.argv[1]).resolve())
 ffmpeg = sys.argv[2] if len(sys.argv) > 2 else "ffmpeg"
 ffprobe = sys.argv[3] if len(sys.argv) > 3 else "ffprobe"
+try:
+    run(sys.executable, "-c", "import sys; sys.stderr.write('fixture decoder error')")
+except AssertionError as failure:
+    assert failure.args == (b"fixture decoder error",), failure.args
+else:
+    raise AssertionError("fixture runner accepted zero-exit error diagnostics")
+print("PASS: fixture runner rejects zero-exit error diagnostics")
 with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
     missing_predecessors = 0
     protected_cases = 0

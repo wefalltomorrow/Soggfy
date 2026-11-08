@@ -22,10 +22,11 @@ def run(*args):
                 raise RuntimeError("Windows executable requires cygpath or wslpath")
             args = tuple(subprocess.check_output([mapper, "-w", str(arg)], text=True).strip()
                          if isinstance(arg, pathlib.Path) else arg for arg in args)
-    result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
     if result.returncode:
         sys.stderr.write(result.stderr.decode("utf-8", errors="replace"))
         result.check_returncode()
+    assert not result.stderr, result.stderr
     return result.stdout
 
 
@@ -36,6 +37,13 @@ flac_validator = str(pathlib.Path(sys.argv[4]).resolve()) if len(sys.argv) > 4 e
 process_validator = str(pathlib.Path(sys.argv[5]).resolve()) if len(sys.argv) > 5 else None
 worker = pathlib.Path(sys.argv[6]).resolve() if len(sys.argv) > 6 else None
 preparer = str(pathlib.Path(sys.argv[7]).resolve()) if len(sys.argv) > 7 else None
+try:
+    run(sys.executable, "-c", "import sys; sys.stderr.write('fixture decoder error')")
+except AssertionError as failure:
+    assert failure.args == (b"fixture decoder error",), failure.args
+else:
+    raise AssertionError("fixture runner accepted zero-exit error diagnostics")
+print("PASS: fixture runner rejects zero-exit error diagnostics")
 with tempfile.TemporaryDirectory(prefix="soggfy-metadata-") as directory:
     root = pathlib.Path(directory)
     if process_validator:
@@ -67,6 +75,11 @@ with tempfile.TemporaryDirectory(prefix="soggfy-metadata-") as directory:
             "-f", "lavfi", "-i", generator,
             "-ac", str(channels), "-c:a", codec, source)
         run(test, source, before, after)
+        for path in (before, after):
+            picture = run(ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
+                "-xerror", "-err_detect", "explode", "-i", path, "-map", "0:v:0",
+                "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "-")
+            assert picture == b"\xff\0\0", "generated 1x1 red artwork did not survive refresh"
         if preparer:
             assert worker is not None
             run(preparer, before, after, worker)
@@ -89,4 +102,4 @@ with tempfile.TemporaryDirectory(prefix="soggfy-metadata-") as directory:
         assert decoded[0] and decoded[0] == decoded[1] == decoded[2], extension
         frame_size = channels * 4
         assert len(decoded[0]) % frame_size == 0, extension
-        print(f"PASS: {extension} {signal} {rate}Hz/{channels}ch/{duration}s PCM identical; {len(decoded[0]) // frame_size} samples")
+        print(f"PASS: {extension} {signal} {rate}Hz/{channels}ch/{duration}s PCM identical; {len(decoded[0]) // frame_size} samples; artwork pixels preserved")
