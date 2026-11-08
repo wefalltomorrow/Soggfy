@@ -22,6 +22,8 @@ for source in buffer hook trampoline hde/hde64; do
         "native/vendor/minhook/src/$source.c" -o "build/windows-tests/minhook-${source//\//-}.o"
 done
 common=(-std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static)
+"$CXX" "${common[@]}" tests/windows_metadata_transaction_test.cpp native/metadata_refresh_transaction.cpp -o "$floggfy_test_root/metadata-transaction-test.exe"
+"$floggfy_test_root/metadata-transaction-test.exe"
 fp_runtime="$("$CXX" -print-file-name=CRT_fp10.o)"
 test -f "$fp_runtime"
 "$CXX" "${common[@]}" tests/vorbis_comments_test.cpp -o "$floggfy_test_root/vorbis-comments-test.exe"

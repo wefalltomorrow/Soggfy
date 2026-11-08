@@ -91,14 +91,15 @@ fixtures pass for original, tagged and refreshed files with identical PCM.
 The codec C units use defined signed wrapping (`-fwrapv`) because corrupted
 predictor residuals can overflow before CRC validation; our C++ code retains
 ordinary signed-overflow checks. No sanitizer check is suppressed. Full CI
-validation of this new prototype is pending; local diagnostic builds are not
+validation passed in run 42448323708 at dfd4131f3852856206a8630371e51c8823962ef0
+(Linux, both ASan/UBSan seeds, Windows tests/build/package). Local diagnostic builds are not
 shipping artifacts or a substitute for CI ASan/UBSan.
 
 The preceding Vorbis CI run passed native tests and both sanitizer seeds after
 fixing signed byte shifts in libogg's bit reader, verified by an independent
 bit-by-bit oracle. Windows exposed a GCC array-bounds warning in a test fixture;
 the fixture now allocates its final buffer size directly. The full Windows job
-must pass before this development checkpoint is accepted.
+passed in run 42448323708, resolving that fixture failure.
 
 The Windows validation-process prototype accepts a caller-held, locked source
 handle and maps it read-only without moving its file position. Only the mapping
@@ -113,6 +114,21 @@ source position/locking and cancellation. This is resource isolation, not a
 security sandbox. The caller must use a trusted same-build worker and retain the
 source lock through a separately guarded transaction. Neither the helper nor
 the supervision API is packaged or called from production yet.
+
+The standalone transaction prototype opens the original with read/delete access
+and read-only sharing, locks each resolved local ancestor against rename, then
+rechecks the resolved path's file identity. It stages and flushes complete bytes,
+moves the original by its held handle and publishes by the staged handle, always
+without replacement. Cancellation before mutation leaves the original in place;
+cancellation/failure after the original move attempts rollback. If a concurrent
+creator occupies the destination, neither publication nor rollback overwrites it,
+and the result reports the preserved original's backup path. Rename/recovery
+storage is allocated before mutation. Local tests cover these paths, directory
+and file locks, single-use transactions and hard-link rejection. CI is pending.
+This prototype still needs filesystem security/stream/attribute preservation,
+the actual settings-generation fence, validated-delta integration and production
+packaging. Network/redirected roots are conservatively rejected. Its callback
+checks do not by themselves make settings-generation publication atomic.
 
 Reference sources inspected:
 - https://xiph.org/vorbis/doc/Vorbis_I_spec.html (appendix A)
