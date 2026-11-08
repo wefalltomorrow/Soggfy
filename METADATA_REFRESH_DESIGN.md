@@ -49,9 +49,9 @@ indexes and individual/aggregate compressed metadata expansion). All four jobs
 passed in CI 42481391151, including both ASan/UBSan campaigns. Independent
 package verification passed at source 790de51ab4662c57c751320ecf55af210c786415;
 the DLL, launcher and deployed helper match the earlier CI190 binaries.
-Full static PNG decoding is a foundation only: supervised artwork worker integration, image-source provenance and
-replacement eligibility remain open. This code has no production caller and
-the release binaries do not link the new dependencies.
+Full static PNG decoding is a foundation only: image-source provenance and
+replacement eligibility remain open. RC87 adds supervised worker integration
+as described below; the saved-file refresh coordinator remains disabled.
 
 The offline JPEG validator uses pinned libjpeg-turbo 3.2.1 commit
 7b4993786d856cbccabfc0ed2f923ba000e326cc. It supports single-frame 8-bit
@@ -66,7 +66,8 @@ per-decoder system allocator caps the initial control block and all decode pools
 the ordinary max_memory_to_use setting alone is not a total allocation cap.
 No backing files or full decoded image are retained. Failure clears the result.
 The fixed-size context and caller-owned encoded input are outside the reported
-decoder allocation count. CPU deadlines and cancellation still require a worker.
+decoder allocation count. RC87 supplies CPU deadlines and cancellation through
+the same supervised worker used for audio validation.
 
 Local diagnostics accepted six valid encodings and rejected 1695 malformed or
 truncated variants. An allocation probe passed 334 quota/persistent-failure
@@ -83,8 +84,33 @@ itself. Evidence is saved in outputs/Soggfy-JPEG-*-probe.json; diagnostic source
 remain under work. The committed corpus includes these valid shorter images,
 malformed/truncated inputs, marker/input/dimension limits and a progressive image
 that exceeds the allocation quota. CI validation of the JPEG implementation is
-pending. JPEG is not linked into the DLL or packaged worker; no replacement
-policy or saved-file refresh coordinator has been enabled.
+pending. RC87 links JPEG and PNG into the packaged worker, with their licenses,
+but not into the DLL. No replacement policy or saved-file refresh coordinator
+has been enabled.
+
+## Supervised artwork validation candidate
+
+RC87 uses the existing same-build SHA-256-bound worker and held trust object.
+PNG/JPEG requests have a separate 32-byte version-2 reply containing format,
+dimensions, depth, channels and progressive mode. Audio keeps its original
+40-byte version-1 reply. Each caller rejects formats from the other domain;
+the common supervisor checks exact reply length and all relevant field bounds.
+No pixels, tags or paths cross the reply boundary. Decoding reads a read-only
+mapping of the caller's held source file without changing its file position.
+
+The worker rejects artwork above 4 MiB before mapping it. Its job permits one
+process, caps process memory at 128 MiB, kills on closure, and is assigned while
+the child is suspended. Only mapping and reply handles are inherited. The
+existing cancellation/deadline loop applies to both audio and artwork. PNG and
+JPEG retain their separate 32 MiB tracked decoder allocation limits. These are
+resource and lifecycle controls, not a security sandbox or provenance proof.
+
+Local diagnostic Windows tests cover PNG depth/channel variants, six pinned
+JPEG variants, malformed/truncated input, empty and oversized input, the large
+progressive allocation rejection, source locks/position, malformed replies,
+handle isolation, memory limits, cancellation and timeout. Existing audio
+supervisor fixtures pass against the enlarged helper. CI and independent MinGW
+package verification are pending; local Zig executables do not ship.
 
 ## Verified foundation
 

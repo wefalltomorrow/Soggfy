@@ -29,6 +29,12 @@ for source in sources:
     obj=dest/(source.stem+'.o')
     subprocess.run([cc,'-std=c11',*flags,*includes,*definitions,'-c',str(source),'-o',str(obj)],check=True)
     objects.append(str(obj))
+obj=dest/'png-validation.o'
 subprocess.run([cc,'-std=c11','-UNDEBUG','-Wall','-Wextra','-Werror',*flags,*includes,*definitions,
-                'native/png_validation.c','tests/png_validation_test.c',*objects,'-lm',
+                '-c','native/png_validation.c','-o',str(obj)],check=True)
+objects.append(str(obj))
+if os.environ.get('SGF_CODEC_OBJECTS_ONLY')=='1':
+    raise SystemExit(0)
+subprocess.run([cc,'-std=c11','-UNDEBUG','-Wall','-Wextra','-Werror',*flags,*includes,*definitions,
+                'tests/png_validation_test.c',*objects,'-lm',
                 '-o',str(dest/'png-validation-test.exe')],check=True)

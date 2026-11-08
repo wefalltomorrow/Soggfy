@@ -1,4 +1,22 @@
-# Soggfy v3.0.0-rc.86 - retain originals when FFmpeg reports errors
+# Soggfy v3.0.0-rc.87 - supervised artwork validation foundation
+
+The build-pinned helper now decodes bounded static PNG and 8-bit Huffman JPEG
+images in a separate process. Image dimensions and format properties use a
+distinct reply protocol; the audio reply remains unchanged. The shared
+supervisor retains restricted handle inheritance, suspended launch into a job,
+cancellation, deadlines and exact reply checks. Artwork has a 4 MiB encoded
+input limit, 32 MiB decoder allocation quota and 128 MiB process memory limit.
+
+PNG CRCs, complete framing and every row/pass are checked. JPEG requires
+explicit Huffman tables, exact framing and strict decoder error handling.
+Valid progressive JPEGs may end after an earlier complete scan, so successful
+decoding does not establish original download completeness or provenance.
+Saved-file metadata refresh and artwork replacement remain disabled.
+
+This candidate requires CI and independent MinGW package verification. Live
+installation, Spotify restart, merge and official release remain separate gates.
+
+## RC86 background - retain originals when FFmpeg reports errors
 
 Native and manual conversion now reject FFmpeg error output even when the
 converter exits with code zero. Both encoding and final audio validation run

@@ -89,9 +89,13 @@ for vendor in ["minhook", "libogg", "cef", "soggfy"]:
             root / "native" / "vendor" / vendor / "LICENSE.txt",
         )
     )
-for vendor, license_name in [("libvorbis", "COPYING"), ("libFLAC", "COPYING.Xiph")]:
+for vendor, license_name in [("libvorbis", "COPYING"), ("libFLAC", "COPYING.Xiph"),
+                             ("libpng", "LICENSE"), ("zlib", "LICENSE"),
+                             ("libjpeg-turbo", "LICENSE.md")]:
     files.append((f"third-party/{vendor}/LICENSE.txt",
                   root / "native/vendor" / vendor / license_name))
+files.append(("third-party/libjpeg-turbo/README.ijg",
+              root / "native/vendor/libjpeg-turbo/README.ijg"))
 
 archive_path = out / release_name
 # Keep previous packages and never expose a half-written replacement ZIP.

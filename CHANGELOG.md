@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.0-rc.87
+
+- Add bounded PNG/JPEG decoding to the build-pinned validation helper with an explicit image reply protocol.
+- Share supervised execution with audio validation; artwork receives a 4 MiB input cap, 128 MiB process limit, cancellation and deadlines.
+- Include pinned image-codec licenses and exercise valid images, malformed input and worker faults on Windows.
+- Keep saved-file metadata refresh and artwork replacement disabled pending provenance and filesystem preservation.
+
 ## 3.0.0-rc.86
 
 - Reject converter stderr errors even when FFmpeg returns success; retain originals in native and manual workflows.

@@ -18,6 +18,9 @@ elif [[ $# != 3 ]]; then
     exit 1
 fi
 objects=("$vorbis"/vorbis-*.o "$vorbis"/ogg-*.o)
+SGF_CODEC_OBJECTS_ONLY=1 "$PYTHON" tools/build_png_validation_test.py "$destination/png"
+SGF_CODEC_OBJECTS_ONLY=1 "$PYTHON" tools/build_jpeg_validation_test.py "$destination/jpeg"
+objects+=("$destination/png/"*.o "$destination/jpeg/"*.o)
 for unit in bitmath bitreader cpu crc fixed float format lpc md5 memory stream_decoder win_utf8_io; do
     objects+=("$flac/$unit.o")
 done

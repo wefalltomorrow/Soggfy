@@ -19,21 +19,21 @@ identity/ad isolation, native podcast MP3 capture and live validation remain ope
 
 # Upstream sources
 
-Offline JPEG validation uses libjpeg-turbo 3.2.1 commit
+JPEG validation uses libjpeg-turbo 3.2.1 commit
 7b4993786d856cbccabfc0ed2f923ba000e326cc (libjpeg-turbo/libjpeg-turbo).
 Selected decoder sources and templates are unmodified, with LICENSE.md,
 README.ijg and exact SHA-256 manifests in native/vendor/libjpeg-turbo.
 The test builder configures non-SIMD, non-arithmetic 64-bit GCC/Clang builds
 without environment-selected memory limits; Soggfy supplies the system allocator.
-This dependency is not linked into release binaries. Generated JPEG fixtures
+RC87 links this dependency into the supervised helper, not the DLL. Generated JPEG fixtures
 record their encoder, source pixels, options and hashes in tests/jpeg_fixtures.json.
 
-The offline static-PNG validation tests additionally use libpng 1.6.59,
+Static-PNG validation additionally uses libpng 1.6.59,
 commit cd952f49f95bb27154ae77dbb103032d95f6e580 (pnggroup/libpng), and zlib
 1.3.2, commit da607da739fa6047df13e66a2af6b8bec7c2a498 (madler/zlib).
 Selected source files are unmodified, with their upstream licenses and exact
 SHA-256 manifests in native/vendor/libpng and native/vendor/zlib. These libraries
-are not linked into the release DLL or packaged worker yet. Source versions are
+are linked into the RC87 helper, not the DLL. Source versions are
 pinned for reproducible tests; this is not a claim of universal PNG compatibility.
 
 The active x64 implementation started from:

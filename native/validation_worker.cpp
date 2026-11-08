@@ -2,6 +2,8 @@
 #include "validation_protocol.h"
 #include "vorbis_validation.h"
 #include "flac_validation.h"
+#include "png_validation.h"
+#include "jpeg_validation.h"
 #include <cwchar>
 #include <limits>
 namespace {
@@ -21,11 +23,32 @@ int wmain(int argc,wchar_t** argv) {
     uint64_t map=0,pipe=0,size=0,format=0;
     if(!Number(argv[1],map)||!Number(argv[2],pipe)||!Number(argv[3],size)||
        !Number(argv[4],format)||!map||!pipe||map>UINTPTR_MAX||pipe>UINTPTR_MAX||
-       !size||size>history::ValidationInputLimit||(format!=1&&format!=2))return 2;
+       !size||format<1||format>4||size>(format>=3?history::ArtworkInputLimit:history::ValidationInputLimit))return 2;
     HANDLE mapping=reinterpret_cast<HANDLE>(uintptr_t(map));
     HANDLE output=reinterpret_cast<HANDLE>(uintptr_t(pipe));
     auto view=static_cast<const uint8_t*>(MapViewOfFile(mapping,FILE_MAP_READ,0,0,size_t(size)));
     if(!view)return 3;
+    if(format>=3) {
+        history::ArtworkValidationReply image;
+        image.format=uint32_t(format);
+        bool valid=false;
+        if(format==3) {
+            SgfPngValidation decoded{};
+            valid=SgfValidatePng(view,size_t(size),&decoded)!=0;
+            image.width=decoded.width;image.height=decoded.height;
+            image.depth=decoded.bit_depth;image.channels=decoded.channels;
+        } else {
+            SgfJpegValidation decoded{};
+            valid=SgfValidateJpeg(view,size_t(size),&decoded)!=0;
+            image.width=decoded.width;image.height=decoded.height;
+            image.depth=8;image.channels=decoded.channels;image.progressive=decoded.progressive;
+        }
+        UnmapViewOfFile(view);CloseHandle(mapping);
+        DWORD written=0;
+        if(!valid||!history::ValidReply(image,history::ValidationFormat(format))||
+           !WriteFile(output,&image,sizeof(image),&written,nullptr)||written!=sizeof(image))return 4;
+        CloseHandle(output);return 0;
+    }
     history::ValidationReply reply;
     bool valid=false;
     try {

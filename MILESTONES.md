@@ -2,7 +2,8 @@
 
 Updated November 8, 2026. RC86 passed all four jobs in CI 42475271762 and
 independent artifact verification at source 2d5e9f0cc9f90d47acdb7f7f1a8ff618324535ca.
-It is a checkpoint, not completion of all work.
+It is a checkpoint, not completion of all work. RC87 adds supervised artwork
+validation to the packaged helper; its CI/package verification is pending.
 
 | Milestone | State | Completion evidence still required |
 | --- | --- | --- |
@@ -38,11 +39,19 @@ package SHA-256 is b5b4378b9ef28b66cbe96452dac1f4687d47a80f26d79fe9759785bbea563
 Ninety PNG layouts and 101 malformed cases run in each job. The preceding run
 failed on missing math-library linkage; this run includes the corrected link.
 
-JPEG now has an offline bounded decoder and regression corpus. Both image
+JPEG now has a bounded decoder and regression corpus. Both image
 decoders still need supervised-worker integration and source/replacement policy.
 Progressive JPEG scan-boundary probes demonstrate that valid decoding alone
 cannot prove original download completeness. JPEG CI is pending; no production
 artwork replacement or saved-recording metadata refresh is enabled.
+
+RC87 integrates both image decoders into the build-pinned helper with a distinct
+32-byte image reply. The shared supervisor checks the complete reply, retains
+source/worker locking and handle restrictions, and enforces cancellation and a
+deadline. Artwork has a 4 MiB input cap and 128 MiB process limit in addition to
+each decoder's 32 MiB allocation quota. Local Windows diagnostic tests cover
+valid/malformed images and supervisor faults; existing audio supervisor tests
+also pass. CI and independent MinGW package verification are pending.
 
 ## MP3 protected-frame follow-up
 

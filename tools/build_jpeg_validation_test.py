@@ -40,6 +40,12 @@ for unit in manifest['decoder_units']:
     obj=dest/(Path(unit).stem+'.o')
     subprocess.run([cc,'-std=c11',*flags,*includes,*definitions,'-c',str(vendor/unit),'-o',str(obj)],check=True)
     objects.append(str(obj))
+obj=dest/'jpeg-validation.o'
 subprocess.run([cc,'-std=c11','-UNDEBUG','-Wall','-Wextra','-Werror',*flags,*includes,*definitions,
-                'native/jpeg_validation.c','tests/jpeg_validation_test.c',*objects,'-lm',
+                '-c','native/jpeg_validation.c','-o',str(obj)],check=True)
+objects.append(str(obj))
+if os.environ.get('SGF_CODEC_OBJECTS_ONLY')=='1':
+    raise SystemExit(0)
+subprocess.run([cc,'-std=c11','-UNDEBUG','-Wall','-Wextra','-Werror',*flags,*includes,*definitions,
+                'tests/jpeg_validation_test.c',*objects,'-lm',
                 '-o',str(dest/'jpeg-validation-test.exe')],check=True)

@@ -175,6 +175,10 @@ jobs:
               "VALIDATION_WORKER.txt",
               "third-party/libvorbis/LICENSE.txt",
               "third-party/libFLAC/LICENSE.txt",
+              "third-party/libpng/LICENSE.txt",
+              "third-party/zlib/LICENSE.txt",
+              "third-party/libjpeg-turbo/LICENSE.txt",
+              "third-party/libjpeg-turbo/README.ijg",
           }
           with zipfile.ZipFile(sys.argv[1]) as z:
               names = set(z.namelist())
