@@ -1,5 +1,262 @@
 # Changelog
 
+## 3.0.0-rc.87
+
+- Add bounded PNG/JPEG decoding to the build-pinned validation helper with an explicit image reply protocol.
+- Share supervised execution with audio validation; artwork receives a 4 MiB input cap, 128 MiB process limit, cancellation and deadlines.
+- Include pinned image-codec licenses and exercise valid images, malformed input and worker faults on Windows.
+- Keep saved-file metadata refresh and artwork replacement disabled pending provenance and filesystem preservation.
+
+## 3.0.0-rc.86
+
+- Reject converter stderr errors even when FFmpeg returns success; retain originals in native and manual workflows.
+- Monitor a fixed error pipe, terminate error-producing converter jobs and restrict inherited handles.
+- Test single-byte and pipe-filling diagnostics during encoding and validation on native Windows and both PowerShell versions.
+
+## 3.0.0-rc.82
+
+- Build the validation helper from pinned Vorbis/FLAC sources, finalize and inspect its dependencies before compiling its hash into the DLL.
+- Package identical helpers for automatic and launcher modes with codec licenses and checksums.
+- Install helpers under build-hash filenames; retain earlier builds for rollback and reject conflicting contents.
+- Extend installer rollback and uninstall ownership tests to helper deployment.
+- Keep saved-recording rewriting disabled pending filesystem preservation, artwork policy and production coordination.
+
+## 3.0.0-rc.81
+
+- Retain validated cached line-synchronized lyrics without downgrading them to matching plain text.
+- Add owned native-recording inspection, minimal text/lyrics planning and independent output verification.
+- Add pinned full Vorbis/FLAC payload validators and a resource-limited Windows validation worker prototype.
+- Exercise held-identity publication, rollback and settings-generation fencing in isolated Windows fixtures.
+- Join inspection, isolated decoding, exact coverage checks and verified staging in an offline preparation path.
+- Keep saved-recording rewriting and the worker out of production pending filesystem preservation and deployment work.
+
+## 3.0.0-rc.80
+
+- Share bounded Vorbis-comment parsing across Ogg/FLAC tags and native recording identity.
+- Reject oversized output and comment counts that the readers cannot accept.
+- Preserve raw vendor/field data in the shared representation; add round-trip and boundary tests.
+- Separate completed in-memory metadata work from the unfinished saved-recording refresh milestone.
+
+## 3.0.0-rc.79
+
+- Include final corroborated metadata at same-instance completion and refresh pending candidates.
+- Fence refreshes by exact client URI/playback ID and listen generation; preserve completed coverage.
+- Retain optional fields when temporarily absent, without an extra active artwork copy.
+- Exercise the portable snapshot/refresh policy in native, Windows and sanitizer suites.
+
+## 3.0.0-rc.78
+
+- Reject stale Classic queue lookups/events after playback identity or skip policy changes.
+- Preserve per-entry reservations and ordinary same-instance timeline updates.
+- Add playback-transition and collector position/clock regression coverage.
+
+## 3.0.0-rc.77
+
+- Add Classic/INI log levels 0/1/2/4 with legacy flag migration and default level 1.
+- Isolate activity and diagnostics in bounded queues/files; count drops and recheck verbosity at drain.
+- Add concurrent queue, Windows file-isolation and Classic settings regressions.
+- Include both diagnostic tails and restore Unicode punctuation in edited documentation.
+
+
+## 3.0.0-rc.76 - sanitizer coverage and optional FLAC artwork (test build)
+
+FLAC publication no longer fails when artwork is missing, disabled, oversized or
+unsupported. Existing pictures survive when no usable replacement is available;
+a valid replacement is inserted once. Compressed audio remains byte-identical.
+
+CI and release builds now require two deterministic Clang ASan/UBSan campaigns
+(20,000 mutations each, seeds 4043931417 and 1592594996), plus instrumented
+regressions. Valid baseline Ogg, FLAC, ID3 and playback observations are asserted
+before truncation/mutation. Models exercise buffers, coverage, decoder scope,
+owner conflicts and listening at 1x-30x. This is bounded portable coverage, not
+proof of Windows callback races, native playback ownership or live compatibility.
+
+RC75 passed MinGW CI and independent artifact verification. RC76 sanitizer/CI
+results remain pending until its workflow finishes. Native identity, podcast
+capture, concurrent association and the other MILESTONES.md entries remain open.
+Live installation, merge and official release retain separate approval gates.
+
+## 3.0.0-rc.75 - maintenance reliability (test build)
+
+RC75 snapshots and hashes the selected installation directory before xpui repair,
+SpotX or Soggfy publication. Failure restores originals and removes new files.
+Failed rollback retains recovery files and a manifest. Reparse points are rejected.
+The transaction covers installation files, not external changes or crash recovery.
+
+Manual watch conversion coalesces up to 4,096 paths while encoding, reconciles
+on startup/overflow/directory changes, and scans every 60 seconds as a fallback.
+Classic Generate M3U waits for a correlated native saved/canceled/failed result;
+only successful publication reports Saved. Malformed rows reject the whole export.
+
+Local validation includes PowerShell 5.1/7 fault injection and queue tests, real
+FFmpeg watch/rename recovery, JavaScript acknowledgements and a Windows native
+metadata fixture. MinGW CI and independent package verification remain required.
+
+The RC74 compatibility check searched the wrong module. Upstream discovery works
+in the pinned Spotify.dll; playback-ID layout and lifetime remain unverified.
+See NATIVE_IDENTITY_AUDIT.md and MILESTONES.md. Live installation, merge and
+official release remain separately gated.
+
+## 3.0.0-rc.74 — client playback boundaries (test build)
+
+RC74 adds cached client playback IDs, position, pause/buffering and active-device
+flags independently of optional metadata enrichment. Client identity is accepted
+only when SMTC labels, duration and position agree. Delayed disagreement waits
+up to the existing three-second observation timeout. Explicit IDs distinguish
+repeats from same-instance rewinds; missing identity after it was seen cannot
+silently fall back to title-only identity.
+
+Unknown/unsupported content, an explicitly inactive device and stale heartbeats
+fence capture events on entry and exit. The worker discards pending captures and
+listening coverage, including A -> interstitial -> A. Decoder scopes retain their
+entry fence; audio callbacks read a lock-free atomic. Downloads-off quality
+observation remains bounded. Already-selected publication jobs may finish.
+
+This is client observation, not exact decoder-to-playback binding. Capture/listen
+selection still uses timing/duration and known decoder ownership. One-second
+polling can miss brief interstitials; preloads, pointer reuse and unscoped callbacks
+remain gaps. Missing/inconsistent timeline fields may discard valid recordings.
+No claim is made that all ads are isolated or historical pauses/stalls are fixed.
+
+Correction (November 8, 2026): that compatibility check searched Spotify.exe,
+the wrong module. Upstream discovery succeeds in the pinned Spotify.dll.
+See NATIVE_IDENTITY_AUDIT.md for evidence and remaining validation gaps.
+
+Includes RC63–RC73, Classic UI, file-based status, Unicode/custom/legacy/podcast
+paths, strict Ogg/FLAC validation, MP3 320 kbps and 1x–30x. Downloads off stays
+at effective 1x and preserves the selection. Full CI and package verification are
+required. This candidate does not authorize installation, merge or release.
+
+
+## 3.0.0-rc.73 — decoder-event isolation (test build)
+
+RC73 rejects Ogg/FLAC callback events whose capture settings changed while the
+original decoder call was running. A locked policy snapshot pairs codec enablement
+with its epoch. A thread-local scope carries decoder pointer and entry epoch through
+nested calls and restores the outer scope on return. Known conflicting owners
+discard the active capture. Ogg and FLAC use separate capture namespaces.
+Queue-loss generations reject stale callbacks and clear queued backlog after overflow.
+
+This is decoder-event isolation, not a Spotify playback-instance identity bridge.
+Unscoped callbacks retain legacy association; pointer reuse, advertisement attribution
+and completed-capture/listen association still require separate work and live evidence.
+The shared policy lock does no disk I/O, but live decoder latency remains unmeasured.
+Historical stalls are not claimed fixed.
+
+
+## 3.0.0-rc.72 — track identity and album provenance (test build)
+
+- Carry validated album URI through cached/live metadata to native tags; reject
+  conflicting track/album identities and avoid cross-album cached enrichment.
+- Route verified different-track filename conflicts into Duplicates, preserving
+  configured hierarchy with 10/14/22-character track ID suffixes. Reuse matching
+  longer suffixes before choosing vacant ones, including converted MP3 copies.
+- Read structural Ogg/FLAC comments and MP3 ID3 text tags with bounded reads.
+  Classic excludes explicit foreign identities and requires exact tags for duplicates.
+- Lock and recheck quality-upgrade destinations, retain the previous complete file
+  during publication, and publish without replacing a concurrent creator.
+- Preserve audio-stream metadata during native and manual FFmpeg conversion;
+  real Ogg-to-MP3 regression exposed the previous metadata loss.
+- Keep legacy/custom/podcast paths, Classic controls and 1x–30x behavior.
+  Decoder ownership, native podcast MP3 capture and live validation remain separate.
+
+## 3.0.0-rc.71 — upstream safety ports and uninstall ownership (test build)
+
+- Adapt Floggfy v1.3-RC6 buffer allocation recovery: prevent leaks when vector
+  growth throws and reuse spare blocks after partial allocation failure.
+- Inspect Spotify.exe and Soggfy.dll PE architecture before the launcher stops
+  Spotify; reject x86, ARM64, malformed and unreadable inputs.
+- Verify installed version.dll against the matching package before uninstall
+  touches processes, settings or backups. Lock during verification and recheck
+  identity before deleting by handle; Force does not bypass ownership.
+- Gate allocation fault injection, launcher preflight and PowerShell 5.1/7
+  uninstall regressions. Document remaining Floggfy feature gaps in UPSTREAMS.md.
+- Keep the pinned client and Classic UI with 1x–30x controls. Capture architecture
+  changes and live playback validation remain separate work.
+
+## 3.0.0-rc.70 — bounded conversion and source protection (test build)
+
+- Bound manual encoding and validation with a shared configurable deadline; supervise
+  executable/wrapper descendants in a Windows job, including on parent exit.
+- Continue watch processing after a hung converter; preserve failed sources and
+  remove temporary outputs when normal timeout cleanup runs.
+- Lock fresh native sources throughout conversion, matching retry protection.
+- Recheck file identity, size and timestamps before optional deletion, then delete
+  by the opened handle in both manual and native conversion.
+- Require timeout, child cleanup, Unicode wrapper paths, watcher recovery, source
+  replacement and PowerShell 5.1/7 regression checks in CI and release builds.
+- Preserve earlier candidates. Live Spotify validation remains required.
+
+## 3.0.0-rc.69 — conversion, queue and export reliability (test build)
+
+- Reject damaged-source encoding, support all built-in AAC fallback aliases, resolve relative manual inputs and reconcile/retry watched files.
+- Bound queue waits with per-player ownership and pending-removal reservations. Separate regex and result caches for larger working sets.
+- Paginate M3U collections, batch all status requests, reject incomplete responses and preserve prior playlists on failed saves.
+- Accept newer coalesced settings saves and read their failure result consistently.
+- Preflight installation earlier; retain older packages and replace ZIPs only after successful packaging.
+- Extend portable and Windows CI/release gates and document the remaining live-validation limits.
+
+## 3.0.0-rc.68 — large-library lookup and conversion retries (test build)
+
+- Filter impossible filenames before regex matching, retain match caches across unchanged rescans, and recheck unreadable candidates. Extend the benchmark to 32,768 files and 128 queries.
+- Bound directory traversal and cooperatively cancel obsolete/expired requests. Report incomplete scans as uncertain instead of authoritative downloaded/missing status.
+- Page visible rows beyond 128 and discard obsolete pages. Bind pending queue events to their player, settings, policy and age.
+- Validate manual conversion output before original deletion; use MP3 320 kbps, unique temporary files and publication without overwrite.
+- Retry conversion of recognized, fully decoded existing Ogg/FLAC files when capture reaches an existing-file branch. Preserve those originals and conflicting destinations.
+- Require real FFmpeg tests in the shared Windows maintenance runner and use checked procedure-pointer loading. Preserve RC63–RC67 and the separate live-validation gate.
+
+## 3.0.0-rc.67 — conversion safety and status maintenance (test build)
+
+- Protect native audio when an existing conversion destination is invalid, unreadable or a directory. Fully decode new output before publication and optional original deletion. Retain originals even when a pre-existing output decodes, since its capture identity is unproven.
+- Give conversion a size-based deadline and capture cancellation. Supervise FFmpeg and its children through a Windows process job; preserve native audio on failure.
+- Correlate status requests/replies, handle empty/late replies and send failures, coalesce duplicate work and bound pending requests/caches. Invalidate on matching-setting/publication changes and expire queue results after three seconds. Retry failed removals with fresh status and discard obsolete queue/player work.
+- Verify real readable nonempty files for DONE, including recent publications and ambiguous matches. Preserve Unicode, multiple artists, legacy paths and podcast/custom extensions.
+- Separate library lookup from export/Canvas and metadata processing. Reuse bounded compiled expressions and per-index matches, with ten-second external-file reconciliation and scan/compile/match diagnostics.
+- Harden bounded Vorbis/FLAC identification without relaxing full capture validation or replacement protection. Add protocol, Windows filesystem/process and malformed-header regression tests to CI/release workflows.
+- Retain RC63–RC66 behavior and comparison packages. Automated validation does not establish a fix for random Spotify pauses.
+
+## 3.0.0-rc.66 — repeat instances and delayed titles (test build)
+
+- Confirm a same-title repeat after a natural end, visible timeline reset and one second of continuous playback. Assign separate generations to listens so repeats run normal transition cleanup.
+- Reconcile a delayed title within two seconds of the original reset without emitting a second completion or changing the instance's start. Keep completion time, duration and capture ownership tied to the original listen.
+- Expose newer raw SMTC backward resets to the accelerated listen tracker while preserving monotonic progress across ordinary timestamp refreshes. Judge elapsed progress using the preceding speed.
+- Reject interrupted, stale, invalid or discontinuous repeat evidence. Add bounded transition diagnostics and portable tests at 1x, 2x, 10x and 30x, including pauses, seeks, delayed labels, short tracks and capture ownership.
+- Selectively adapt Floggfy's repeat and identity work; retain RC63–RC65 fixes. Synthetic tests do not establish live Repeat One reliability or solve random Spotify pauses. Accelerated repeats without a distinct raw reset may remain unrecognized.
+
+## 3.0.0-rc.65 — retain late capture completion (test build)
+
+- Preserve an unfinished Ogg/FLAC capture across a track transition when a completed, nonignored listen is awaiting it. Retention ends at that listen's existing ten-second deadline and remains inside the shared memory budget.
+- Bind retained candidates to their original completed listen; later skips/repeats cannot extend the deadline or take that audio. Release retained buffers when the listen is queued, rejected or expires.
+- Wait for a competing retained capture before selecting one ready stream. Reject ambiguous results and unresolved competitors at the deadline. Keep strict codec completeness and the existing -20/+3-second start window.
+- Add portable regressions using production cleanup/selection policy, Ogg validation, FLAC coverage and accelerated Listen tracking. RC64 observer and RC63 recovery fixes remain included. Live validation is still required; this does not establish the cause of historical missing-stream failures or random pauses.
+
+## 3.0.0-rc.64 — isolate Windows media reads from capture (test build)
+
+- Move blocking Windows media and artwork reads onto a dedicated observer. The capture worker consumes bounded, sequenced snapshots through a short try-lock.
+- Preserve sample timestamps taken before artwork retrieval, the accelerated position clock, selected 1x–30x speed and Downloads-off effective 1x behavior.
+- Reject stale, invalid, skipped and obsolete-settings observations; a missing observation still invalidates listen coverage after three seconds. Stop does not wait on Windows and a stopping observer cannot be replaced until it finishes.
+- Add a Windows test with a deliberately blocked provider, configuration revision changes and stop/restart checks. Run this focused test in CI and release builds. Add portable 30x timing, delayed-delivery and pause/resume regressions.
+- Selectively adapt Floggfy's observer boundary without importing its normal-speed timeline assumptions, network defaults or late-capture/repeat state changes. RC63 recovery fixes remain included. Random pauses and missing-stream association still require investigation and live testing.
+
+## 3.0.0-rc.63 — cancel recovery across asynchronous queue operations (test build)
+
+- Recheck playback state after the real queue lookup and insertion, before a watchdog retry advances playback. A pause during either operation now cancels the pending skip.
+- Cancel pending recovery when Downloads is disabled, accelerated recovery becomes unsupported, the track changes, or the PlayerAPI instance changes.
+- Observe pause/resume and track changes while queue operations are pending; invalidate old recovery work and preserve the single-operation lock until it settles.
+- Reset the retry budget on cancellation and give resumed playback a fresh grace period.
+- Add integration regressions using the real reset helper and deliberately delayed queue promises. These changes do not claim to fix decoder stalls or missing stream association.
+- Link MinGW's supplied floating-point environment object explicitly to resolve the Windows DLL link failure with the updated CI runtime. Keep the existing msvcrt target.
+- Statically link the launcher's MinGW runtime dependencies and check both binaries in CI/release packaging, preventing a missing libwinpthread-1.dll dependency in the all-in-one ZIP.
+
+## 3.0.0-rc.62 — pause-safe recovery and diagnostic logging
+
+- Log actual pause/resume state transitions during accelerated capture, including state evidence (player flags versus UI fallback). Never infer the cause of the pause.
+- Recheck track identity **and playback mode** immediately before retry and skip; abort if the player became paused or its state unknown.
+- Reset the retry budget on pause and reset the wall-clock watchdog grace period on resume, preventing delayed skips due to earlier pauses.
+- Add automated tests for a pause arriving during a watchdog tick, an asynchronous failed reset that leaves the player paused, and contradictory PlayerAPI flags.
+- Leave the validated 1x–30x cap, native decoder, MP3 post-processing, on-disk green ticks and Spotify queue skipping unchanged.
+
+
 ## 3.0.0-rc.61 — optional artwork no longer blocks downloads
 
 - Preserve complete audio when an optional Vorbis cover image is missing, oversized or unsupported.

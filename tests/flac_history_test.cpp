@@ -13,6 +13,12 @@ static std::vector<uint8_t> source() {
 }
 int main(int argc,char**argv) {
     auto b=source(); FlacInfo info; size_t audio=0;
+    {
+        Tags excessive;excessive.fields.resize(100001,{"X",""});
+        std::vector<uint8_t> rejected;std::string why;
+        check(!TagFlac(b,excessive,rejected,why)&&rejected.empty(),
+              "writer rejects field counts that the reader cannot accept");
+    }
     check(ParseFlacMetadata(b,info,audio)==FlacParse::Valid && audio==42 && info.rate==44100 && info.channels==2 && info.bits==16 && info.total_samples==8192,"STREAMINFO layout and metadata end");
     auto partial=b; partial.resize(30); check(ParseFlacMetadata(partial,info,audio)==FlacParse::NeedMore,"partial metadata stays in RAM");
     auto bad=b; bad[7]=33; check(ParseFlacMetadata(bad,info,audio)==FlacParse::Invalid,"invalid STREAMINFO rejected");
@@ -33,6 +39,32 @@ int main(int argc,char**argv) {
     while(p<start) { unsigned kind=out[p]&127; size_t n=(size_t(out[p+1])<<16)|(size_t(out[p+2])<<8)|out[p+3]; comments+=kind==4; pictures+=kind==6; p+=4+n; }
     check(comments==1 && pictures==1,"one native VORBIS_COMMENT and PICTURE block");
     auto duplicate=out; check(TagFlac(duplicate,tags,out,error),"retagging replaces metadata rather than stacking");
+    const auto with_picture=out;
+    auto blocks=[](const std::vector<uint8_t>& bytes,unsigned kind) {
+        std::vector<std::vector<uint8_t>> found;FlacInfo parsed;size_t end=0;
+        check(ParseFlacMetadata(bytes,parsed,end)==FlacParse::Valid,"retagged metadata valid");
+        for(size_t offset=4;offset<end;) {
+            size_t length=(size_t(bytes[offset+1])<<16)|(size_t(bytes[offset+2])<<8)|bytes[offset+3];
+            if((bytes[offset]&127)==kind)found.emplace_back(bytes.begin()+offset+4,bytes.begin()+offset+4+length);
+            offset+=4+length;
+        }
+        return found;
+    };
+    for(unsigned mode=0;mode<3;++mode) {
+        Tags optional;optional.fields={{"TITLE","Updated without new artwork"}};
+        if(mode==1){optional.cover={1,2,3};optional.mime="image/gif";}
+        if(mode==2){optional.cover.resize(4*1024*1024+1);optional.mime="image/png";}
+        check(TagFlac(b,optional,out,error),"missing/unsupported/oversized artwork does not prevent capture");
+        check(blocks(out,6).empty(),"no unusable picture inserted");
+        check(ParseFlacMetadata(out,tagged,start)==FlacParse::Valid &&
+              std::vector<uint8_t>(out.begin()+start,out.end())==std::vector<uint8_t>(b.begin()+audio,b.end()),
+              "no-artwork tagging preserves exact audio");
+        check(TagFlac(with_picture,optional,out,error),"existing artwork survives absent replacement");
+        check(blocks(out,6)==blocks(with_picture,6),"existing picture bytes preserved");
+    }
+    Tags replacement=tags;replacement.cover.push_back(42);
+    check(TagFlac(with_picture,replacement,out,error),"valid replacement accepted");
+    check(blocks(out,6).size()==1 && blocks(out,6)!=blocks(with_picture,6),"valid artwork replaces old picture once");
     if(argc==4) {
         FILE* f=fopen(argv[1],"rb"); check(f,"real source opens"); fseek(f,0,SEEK_END); b.resize(ftell(f)); rewind(f); check(fread(b.data(),1,b.size(),f)==b.size(),"real source read"); fclose(f);
         f=fopen(argv[2],"rb"); check(f,"real artwork opens");

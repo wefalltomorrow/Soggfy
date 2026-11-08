@@ -5,6 +5,7 @@ namespace history {
 struct Settings {
     bool downloads=false,ogg=true,flac=true,menu=false,classic_ui=true,music_folder=false;
     bool metadata=true,log=true,debug_log=false,normalize_artist_separators=true;
+    bool network_patch=false; // INI-only, fixed at startup; never persisted by UI saves.
 
     // Classic Soggfy behaviour/settings.
     double playback_speed=1.0;
@@ -14,6 +15,7 @@ struct Settings {
     bool block_telemetry=true,lift_add_to_queue=false;
     bool keep_native_original=true;
 
+    unsigned log_level=1;
     unsigned max_buffered_mib=500,generation=0,capture_epoch=0;
     std::wstring root,save_location,path_template;
     std::wstring podcast_template,canvas_template,invalid_char_repl=L"unicode";
@@ -23,10 +25,26 @@ struct Settings {
 void InitSettings(HMODULE proxy);
 Settings GetSettings();
 
+// Hold only around the final namespace mutation, after decoding/staging.
+// A valid guard blocks setters and proves downloads/metadata remain enabled
+// at the exact generation used to prepare the update. Do not call settings
+// getters/setters or run arbitrary callbacks while holding this guard.
+class MetadataPublicationGuard {
+    bool held_=false;
+public:
+    explicit MetadataPublicationGuard(unsigned expected_generation);
+    ~MetadataPublicationGuard();
+    MetadataPublicationGuard(const MetadataPublicationGuard&)=delete;
+    MetadataPublicationGuard& operator=(const MetadataPublicationGuard&)=delete;
+    explicit operator bool()const{return held_;}
+};
+
 bool SetDownloads(bool enabled);
 bool SetOgg(bool enabled);
 bool SetFlac(bool enabled);
 bool SetMetadata(bool enabled);
+bool SetLogLevel(unsigned level);
+unsigned LogLevel();
 bool SetLogging(bool enabled);
 bool SetDebugLogging(bool enabled);
 bool SetNormalizeArtistSeparators(bool enabled);
@@ -56,6 +74,8 @@ bool SetSaveLocation(const std::wstring& root);
 bool OggEnabled();
 bool FlacEnabled();
 unsigned CaptureEpoch();
+struct CapturePolicy {unsigned epoch;bool ogg,flac;};
+CapturePolicy ReadCapturePolicy();
 bool EnsureDirectory(const std::wstring& path);
 std::wstring WindowsPath(const std::wstring& path);
 void PickSaveLocation(HWND owner);

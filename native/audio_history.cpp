@@ -3,6 +3,9 @@
 #include "ogg_history_core.h"
 #include "ogg_tags.h"
 #include "flac_history_core.h"
+#include "capture_association.h"
+#include "decoder_context.h"
+#include "client_playback.h"
 #include "history_settings.h"
 #include "hook_init_state.h"
 #include "hook_rollback.h"
@@ -19,6 +22,7 @@
 #include "existing_quality.h"
 #include "file_publication.h"
 #include "media_session.h"
+#include "listen_metadata.h"
 #include "spotify_hook_discovery.h"
 #include "vendor/minhook/include/MinHook.h"
 #include <algorithm>
@@ -31,6 +35,7 @@
 
 namespace {
 using namespace history;
+static std::atomic<bool> workers_running{false};
 struct OggPage { unsigned char* header; int32_t header_length; unsigned char* body; int32_t body_length; };
 static_assert(sizeof(OggPage)==32 && offsetof(OggPage,body)==16,"Windows x64 libogg ABI");
 using PageSeek = int32_t(*)(void*,OggPage*);
@@ -49,7 +54,7 @@ FlacFrame original_flac_frame;
 FlacError original_flac_error;
 void* flac_targets[4]={};
 hooks::CallbackCounter audio_callbacks;
-struct Slot { uintptr_t context; unsigned length; double time; unsigned kind,epoch; uint64_t input_length;
+struct Slot { uintptr_t context,owner; unsigned length; double time; unsigned kind,epoch; LONG loss; uint64_t input_length,boundary;
     uint32_t format; bool matched,capture; unsigned char bytes[65307]; };
 constexpr unsigned capacity=128;
 Slot* queue;
@@ -60,6 +65,18 @@ volatile LONG dropped=0,calls=0,pages=0;
 std::atomic<bool> quality_enabled{false};
 std::wstring output;
 size_t memory_limit=500*1024*1024;
+struct CaptureEvent {unsigned epoch;LONG loss;uintptr_t owner;bool capture;uint64_t boundary;};
+static CaptureEvent BeginEvent(bool flac) {
+    const auto policy=ReadCapturePolicy();
+    const auto scope=decoder_context;
+    const auto current_boundary=client_playback.Token();
+    const auto boundary=scope.active?scope.boundary:current_boundary;
+    return {scope.active?scope.epoch:policy.epoch,InterlockedCompareExchange(&dropped,0,0),scope.owner,
+        boundary==current_boundary&&!(boundary&1)&&(flac?policy.flac:policy.ogg)&&(!scope.active||scope.epoch==policy.epoch),boundary};
+}
+static bool EventCurrent(const CaptureEvent& e) {
+    return e.epoch==CaptureEpoch()&&e.loss==InterlockedCompareExchange(&dropped,0,0)&&e.boundary==client_playback.Token();
+}
 static double Now() { return double(GetTickCount64())/1000.0; }
 static void Log(const char* message) {
     HistoryLog(message);
@@ -96,19 +113,21 @@ static void* DiscoveredTarget(HMODULE module,const spotify::HookTargets& targets
 }
 static int32_t Hook(void* sync,OggPage* page) {
     auto callback=audio_callbacks.Enter();
+    const auto entry=BeginEvent(false);
     int32_t result=original(sync,page);
     InterlockedIncrement(&calls);
-    const bool capture=OggEnabled();
+    const bool capture=entry.capture;
     if(!capture && !quality_enabled.load(std::memory_order_relaxed)) return result;
     if(result<=0 || !page || page->header_length<27 || page->header_length>282 ||
        page->body_length<0 || page->body_length>65025 ||
        page->header_length+page->body_length!=result || result>65307) return result;
     InterlockedIncrement(&pages);
     AcquireSRWLockExclusive(&queue_lock);
+    if(!EventCurrent(entry)){ReleaseSRWLockExclusive(&queue_lock);return result;}
     if(count==capacity) InterlockedIncrement(&dropped);
     else {
         Slot& s=queue[tail]; s.context=reinterpret_cast<uintptr_t>(sync);
-        s.length=unsigned(result); s.time=Now(); s.kind=0; s.epoch=CaptureEpoch(); s.capture=capture;
+        s.length=unsigned(result); s.time=Now(); s.kind=0; s.epoch=entry.epoch; s.capture=capture;s.owner=entry.owner;s.loss=entry.loss;s.boundary=entry.boundary;
         std::memcpy(s.bytes,page->header,page->header_length);
         if(page->body_length) std::memcpy(s.bytes+page->header_length,page->body,page->body_length);
         tail=(tail+1)%capacity; ++count;
@@ -138,17 +157,18 @@ static bool Pop(Slot& s) {
     if(ready) { s=queue[head]; head=(head+1)%capacity; --count; }
     ReleaseSRWLockExclusive(&queue_lock); return ready;
 }
-static void FlacEvent(void* context,unsigned kind,const void* bytes=nullptr,size_t n=0,unsigned status=0) {
-    const bool capture=FlacEnabled();
+static void FlacEvent(void* context,const CaptureEvent& entry,unsigned kind,const void* bytes=nullptr,size_t n=0,unsigned status=0) {
+    const bool capture=entry.capture;
     if(!capture && !quality_enabled.load(std::memory_order_relaxed)) return;
     AcquireSRWLockExclusive(&queue_lock);
+    if(!EventCurrent(entry)){ReleaseSRWLockExclusive(&queue_lock);return;}
     do {
         unsigned amount=unsigned(std::min(n,size_t(65307)));
         if(count==capacity) { InterlockedIncrement(&dropped); break; }
         Slot& s=queue[tail]; s.context=reinterpret_cast<uintptr_t>(context); s.kind=kind;
         s.capture=capture; s.input_length=amount;
         s.length=(!capture && kind==3) ? std::min(amount,42u) : amount;
-        s.time=Now(); s.format=status; s.epoch=CaptureEpoch();
+        s.time=Now(); s.format=status; s.epoch=entry.epoch;s.owner=entry.owner;s.loss=entry.loss;s.boundary=entry.boundary;
         if(s.length) memcpy(s.bytes,bytes,s.length);
         tail=(tail+1)%capacity; ++count;
         n-=amount;
@@ -158,42 +178,51 @@ static void FlacEvent(void* context,unsigned kind,const void* bytes=nullptr,size
 }
 static void* FlacInitHook(void* context,void* result) {
     auto callback=audio_callbacks.Enter();
-    FlacEvent(context,2);
+    FlacEvent(context,BeginEvent(true),2);
     return original_flac_init(context,result);
 }
 static int FlacReadHook(void* context,unsigned char* buffer,size_t* length) {
     auto callback=audio_callbacks.Enter();
+    const auto entry=BeginEvent(true);
     size_t requested=*length;
     int status=original_flac_read(context,buffer,length);
-    if(status==0 && *length && *length<=requested) FlacEvent(context,3,buffer,*length);
-    else if(status==1 && !*length) FlacEvent(context,6);
-    else if(status!=0 || *length>requested) FlacEvent(context,5,nullptr,0,unsigned(status));
+    if(status==0 && *length && *length<=requested) FlacEvent(context,entry,3,buffer,*length);
+    else if(status==1 && !*length) FlacEvent(context,entry,6);
+    else if(status!=0 || *length>requested) FlacEvent(context,entry,5,nullptr,0,unsigned(status));
     return status;
 }
 static int FlacFrameHook(void* context,const void* frame,const void* pcm) {
     auto callback=audio_callbacks.Enter();
+    const auto entry=BeginEvent(true);
     int status=original_flac_frame(context,frame,pcm);
-    if(status==0) FlacEvent(context,4,frame,32);
-    else FlacEvent(context,5,nullptr,0,unsigned(status));
+    if(status==0) FlacEvent(context,entry,4,frame,32);
+    else FlacEvent(context,entry,5,nullptr,0,unsigned(status));
     return status;
 }
 static void FlacErrorHook(void* context,unsigned error) {
     auto callback=audio_callbacks.Enter();
+    const auto entry=BeginEvent(true);
     original_flac_error(context,error);
-    FlacEvent(context,5,nullptr,0,error);
+    FlacEvent(context,entry,5,nullptr,0,error);
 }
 struct Capture {
+    CaptureOwner owner;
     Stream stream;
     bool lossless=false,metadata=false;
     FlacInfo flac;
     FlacCoverage coverage;
     double born=0,finished=0;
+    CaptureRetention retention;
     uint64_t bytes=0;
     CompressedBuffer data;
     double Duration() const { return lossless && flac.rate ? double(coverage.samples)/flac.rate : stream.Duration(); }
     Quality Encoding() const { return lossless ? Quality{Codec::Flac,flac.rate,flac.channels,flac.bits,0} : Quality{Codec::Vorbis,stream.rate,stream.channels,0,stream.bitrate}; }
 };
-struct Heard { Media media; double start=0,finish=0; };
+struct Heard {
+    Media media; double start=0,finish=0; uint64_t generation=0;
+    std::string identity;bool exact_identity=false;
+    size_t retention_conflicts=0;
+};
 static Catalog CatalogFor(const Media& media) {
     Catalog c; c.title=media.title; c.album=media.album; c.track=media.track;
     c.album_artist=media.album_artist;
@@ -230,8 +259,9 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
         ?settings.podcast_template:settings.path_template;
     std::wstring destination=OutputPath(settings.root,catalog,c.lossless ? L".flac" : L".ogg",
         settings.music_folder,active_template,settings.normalize_artist_separators,settings.invalid_char_repl);
-    std::wstring flac=OutputPath(settings.root,catalog,L".flac",
-        settings.music_folder,active_template,settings.normalize_artist_separators,settings.invalid_char_repl);
+    destination=ResolveRecordingPath(settings.root,destination,catalog.spotify_uri,settings.output_ext);
+    if(destination.empty())return {Publication::Failed,{},"Recording identity conflict; existing files retained"};
+    std::wstring flac=destination.substr(0,destination.find_last_of(L'.'))+L".flac";
     {
         char line[1400];snprintf(line,sizeof(line),
             "destination=%s native=%s preset=%s output_ext=%s keep_native=%d embed_cover=%d embed_lyrics=%d save_cover=%d save_lyrics=%d",
@@ -241,12 +271,34 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
         LogActivity("publish_path",line);QueueDiagnostic(line);
     }
     Quality quality=c.Encoding(),lossless;
+    const auto retry_existing=[&](const std::wstring& path)->PublicationResult {
+        const auto existing_identity=ReadRecordingIdentity(path);
+        if((ValidSpotifyUri(catalog.spotify_uri,"track")||ValidSpotifyUri(catalog.spotify_uri,"episode"))&&
+           (existing_identity.state==IdentityState::Unknown||
+            (existing_identity.state==IdentityState::Tagged&&existing_identity.uri!=catalog.spotify_uri)))
+            return {Publication::Failed,path,"Recording identity changed; existing file retained"};
+        PostProcessControl control;
+        control.canceled=[generation=settings.generation,epoch=settings.capture_epoch] {
+            return !workers_running.load(std::memory_order_acquire)||CaptureEpoch()!=epoch||GetSettings().generation!=generation;
+        };
+        if(control.canceled())return {Publication::Skipped,path,"settings changed"};
+        const auto post=RetryPostProcessExistingFile(path,settings,control);
+        if(post.state==PostProcessResult::State::Failed) {
+            LogActivity("conversion_retry_failed",post.error);
+            return {Publication::Failed,path,post.error};
+        }
+        if(post.state==PostProcessResult::State::Converted) {
+            LogActivity("conversion_retry_done",Utf8(post.path));
+            return {Publication::Saved,post.path,{}};
+        }
+        return {Publication::Skipped,post.path.empty()?path:post.path,"Already downloaded"};
+    };
     if(!c.lossless && ReadQuality(flac,lossless) && lossless.codec==Codec::Flac) {
-        Log(("SKIP existing lossless file "+Utf8(flac)).c_str()); return {Publication::Skipped,flac,"Already downloaded"};
+        Log(("KEEP existing lossless file "+Utf8(flac)).c_str()); return retry_existing(flac);
     }
     SaveDecision decision=DecideSave(destination,quality);
     if(decision==SaveDecision::Skip) {
-        Log(("SKIP existing equal, higher or unverified quality "+Utf8(destination)).c_str()); return {Publication::Skipped,destination,"Already downloaded"};
+        Log(("KEEP existing equal, higher or unverified quality "+Utf8(destination)).c_str()); return retry_existing(destination);
     }
     Tags tags;
     tags.fields={{"TITLE",Utf8(heard.media.title)},{"ARTIST",Utf8(heard.media.artist)},
@@ -268,6 +320,15 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
     }
     if(!heard.media.genre.empty())tags.fields.push_back({"GENRE",Utf8(heard.media.genre)});
     EnrichTags(heard.media,tags);
+    if(ValidSpotifyUri(catalog.spotify_uri,"track")||ValidSpotifyUri(catalog.spotify_uri,"episode")) {
+        for(const auto& field:tags.fields)if(field.first=="SPOTIFY_URI"&&field.second!=catalog.spotify_uri)
+            return {Publication::Failed,{},"Metadata identity changed before publication"};
+        tags.fields.erase(std::remove_if(tags.fields.begin(),tags.fields.end(),[](const auto& field){
+            return field.first=="SPOTIFY_URI"||field.first=="SPOTIFY_ALBUM_URI";
+        }),tags.fields.end());
+        tags.fields.push_back({"SPOTIFY_URI",catalog.spotify_uri});
+        if(ValidSpotifyUri(catalog.spotify_album_uri,"album"))tags.fields.push_back({"SPOTIFY_ALBUM_URI",catalog.spotify_album_uri});
+    }
     std::string lyrics;
     for(auto it=tags.fields.begin();it!=tags.fields.end();) {
         if(it->first=="LYRICS") {
@@ -283,10 +344,10 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
     auto latest=GetSettings();
     if(latest.generation!=settings.generation || !latest.downloads || !(c.lossless ? latest.flac : latest.ogg)) return {Publication::Skipped,{},"settings changed"};
     if(!Directories(destination.substr(0,destination.find_last_of(L'\\')))) return {Publication::Failed,{},"output directory could not be created"};
-    // First and only audio disk write: the complete, tagged file. No scratch
-    // paths, sidecars, per-song directories, decoder or encoder are involved.
+    // Publish the complete tagged native capture before optional sidecars and
+    // conversion. Conflicts preserve the existing file and may retry conversion.
     auto publication=PublishBytes(destination,quality,tagged.data(),tagged.size());
-    if(publication==FilePublication::Skipped) return {Publication::Skipped,destination,"Already downloaded"};
+    if(publication==FilePublication::Skipped) return retry_existing(destination);
     if(publication==FilePublication::Failed) {
         Log("final publication failed; existing file retained");
         return {Publication::Failed,{},"final publication failed"};
@@ -314,11 +375,19 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
             Log("lyrics sidecar could not be written");
     }
 
-    auto post=PostProcessPublishedFile(destination,settings,heard.media.cover,heard.media.cover_extension);
+    PostProcessControl post_control;
+    post_control.canceled=[epoch=settings.capture_epoch] {
+        return !workers_running.load(std::memory_order_acquire)||CaptureEpoch()!=epoch;
+    };
+    auto post=PostProcessPublishedFile(destination,settings,heard.media.cover,heard.media.cover_extension,post_control);
     if(post.state==PostProcessResult::State::Failed) {
         auto detail="post-processing failed: "+post.error+" native="+Utf8(destination)+" output="+Utf8(post.path);
         LogActivity("failed",detail);QueueDiagnostic(detail.c_str());
         return {Publication::Failed,post.path,post.error};
+    }
+    if(!post.error.empty()) {
+        auto detail="post-processing warning: "+post.error+" native="+Utf8(destination);
+        LogActivity("warning",detail);QueueDiagnostic(detail.c_str());
     }
     {
         auto final_path=post.path.empty()?destination:post.path;
@@ -333,7 +402,6 @@ static BoundedQueue<SaveJob,2> saves;
 static HANDLE save_event=nullptr;
 static std::atomic<size_t> publishing_reserved{0};
 static std::atomic<unsigned> saved_count{0};
-static std::atomic<bool> workers_running{false};
 static hooks::InitController audio_init;
 static DWORD WINAPI SaveWorker(LPVOID) {
     while(workers_running.load(std::memory_order_acquire)) {
@@ -376,17 +444,27 @@ static DWORD WINAPI SaveWorker(LPVOID) {
 }
 static DWORD WINAPI Worker(LPVOID) {
     LONG overflow=0;
-    std::map<uintptr_t,std::unique_ptr<Capture>> active;
+    // Ogg sync and FLAC decoder pointers occupy distinct namespaces.
+    std::map<std::pair<unsigned,uintptr_t>,std::unique_ptr<Capture>> active;
     std::vector<std::unique_ptr<Capture>> ready;
     std::vector<Heard> heard;
-    Listen listen; MediaReader reader; Media current; PlaybackQualityTracker quality; std::string client_quality;
-    double next_media=0,next_log=0,next_probe=0;
+    Listen listen; MediaSnapshotReader reader; Media current; PlaybackQualityTracker quality; std::string client_quality;
+    double last_media=Now(),next_log=0,next_probe=0;
+    uint64_t media_sequence=0;bool observer_started=false,media_unavailable=false;
+    uint64_t client_boundary=0;double boundary_time=0;bool instance_seen=false;
     DecodeProbeSnapshot previous_probe{};
     LONG previous_ogg_calls=0,previous_ogg_pages=0;
     unsigned generation=~0u,epoch=~0u; bool enabled=false,current_ignored=false;
     try {
         while(workers_running.load(std::memory_order_acquire)) {
             double now=Now();
+            const auto client=client_playback.Read(now);
+            if(client.boundary!=client_boundary) {
+                client_boundary=client.boundary;boundary_time=now;
+                if(!current.title.empty())SetClassicTrackStatus(current,"ERROR","Canceled: client playback boundary");
+                active.clear();ready.clear();heard.clear();listen={};current={};quality.ClearStreams();
+                Log("client playback boundary; pending captures and listening coverage invalidated");
+            }
             auto preferences=GetSettings();
             const double playback_rate=ClassicEffectiveSpeed(
                 preferences.downloads,preferences.playback_speed,PlaybackSpeedSupported());
@@ -396,7 +474,8 @@ static DWORD WINAPI Worker(LPVOID) {
                 output=preferences.root; memory_limit=size_t(preferences.max_buffered_mib)*1024*1024;
                 bool capture=preferences.downloads && (preferences.ogg || preferences.flac);
                 if(capture!=enabled || initial || preferences.capture_epoch!=epoch) {
-                    active.clear(); ready.clear(); heard.clear(); listen={}; current={}; next_media=0;
+                    active.clear(); ready.clear(); heard.clear(); listen={}; current={};
+                    last_media=now;media_unavailable=false;
                     if(!enabled && capture) saved_count=0;
                     enabled=capture;
                     Log(enabled ? "To Disk capture enabled" : "To Disk capture disabled");
@@ -423,14 +502,17 @@ static DWORD WINAPI Worker(LPVOID) {
                     Log("decoder_probe activated: passive enter/return/input/PCM counters; audio unchanged");
             }
             if(!enabled && !quality_enabled.load(std::memory_order_relaxed)) {
+                reader.Stop();observer_started=false;
                 PublishPlaybackQuality({});
                 Slot discard; while(Pop(discard)) {}
                 WaitForSingleObject(event,200); continue;
             }
-            if(dropped!=overflow) {
-                overflow=dropped;
+            if(InterlockedCompareExchange(&dropped,0,0)!=overflow) {
+                AcquireSRWLockExclusive(&queue_lock);
+                overflow=InterlockedCompareExchange(&dropped,0,0);head=tail;count=0;
+                ReleaseSRWLockExclusive(&queue_lock);
                 if(!current.title.empty())SetClassicTrackStatus(current,"ERROR","Canceled: capture queue overflow");
-                active.clear(); ready.clear(); heard.clear(); listen.eligible=false; quality.ClearStreams();
+                active.clear(); ready.clear(); heard.clear(); listen.Invalidate(); quality.ClearStreams();
                 Log("capture queue overflow; streams and listening coverage invalidated");
             }
             Slot s;
@@ -440,6 +522,8 @@ static DWORD WINAPI Worker(LPVOID) {
                     char line[180]; snprintf(line,sizeof(line),"FORMAT kind=%u matched=%d input_bytes=%llu prefix=%s",
                       s.format,s.matched,static_cast<unsigned long long>(s.input_length),prefix); Log(line); continue;
                 }
+                if(s.epoch!=epoch||s.loss!=overflow||s.boundary!=client_boundary)continue;
+                const auto key=std::make_pair(s.kind>=2?1u:0u,s.context);
                 if(quality_enabled.load(std::memory_order_relaxed)) {
                     switch(s.kind) {
                         case 0: quality.Ogg(s.context,s.bytes,s.length,s.time); break;
@@ -452,13 +536,15 @@ static DWORD WINAPI Worker(LPVOID) {
                 }
                 if(!enabled || !s.capture || s.epoch!=epoch) continue;
                 if(s.kind>=2) {
-                    auto found=active.find(s.context);
+                    auto found=active.find(key);
                     if(s.kind==2) {
                         auto c=std::make_unique<Capture>(); c->lossless=true; c->born=s.time;
-                        active[s.context]=std::move(c); Log("FLAC decoder initialized; capture begins at compressed offset zero"); continue;
+                        c->owner.Accept(s.owner);
+                        active[key]=std::move(c); Log("FLAC decoder initialized; capture begins at compressed offset zero"); continue;
                     }
                     if(found==active.end() || !found->second->lossless) continue;
                     Capture& c=*found->second;
+                    if(!c.owner.Accept(s.owner)){active.erase(found);Log("FLAC decoder owner conflict; stream discarded");continue;}
                     if(s.kind==5) { active.erase(found); Log("FLAC decoder error; stream discarded"); continue; }
                     if(s.kind==3) {
                         size_t reserved=publishing_reserved.load(); for(const auto& item:active) reserved+=item.second->data.capacity();
@@ -488,10 +574,13 @@ static DWORD WINAPI Worker(LPVOID) {
                     ready.push_back(std::move(found->second)); active.erase(found); continue;
                 }
                 Page page; if(!ParsePage(s.bytes,s.length,page)) {
-                    active.erase(s.context); Log("invalid Ogg page rejected"); continue;
+                    active.erase(key); Log("invalid Ogg page rejected"); continue;
                 }
 
-                auto found=active.find(s.context);
+                auto found=active.find(key);
+                if(found!=active.end()&&!found->second->owner.Accept(s.owner)) {
+                    active.erase(found);Log("Ogg decoder owner conflict; stream discarded");continue;
+                }
                 if(page.vorbis_start) {
                     // A decoder may replay its identification/BOS page after
                     // buffering. Preserve an in-progress capture when this is
@@ -504,8 +593,9 @@ static DWORD WINAPI Worker(LPVOID) {
                         continue;
                     }
                     auto c=std::make_unique<Capture>(); c->born=s.time;
-                    active[s.context]=std::move(c);
-                    found=active.find(s.context);
+                    c->owner.Accept(s.owner);
+                    active[key]=std::move(c);
+                    found=active.find(key);
                     char line[512]; snprintf(line,sizeof(line),
                         "ogg_bos ctx=%llx seq=%u serial=%u rate=%u channels=%u media=%s pos=%.3f raw=%.3f duration=%.3f rate_effective=%.3f",
                         static_cast<unsigned long long>(s.context),page.sequence,page.serial,page.rate,page.channels,
@@ -560,115 +650,151 @@ static DWORD WINAPI Worker(LPVOID) {
                     ready.push_back(std::move(found->second)); active.erase(found);
                 }
             }
-            if(!enabled) {
-                if(now>=next_media) {
-                    Media media;
-                    if(reader.Read(media,false,playback_rate)) {quality.Media(media.Key(),media.title,media.position,media.duration,Now(),media.playing);client_quality=ReadClientPlaybackQuality(media);}
-                    else {quality.Media({},L"",0,0,Now());client_quality.clear();}
-                    next_media=Now()+0.5;
+            const MediaReadOptions media_options{preferences.generation,epoch,playback_rate,enabled};
+            if(!observer_started)observer_started=reader.Start(media_options);
+            Media media;double observed_at=0;
+            auto observation=observer_started
+                ?reader.TryRead(media,observed_at,media_sequence,media_options):MediaRead::Pending;
+            std::string listen_key;
+            if(observation==MediaRead::Ready) {
+                // Client state corroborates the SMTC sample; never attach an ID
+                // to stale labels or silently fall back after ID support was seen.
+                if(client.boundary!=client_playback.Token()||observed_at<boundary_time||
+                   (client.seen&&!client.available)||
+                   (instance_seen&&client.instance.empty()))observation=MediaRead::Failed;
+                else if(client.seen&&!ClientPlaybackAgrees(client,Utf8(media.title),Utf8(media.artist),
+                    Utf8(media.album),media.position,media.duration,observed_at,playback_rate))
+                    observation=MediaRead::Pending;
+                else {
+                    listen_key=media.Key();
+                    if(!client.instance.empty()) {
+                        if(!instance_seen){listen={};instance_seen=true;}
+                        listen_key=client.media.uri+"/"+client.instance;
+                    }
+                    if(client.paused==1||client.buffering==1)media.playing=false;
                 }
+            }
+            // Discard a result if settings changed concurrently with polling.
+            if(GetSettings().generation!=generation)continue;
+            if(observation==MediaRead::Ready) {
+                last_media=observed_at;media_unavailable=false;
+                quality.Media(media.Key(),media.title,media.position,media.duration,observed_at,media.playing);
+                client_quality=ReadClientPlaybackQuality(media);
+            }
+            if(enabled && observation==MediaRead::Ready) {
+                std::string previous=listen.identity; double previous_start=listen.start_time;
+                const auto previous_instance=listen.generation;
+                const auto previous_phase=listen.phase;
+                bool was_eligible=listen.eligible;const bool prior_playing=listen.playing;
+                double prior_position=listen.last_position,prior_duration=listen.duration,prior_time=listen.last_time;
+                if(DebugLoggingEnabled()) {
+                    char line[1200];snprintf(line,sizeof(line),
+                        "media_sample title=%s artist=%s key=%s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d prior=%.3f prior_duration=%.3f wall_delta=%.3f speed_config=%.3f speed_hook=%d rate=%.3f eligible=%d active=%zu ready=%zu",
+                        Utf8(media.title).c_str(),Utf8(media.artist).c_str(),media.Key().c_str(),media.position,media.raw_position,
+                        media.duration,media.timeline_age,media.playing,prior_position,prior_duration,observed_at-prior_time,
+                        preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,listen.eligible,active.size(),ready.size());
+                    Log(line);
+                }
+                std::string done=listen.Observe(listen_key,media.position,media.duration,media.playing,observed_at,playback_rate,!client.instance.empty());
+                const MetadataInstance prior_metadata{previous,previous_instance,!client.instance.empty()};
+                const MetadataInstance latest_metadata{listen.identity,listen.generation,!client.instance.empty()};
+                if(!listen.transient)for(auto& completed:heard)
+                    RefreshListenMetadata(completed.media,media,
+                        {completed.identity,completed.generation,completed.exact_identity},latest_metadata,true);
+                if(previous_instance!=listen.generation || previous_phase!=listen.phase || previous!=listen.identity) {
+                    char line[512];snprintf(line,sizeof(line),
+                        "listen_instance generation=%llu previous=%llu phase=%u previous_phase=%u relabeled=%d completed=%llu start=%.3f wrap=%.3f",
+                        static_cast<unsigned long long>(listen.generation),static_cast<unsigned long long>(previous_instance),
+                        unsigned(listen.phase),unsigned(previous_phase),previous!=listen.identity && previous_instance==listen.generation,
+                        static_cast<unsigned long long>(done.empty()?0:listen.completed_generation),listen.start_time,listen.wrap_time);
+                    Log(line);
+                }
+                if(was_eligible && !listen.eligible && done.empty()) {
+                    const auto identity=Utf8(current.artist)+" - "+Utf8(current.title);
+                    char line[1400]; snprintf(line,sizeof(line),
+                        "%s (incomplete listen reason=%s prior=%.3f/%.3f new=%.3f raw=%.3f/%.3f timeline_age=%.3f delta=%.3f expected=%.3f tolerance=%.3f rate=%.3f playing_before=%d playing_now=%d key_changed=%d)",
+                        identity.c_str(),ListenRejectName(listen.reject),prior_position,prior_duration,
+                        media.position,media.raw_position,media.duration,media.timeline_age,observed_at-prior_time,
+                        listen.last_expected,listen.last_tolerance,listen.last_rate,prior_playing,media.playing,
+                        previous!=listen.identity);
+                    LogActivity("failed",line);QueueDiagnostic(line);
+                }
+                if(!done.empty()) {
+                    if(current_ignored) {
+                        SetClassicTrackStatus(current,"IGNORED","Ignored");
+                        LogActivity("finished",Utf8(current.artist)+" - "+Utf8(current.title)+" (ignored)");
+                    } else {
+                        auto completed_media=current;
+                        // A pause at the natural end completes this same instance.
+                        // Include its final corroborated metadata; a transition or
+                        // repeat must never label the preceding listen.
+                        RefreshListenMetadata(completed_media,media,prior_metadata,latest_metadata,true);
+                        completed_media.duration=listen.completed_duration;
+                        heard.push_back({std::move(completed_media),listen.completed_start,listen.completed_time,
+                            listen.completed_generation,done,prior_metadata.exact});
+                        char line[1024];snprintf(line,sizeof(line),
+                            "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f elapsed_wall=%.3f rate=%.3f ready=%zu active=%zu generation=%llu confirmation_delay=%.3f",
+                            Utf8(current.artist).c_str(),Utf8(current.title).c_str(),prior_position,current.raw_position,
+                            listen.completed_duration,current.timeline_age,listen.completed_time-listen.completed_start,
+                            playback_rate,ready.size(),active.size(),static_cast<unsigned long long>(listen.completed_generation),
+                            observed_at-listen.completed_time);
+                        LogActivity("listen_complete",line);QueueDiagnostic(line);
+                    }
+                }
+                if((previous_instance!=listen.generation || previous!=listen.identity) && listen.eligible) {
+                    current_ignored=ClassicCurrentIgnored();
+                    SetClassicTrackStatus(media,current_ignored?"IGNORED":"IN_PROGRESS",current_ignored?"Ignored":"Downloading...");
+                    char line[1400];snprintf(line,sizeof(line),
+                        "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d speed_config=%.3f speed_hook=%d speed_effective=%.3f start_window=%.3f active=%zu ready=%zu epoch=%u",
+                        Utf8(media.artist).c_str(),Utf8(media.title).c_str(),media.position,media.raw_position,media.duration,
+                        media.timeline_age,media.playing,preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,
+                        std::max(1.5,playback_rate*0.75),active.size(),ready.size(),epoch);
+                    LogActivity("started",line);QueueDiagnostic(line);
+                } else if(previous==listen.identity && listen.eligible) {
+                    current_ignored=ClassicCurrentIgnored();
+                }
+                if(was_eligible && !listen.eligible && done.empty()) {
+                    if(!current.title.empty())SetClassicTrackStatus(current,"ERROR",
+                        std::string("Canceled: ")+ListenRejectName(listen.reject));
+                }
+                if(previous_instance!=listen.generation) {
+                    Log(("TRACK "+Utf8(media.artist)+" - "+Utf8(media.title)).c_str());
+                    CleanupCaptureTransition(active,ready,heard,previous_start,
+                        listen.start_time,!done.empty(),Now());
+                }
+                if(listen.transient) {if(previous_phase!=listen.phase)Log("timeline reset at natural end; waiting for title or repeat confirmation");}
+                else if(!RefreshListenMetadata(current,std::move(media),prior_metadata,latest_metadata))current=std::move(media);
+            } else if(observation==MediaRead::Failed || Now()-last_media>3) {
+                const bool was_eligible=listen.eligible;
+                listen.Invalidate(); quality.Media({},L"",0,0,Now());client_quality.clear();
+                if(was_eligible) {
+                    char line[768];snprintf(line,sizeof(line),
+                        "%s - %s (media snapshot unavailable or stale rate=%.3f active=%zu ready=%zu epoch=%u sequence=%llu state=%s last_sample_age=%.3f)",
+                        Utf8(current.artist).c_str(),Utf8(current.title).c_str(),playback_rate,active.size(),ready.size(),epoch,
+                        static_cast<unsigned long long>(media_sequence),observation==MediaRead::Failed?"failed":"pending",Now()-last_media);
+                    LogActivity("failed",line);QueueDiagnostic(line);
+                } else if(!media_unavailable)QueueDiagnostic("Spotify media snapshot unavailable or stale while no eligible listen was active");
+                media_unavailable=true;
+            }
+            if(!enabled) {
                 PublishPlaybackQuality(quality.Snapshot(client_quality));
                 WaitForSingleObject(event,50);continue;
             }
-            if(now>=next_media) {
-                Media media;
-                if(reader.Read(media,true,playback_rate)) {
-                    quality.Media(media.Key(),media.title,media.position,media.duration,Now(),media.playing);
-                    client_quality=ReadClientPlaybackQuality(media);
-                    std::string previous=listen.identity; double previous_start=listen.start_time;
-                    bool was_eligible=listen.eligible;
-                    double prior_position=listen.last_position,prior_duration=listen.duration,prior_time=listen.last_time;
-                    if(DebugLoggingEnabled()) {
-                        char line[1200];snprintf(line,sizeof(line),
-                            "media_sample title=%s artist=%s key=%s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d prior=%.3f prior_duration=%.3f wall_delta=%.3f speed_config=%.3f speed_hook=%d rate=%.3f eligible=%d active=%zu ready=%zu",
-                            Utf8(media.title).c_str(),Utf8(media.artist).c_str(),media.Key().c_str(),media.position,media.raw_position,
-                            media.duration,media.timeline_age,media.playing,prior_position,prior_duration,Now()-prior_time,
-                            preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,listen.eligible,active.size(),ready.size());
-                        Log(line);
-                    }
-                    std::string done=listen.Observe(media.Key(),media.position,media.duration,media.playing,Now(),playback_rate);
-                    if(was_eligible && !listen.eligible && done.empty()) {
-                        const auto identity=Utf8(current.artist)+" - "+Utf8(current.title);
-                        char line[1400]; snprintf(line,sizeof(line),
-                            "%s (incomplete listen reason=%s prior=%.3f/%.3f new=%.3f raw=%.3f/%.3f timeline_age=%.3f delta=%.3f expected=%.3f tolerance=%.3f rate=%.3f playing_before=%d playing_now=%d key_changed=%d)",
-                            identity.c_str(),ListenRejectName(listen.reject),prior_position,prior_duration,
-                            media.position,media.raw_position,media.duration,media.timeline_age,Now()-prior_time,
-                            listen.last_expected,listen.last_tolerance,listen.last_rate,listen.playing,media.playing,
-                            previous!=listen.identity);
-                        LogActivity("failed",line);QueueDiagnostic(line);
-                    }
-                    if(!done.empty()) {
-                        if(current_ignored) {
-                            SetClassicTrackStatus(current,"IGNORED","Ignored");
-                            LogActivity("finished",Utf8(current.artist)+" - "+Utf8(current.title)+" (ignored)");
-                        } else {
-                            heard.push_back({current,previous_start,Now()});
-                            char line[1024];snprintf(line,sizeof(line),
-                                "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f elapsed_wall=%.3f rate=%.3f ready=%zu active=%zu",
-                                Utf8(current.artist).c_str(),Utf8(current.title).c_str(),prior_position,current.raw_position,
-                                current.duration,current.timeline_age,Now()-previous_start,playback_rate,ready.size(),active.size());
-                            LogActivity("listen_complete",line);QueueDiagnostic(line);
-                        }
-                    }
-                    if(previous!=listen.identity && listen.eligible) {
-                        current_ignored=ClassicCurrentIgnored();
-                        SetClassicTrackStatus(media,current_ignored?"IGNORED":"IN_PROGRESS",current_ignored?"Ignored":"Downloading...");
-                        char line[1400];snprintf(line,sizeof(line),
-                            "%s - %s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d speed_config=%.3f speed_hook=%d speed_effective=%.3f start_window=%.3f active=%zu ready=%zu epoch=%u",
-                            Utf8(media.artist).c_str(),Utf8(media.title).c_str(),media.position,media.raw_position,media.duration,
-                            media.timeline_age,media.playing,preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,
-                            std::max(1.5,playback_rate*0.75),active.size(),ready.size(),epoch);
-                        LogActivity("started",line);QueueDiagnostic(line);
-                    } else if(previous==listen.identity && listen.eligible) {
-                        current_ignored=ClassicCurrentIgnored();
-                    }
-                    if(was_eligible && !listen.eligible && done.empty()) {
-                        if(!current.title.empty())SetClassicTrackStatus(current,"ERROR",
-                            std::string("Canceled: ")+ListenRejectName(listen.reject));
-                    }
-                    if(previous!=listen.identity) {
-                        Log(("TRACK "+Utf8(media.artist)+" - "+Utf8(media.title)).c_str());
-                        {
-                            auto prior=[previous_start,start=listen.start_time](const auto& c) {
-                                return c->born>=previous_start-20 && c->born<=previous_start+3 && c->born<start-3;
-                            };
-                            // A fast Next may create the new decoder inside the
-                            // previous track's three-second start window. Keep
-                            // that candidate; duration association still rejects
-                            // ambiguous or skipped streams at publication.
-                            if(done.empty())
-                            ready.erase(std::remove_if(ready.begin(),ready.end(),prior),ready.end());
-                            for(auto it=active.begin();it!=active.end();) {
-                                if(prior(it->second)) it=active.erase(it); else ++it;
-                            }
-                        }
-                    }
-                    if(listen.transient) Log("timeline reset at natural end; waiting for matching title");
-                    else current=std::move(media);
-                } else {
-                    const bool was_eligible=listen.eligible;
-                    listen.eligible=false; quality.Media({},L"",0,0,Now());
-                    if(was_eligible) {
-                        char line[768];snprintf(line,sizeof(line),
-                            "%s - %s (media snapshot unavailable rate=%.3f active=%zu ready=%zu epoch=%u)",
-                            Utf8(current.artist).c_str(),Utf8(current.title).c_str(),playback_rate,active.size(),ready.size(),epoch);
-                        LogActivity("failed",line);QueueDiagnostic(line);
-                    } else QueueDiagnostic("Spotify media snapshot unavailable while no eligible listen was active");
-                }
-                next_media=Now()+0.5;
-            }
+            now=Now();
             PublishPlaybackQuality(quality.Snapshot(client_quality));
-            // A media-session read may block while the menu changes settings.
-            // Apply that generation before considering any publication.
-            if(GetSettings().generation!=generation) continue;
-            for(auto h=heard.begin();h!=heard.end();) {
-                size_t match=ready.size(),matches=0;
-                for(size_t i=0;i<ready.size();i++) {
-                    Capture& c=*ready[i];
-                    if(std::fabs(c.Duration()-h->media.duration)<=1.0 &&
-                       c.born>=h->start-20 && c.born<=h->start+3) { match=i; ++matches; }
+            // Apply concurrent menu changes before considering publication.
+            if(GetSettings().generation!=generation||InterlockedCompareExchange(&dropped,0,0)!=overflow||
+               client_boundary!=client_playback.Token()||(client_boundary&1)) {WaitForSingleObject(event,50);continue;}
+            const auto shared_captures=RejectSharedCaptures(ready,heard);
+            size_t heard_index=0;
+            for(auto h=heard.begin();h!=heard.end();++heard_index) {
+                auto selection=SelectCapture(active,ready,*h,now);
+                if(shared_captures[heard_index]) {
+                    selection.state=CaptureAssociation::Ambiguous;
+                    selection.matches+=shared_captures[heard_index];
                 }
-                if(matches==1) {
+                const auto match=selection.index,matches=selection.matches;
+                if(selection.state==CaptureAssociation::Ready) {
                     SaveJob job;job.reserved=ready[match]->data.capacity();job.epoch=epoch;
                     job.capture=std::move(ready[match]);job.heard=*h;
                     publishing_reserved.fetch_add(job.reserved);
@@ -679,8 +805,9 @@ static DWORD WINAPI Worker(LPVOID) {
                         LogActivity("failed","publication queue full; completed candidate discarded");
                     }
                     ready.erase(ready.begin()+match); h=heard.erase(h);
-                } else if(matches>1 || now-h->finish>10) {
-                    SetClassicTrackStatus(h->media,"ERROR",matches>1?"Ambiguous audio stream association":"Completed audio stream was not found");
+                } else if(selection.state==CaptureAssociation::Ambiguous ||
+                          selection.state==CaptureAssociation::Missing) {
+                    SetClassicTrackStatus(h->media,"ERROR",selection.state==CaptureAssociation::Ambiguous?"Ambiguous audio stream association":"Completed audio stream was not found");
                     std::string candidates;
                     for(size_t i=0;i<ready.size() && i<6;i++) {
                         char item[160];snprintf(item,sizeof(item),"%s%.3fs@%+.3fs",
@@ -688,13 +815,14 @@ static DWORD WINAPI Worker(LPVOID) {
                         candidates+=item;
                     }
                     char line[1400];snprintf(line,sizeof(line),
-                        "%s - %s (stream association failed matches=%zu ready=%zu media_duration=%.3f listen_start=%.3f listen_finish=%.3f wait=%.3f candidates=[%s])",
+                        "%s - %s (stream association failed matches=%zu ready=%zu retained_active=%zu shared_listen_matches=%zu retention_conflicts=%zu media_duration=%.3f listen_start=%.3f listen_finish=%.3f wait=%.3f candidates=[%s])",
                         Utf8(h->media.artist).c_str(),Utf8(h->media.title).c_str(),matches,ready.size(),
-                        h->media.duration,h->start,h->finish,now-h->finish,candidates.c_str());
+                        selection.pending,shared_captures[heard_index],selection.retention_conflicts,h->media.duration,h->start,h->finish,now-h->finish,candidates.c_str());
                     LogActivity("failed",line);QueueDiagnostic(line);
                     h=heard.erase(h);
                 } else ++h;
             }
+            PruneRetainedCaptures(active,ready,heard,now);
             ready.erase(std::remove_if(ready.begin(),ready.end(),[now](const auto& c){return now-c->finished>600;}),ready.end());
             for(auto it=active.begin();it!=active.end();) {
                 if(now-it->second->born>21600) it=active.erase(it); else ++it;
@@ -757,6 +885,7 @@ static DWORD WINAPI Worker(LPVOID) {
             WaitForSingleObject(event,50);
         }
     } catch(...) { Log("history worker stopped after an exception; playback remains with original parser"); }
+    reader.Stop(); // Shared observer state outlives any outstanding COM call.
     PublishPlaybackQuality({});
     workers_running.store(false,std::memory_order_release);
     if(save_event) SetEvent(save_event);

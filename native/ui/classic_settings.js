@@ -226,8 +226,7 @@ sgf.openSettings=()=>{
   const misc=section('Misc',
     row('Block telemetry',toggle('blockTelemetry')),
     row("Move 'Add to Queue' to top",toggle('liftQueue')),
-    row('Activity log',toggle('log')),
-    row('Debug log',toggle('debug')),
+    row('Log detail',select('logLevel',{'Off':0,'Completions and problems':1,'Activity':2,'Diagnostics':4})),
     rows('FFmpeg path',textInput('ffmpegPath'))
   );
 

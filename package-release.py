@@ -3,6 +3,8 @@
 import hashlib
 from pathlib import Path
 import shutil
+import os
+import tempfile
 import zipfile
 
 root = Path(__file__).resolve().parent
@@ -10,12 +12,6 @@ VERSION = (root / "VERSION").read_text(encoding="utf-8").strip()
 out = root / "dist"
 out.mkdir(exist_ok=True)
 release_name = f"Soggfy-v{VERSION}-Windows-x64.zip"
-
-for old_archive in out.glob("Soggfy-v*-Windows-x64.zip"):
-    if old_archive.name != release_name:
-        old_archive.unlink()
-for old_archive in out.glob("Soggfy-v*-Launcher-Windows-x64.zip"):
-    old_archive.unlink()
 
 dll = out / "version.dll"
 launcher_exe = out / "Soggfy.exe"
@@ -40,27 +36,47 @@ def add_bytes(archive: zipfile.ZipFile, arcname: str, data: bytes) -> None:
     info.external_attr = 0o100644 << 16
     archive.writestr(info, data)
 
+worker = root / "build/validation-worker/validation-worker.exe"
+worker_hash = sha256(worker)
+if worker.stat().st_size == 0 or worker.stat().st_size > 64 * 1024 * 1024:
+    raise ValueError("Validation helper size rejected")
+if worker_hash.encode("ascii") not in dll.read_bytes():
+    raise ValueError("DLL does not contain this validation helper build digest")
+worker_name = f"SoggfyValidation-{worker_hash}.exe"
+worker_descriptor = (worker_hash + "\n").encode("ascii")
+
 binary_manifest = (
     f"{sha256(dll)}  version.dll\n"
     f"{sha256(launcher_exe)}  Launcher/Soggfy.exe\n"
     f"{sha256(launcher_dll)}  Launcher/Soggfy.dll\n"
     f"{sha256(build_info)}  BUILDINFO.txt\n"
+    f"{worker_hash}  {worker_name}\n"
+    f"{worker_hash}  Launcher/{worker_name}\n"
+    f"{hashlib.sha256(worker_descriptor).hexdigest()}  VALIDATION_WORKER.txt\n"
 ).encode("utf-8")
 
 files = [
     ("version.dll", dll),
     ("BUILDINFO.txt", build_info),
     ("SHA256SUMS.txt", None),
+    ("VALIDATION_WORKER.txt", None),
+    (worker_name, worker),
+    (f"Launcher/{worker_name}", worker),
     ("VERSION", root / "VERSION"),
     ("README.md", root / "README.md"),
     ("CHANGELOG.md", root / "CHANGELOG.md"),
     ("RELEASE_NOTES.md", root / "RELEASE_NOTES.md"),
     ("UPSTREAMS.md", root / "UPSTREAMS.md"),
+    ("MILESTONES.md", root / "MILESTONES.md"),
+    ("NATIVE_IDENTITY_AUDIT.md", root / "NATIVE_IDENTITY_AUDIT.md"),
+    ("METADATA_REFRESH_DESIGN.md", root / "METADATA_REFRESH_DESIGN.md"),
     ("LICENSE", root / "LICENSE"),
     ("SpotifyHistory.ini", root / "SpotifyHistory.ini"),
     ("Scripts/Install.ps1", root / "Scripts" / "Install.ps1"),
+    ("Scripts/ValidationWorker.ps1", root / "Scripts" / "ValidationWorker.ps1"),
     ("Scripts/Uninstall.ps1", root / "Scripts" / "Uninstall.ps1"),
     ("Scripts/PostProcess.ps1", root / "Scripts" / "PostProcess.ps1"),
+    ("Scripts/ConverterProcess.cs", root / "Scripts" / "ConverterProcess.cs"),
     ("Scripts/Diagnose.ps1", root / "Scripts" / "Diagnose.ps1"),
     ("Launcher/Soggfy.exe", launcher_exe),
     ("Launcher/Soggfy.dll", launcher_dll),
@@ -73,19 +89,34 @@ for vendor in ["minhook", "libogg", "cef", "soggfy"]:
             root / "native" / "vendor" / vendor / "LICENSE.txt",
         )
     )
+for vendor, license_name in [("libvorbis", "COPYING"), ("libFLAC", "COPYING.Xiph"),
+                             ("libpng", "LICENSE"), ("zlib", "LICENSE"),
+                             ("libjpeg-turbo", "LICENSE.md")]:
+    files.append((f"third-party/{vendor}/LICENSE.txt",
+                  root / "native/vendor" / vendor / license_name))
+files.append(("third-party/libjpeg-turbo/README.ijg",
+              root / "native/vendor/libjpeg-turbo/README.ijg"))
 
 archive_path = out / release_name
-with zipfile.ZipFile(archive_path, "w") as archive:
-    for arcname, path in files:
-        if arcname == "SHA256SUMS.txt":
-            add_bytes(archive, arcname, binary_manifest)
-        else:
-            add_bytes(archive, arcname, path.read_bytes())
+# Keep previous packages and never expose a half-written replacement ZIP.
+handle, staging = tempfile.mkstemp(prefix=release_name + ".", suffix=".tmp", dir=out)
+os.close(handle)
+try:
+    with zipfile.ZipFile(staging, "w") as archive:
+        for arcname, path in files:
+            if arcname == "SHA256SUMS.txt":
+                add_bytes(archive, arcname, binary_manifest)
+            elif arcname == "VALIDATION_WORKER.txt":
+                add_bytes(archive, arcname, worker_descriptor)
+            else:
+                add_bytes(archive, arcname, path.read_bytes())
+    os.replace(staging, archive_path)
+finally:
+    Path(staging).unlink(missing_ok=True)
 
 archive_digest = sha256(archive_path)
-(out / "SHA256SUMS.txt").write_text(
-    f"{archive_digest}  {release_name}\n",
-    encoding="utf-8",
+(out / "SHA256SUMS.txt").write_bytes(
+    f"{archive_digest}  {release_name}\n".encode("utf-8"),
 )
 
 print(f"ZIP: {archive_path}")

@@ -3,10 +3,11 @@
  'use strict';
  if(window.__floggfyMetadata)return;
  window.__floggfyMetadata=true;
- const prefix='FLOGGFY_METADATA_V1:',seenPayload=new Map(),records=[];
+ const prefix='FLOGGFY_METADATA_V1:',seenPayload=new Map(),records=[],lyricDetails=new WeakMap();
  let reported=false,player,root,queue=[],seen=new Set(),walked=0,lastPlayback='',playbackTime=-Infinity;
  function playback(data){
-  const payload=Object.entries(data).filter(([,v])=>v!==undefined&&v!==null&&v!=='').map(([k,v])=>k+'='+encodeURIComponent(String(v))).join('&');
+  let payload=Object.entries(data).filter(([,v])=>v!==undefined&&v!==null&&v!=='').map(([k,v])=>k+'='+encodeURIComponent(String(v))).join('&');
+  if(payload.length>4096)payload='v=1';
   const now=performance.now();
   if(payload.length<=4096&&(payload!==lastPlayback||now-playbackTime>=1000)){
    console.info('FLOGGFY_PLAYBACK_V1:'+payload);lastPlayback=payload;playbackTime=now;
@@ -53,6 +54,11 @@
  function merge(data,source){
   if(!object(source))return;
   const m=own(source,'metadata')||source,album=own(source,'album')||{},date=own(album,'date');
+  const albumUri=text(own(m,'album_uri')||own(album,'uri'));
+  if(data.album_uri&&/^spotify:album:[A-Za-z0-9]{22}$/.test(albumUri||'')&&data.album_uri!==albumUri)return;
+  if(/^spotify:track:[A-Za-z0-9]{22}$/.test(data.uri)&&/^spotify:album:[A-Za-z0-9]{22}$/.test(albumUri||'')){
+   data.album_uri=albumUri;data.SPOTIFY_ALBUM_URI=albumUri;
+  }
   let release=text(own(m,'release_date'))||text(own(m,'album_release_date'))||text(own(source,'release_date'))||text(own(own(source,'releaseDate'),'isoString'))||text(own(own(album,'releaseDate'),'isoString'));
   if(release&&/^\d{4}-\d{2}-\d{2}T/.test(release))release=release.slice(0,10);
   const year=text(own(date,'year')),month=text(own(date,'month')),day=text(own(date,'day'));
@@ -73,10 +79,27 @@
    const value=text(own(m,key)||own(source,key)||own(album,key));if(value&&value.length<=4096&&(!/NUMBER|TOTAL/.test(tag)||/^[1-9]\d{0,5}$/.test(value)))data[tag]=value;
   }
   const lyric=own(source,'lyrics')||own(m,'lyrics');
-  let words=text(lyric);
+  let words=text(lyric),plainWords=words,synchronized=false;
   const lines=own(lyric,'lines');
-  if(Array.isArray(lines)&&lines.length<=2000)words=entries(lines,2000).map(l=>text(own(l,'words'))||'').join('\n');
-  if(words&&words.length<=20000)data.LYRICS=words;
+  if(Array.isArray(lines)&&lines.length<=2000){
+   const rows=entries(lines,2000),plain=rows.map(l=>text(own(l,'words'))||'');
+   words=plainWords=plain.join('\n');
+   const sync=own(lyric,'syncType');let previous=-1;
+   if((sync==='LINE_SYNCED'||sync==='SYLLABLE_SYNCED')&&rows.length&&rows.every((line,i)=>{
+    const raw=text(own(line,'startTimeMs')),time=Number(raw);
+    if(!/^\d{1,8}$/.test(raw||'')||!Number.isSafeInteger(time)||time<previous||time>Math.min(data.duration*1000,86400000)||/[\r\n]/.test(plain[i]))return false;
+    previous=time;return true;
+   })){synchronized=true;words=rows.map((line,i)=>{
+    const time=Number(text(own(line,'startTimeMs')));
+    return '['+String(Math.floor(time/60000)).padStart(2,'0')+':'+String(Math.floor(time/1000)%60).padStart(2,'0')+'.'+String(time%1000).padStart(3,'0')+']'+plain[i];
+   }).join('\n');}
+  }
+  if(words&&words.length<=20000){
+   const previous=lyricDetails.get(data);
+   if(!previous||!previous.synchronized||synchronized||previous.plainWords!==plainWords){
+    data.LYRICS=words;lyricDetails.set(data,{synchronized,plainWords});
+   }
+  }
  }
  function cached(data,o){
   const uri=own(o,'uri')||own(o,'trackUri');
@@ -99,7 +122,6 @@
    scan();
    if(player&&method(player,'getState')&&method(player,'getEvents'))
     window.__soggfyVerifiedPlayerAPI=player;
-   if(window.__soggfyMetadataEnabled===false)return;
    if(!player){playback({v:1});return;}
    if(!reported){console.info('FLOGGFY_STATUS:cached player found');reported=true;}
    const state=method(player,'getState').call(player),item=own(state,'item'),m=own(item,'metadata')||{},uri=text(own(item,'uri'));
@@ -123,10 +145,23 @@
     Number.isInteger(raw)&&raw>=1&&raw<=6?['','low','normal','high','very_high','lossless','lossless_24'][raw]:undefined;
    if(level==='hifi24')level='lossless_24';
    if(['low','normal','high','very_high','lossless','lossless_24','hifi'].includes(level))data.playback_quality=level;
-   playback({v:1,title:data.title,artist:data.artist,album:data.album,uri,duration:data.duration,playback_quality:data.playback_quality});
+   const rawInstance=own(state,'playbackId');
+   const instance=typeof rawInstance==='string'&&/^[a-fA-F0-9]{32}$/.test(rawInstance)&&!/^0{32}$/.test(rawInstance)?rawInstance.toLowerCase():undefined;
+   const flag=key=>typeof own(state,key)==='boolean'?Number(own(state,key)):undefined;
+   const stamp=own(state,'timestamp'),rawPosition=own(state,'positionAsOfTimestamp'),speed=own(state,'speed')??1;
+   const age=Date.now()-stamp;
+   const position=typeof stamp==='number'&&Number.isFinite(age)&&age>=0&&age<=86400000&&
+    typeof rawPosition==='number'&&Number.isFinite(rawPosition)&&rawPosition>=0&&
+    typeof speed==='number'&&Number.isFinite(speed)&&speed>=1&&speed<=30&&
+    flag('isPaused')!==undefined&&flag('isBuffering')!==undefined?
+    Math.min(data.duration,(rawPosition+((flag('isPaused')||flag('isBuffering'))?0:age*speed))/1000):undefined;
+   playback({v:1,title:data.title,artist:data.artist,album:data.album,uri,duration:data.duration,playback_quality:data.playback_quality,
+    instance,position,paused:flag('isPaused'),buffering:flag('isBuffering'),local:flag('isActiveDevice')});
+   if(window.__soggfyMetadataEnabled===false)return;
    // Keep the current-item heartbeat for episodes even when Spotify omits
    // show/publisher fields. Rich podcast enrichment still requires both.
    if(isEpisode&&(!data.artist||!data.album))return;
+   merge(data,item); // Establish the current album identity before cached enrichment.
    for(const record of records)cached(data,record);
    merge(data,item); // Current playback snapshot wins over older cached data.
    const encode=()=>Object.entries(data).filter(([,v])=>v!==undefined&&v!==null&&v!=='').map(([k,v])=>k+'='+encodeURIComponent(String(v))).join('&');
@@ -135,7 +170,7 @@
    if(payload.length>131072||(last&&last.payload===payload&&now-last.time<15000))return;
    seenPayload.set(uri,{payload,time:now});if(seenPayload.size>64)seenPayload.delete(seenPayload.keys().next().value);
    console.info(prefix+payload);
-  }catch{/* Missing or changed caches leave ordinary tags intact. */}
+  }catch{playback({v:1});/* Invalidate the heartbeat when the cached state is unreadable. */}
  }
  window.__floggfyPoll=tick;
  console.info('FLOGGFY_STATUS:cache-only collector started');

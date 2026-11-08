@@ -6,9 +6,9 @@
 #include <shlobj.h>
 #include "classic_ui_backend.h"
 #include "media_session.h"
-#include "classic_path_match.h"
 #include "history_settings.h"
 #include "library_layout.h"
+#include "file_publication.h"
 #include <algorithm>
 #include <atomic>
 #include <array>
@@ -16,308 +16,18 @@
 #include <cstdio>
 #include <filesystem>
 #include <memory>
-#include <regex>
 #include <vector>
 
 namespace history {
-namespace {
-struct Recent {
-    std::wstring title,artist,album;
-    std::string status,message;
-    std::wstring path;
-    ULONGLONG time=0;
-};
-SRWLOCK recent_lock=SRWLOCK_INIT;
-std::array<Recent,64> recent{};
-size_t recent_next=0;
-std::atomic<bool> current_ignored{false};
-void ReplaceAll(std::wstring& text,const std::wstring& from,const std::wstring& to) {
-    if(from.empty())return;
-    for(size_t at=0;(at=text.find(from,at))!=std::wstring::npos;at+=to.size())
-        text.replace(at,from.size(),to);
-}
-
-std::wstring ComparableArtist(std::wstring value) {
-    ReplaceAll(value,L" / ",L", ");
-    for(auto& c:value)c=wchar_t(towlower(c));
-    return value;
-}
-bool SameText(const std::wstring& a,const std::wstring& b) {
-    return _wcsicmp(a.c_str(),b.c_str())==0;
-}
-bool ArtistMatches(const ClassicTrackQuery& q,const Recent& entry) {
-    const auto live=ComparableArtist(entry.artist);
-    if(live.empty())return true;
-    const auto first=ComparableArtist(q.artist);
-    const auto all=ComparableArtist(q.all_artists);
-    if(first==live||all==live)return true;
-    return (!first.empty() && live.find(first)!=std::wstring::npos) ||
-           (!all.empty() && all.find(live)!=std::wstring::npos);
-}
-
-std::wstring DisplayPath(const std::filesystem::path& path) {
-    auto value=path.wstring();
-    if(value.rfind(L"\\\\?\\UNC\\",0)==0)return L"\\\\"+value.substr(8);
-    if(value.rfind(L"\\\\?\\",0)==0)return value.substr(4);
-    return value;
-}
-}
-
-struct IndexedFile {
-    std::wstring relative,display;
-};
-SRWLOCK index_lock=SRWLOCK_INIT;
-std::wstring index_root;
-ULONGLONG index_time=0;
-std::shared_ptr<const std::vector<IndexedFile>> index_files=
-    std::make_shared<const std::vector<IndexedFile>>();
-
-std::shared_ptr<const std::vector<IndexedFile>> FileIndex(const std::wstring& configured_root,ULONGLONG now) {
-    AcquireSRWLockShared(&index_lock);
-    const bool fresh=index_root==configured_root&&now>=index_time&&now-index_time<10000;
-    if(fresh) {
-        auto snapshot=index_files;
-        ReleaseSRWLockShared(&index_lock);
-        return snapshot;
-    }
-    ReleaseSRWLockShared(&index_lock);
-
-    std::vector<IndexedFile> built;
-    built.reserve(4096);
-    // Original Soggfy walks the actual output folder; our previous MinGW
-    // std::filesystem walker silently ignored Windows enumeration failures.
-    // Use the Win32 Unicode FindFirstFileW API that works with both ordinary
-    // and extended-length paths, while preserving the same recursive lookup.
-    std::wstring root=configured_root;
-    while(root.size()>3 && (root.back()==L'\\' || root.back()==L'/'))root.pop_back();
-    struct Dir { std::wstring relative; unsigned depth; };
-    std::vector<Dir> stack;
-    DWORD scan_error=ERROR_SUCCESS;
-    std::size_t visited_dirs=0;
-    const DWORD root_attrs=root.empty()?INVALID_FILE_ATTRIBUTES:
-        GetFileAttributesW(WindowsPath(root).c_str());
-    if(root_attrs!=INVALID_FILE_ATTRIBUTES && (root_attrs&FILE_ATTRIBUTE_DIRECTORY))
-        stack.push_back({L"",0});
-    else
-        scan_error=GetLastError();
-    while(!stack.empty() && built.size()<100000) {
-        auto dir=std::move(stack.back());stack.pop_back();
-        const std::wstring folder=root+(dir.relative.empty()?L"":L"\\"+dir.relative);
-        const auto search=WindowsPath(folder+L"\\*");
-        WIN32_FIND_DATAW data{};
-        HANDLE finder=FindFirstFileW(search.c_str(),&data);
-        if(finder==INVALID_HANDLE_VALUE) {
-            const DWORD error=GetLastError();
-            if(error!=ERROR_FILE_NOT_FOUND && error!=ERROR_PATH_NOT_FOUND && scan_error==ERROR_SUCCESS)
-                scan_error=error;
-            continue;
-        }
-        ++visited_dirs;
-        do {
-            const std::wstring name(data.cFileName);
-            if(name==L"." || name==L"..")continue;
-            const auto relative=dir.relative.empty()?name:dir.relative+L"\\"+name;
-            if(data.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY) {
-                if(!(data.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)&&dir.depth<12)
-                    stack.push_back({relative,dir.depth+1});
-            } else if(built.size()<100000) {
-                built.push_back({relative,root+L"\\"+relative});
-            }
-        } while(FindNextFileW(finder,&data) && built.size()<100000);
-        const DWORD error=GetLastError();
-        if(error!=ERROR_NO_MORE_FILES && error!=ERROR_SUCCESS && scan_error==ERROR_SUCCESS)
-            scan_error=error;
-        FindClose(finder);
-    }
-    if(DebugLoggingEnabled()) {
-        char log[320];
-        std::snprintf(log,sizeof(log),
-            "classic disk index file_count=%llu directory_count=%llu root_exists=%d root_attributes=0x%lx last_error=%lu",
-            static_cast<unsigned long long>(built.size()),
-            static_cast<unsigned long long>(visited_dirs),
-            root_attrs!=INVALID_FILE_ATTRIBUTES && (root_attrs&FILE_ATTRIBUTE_DIRECTORY)?1:0,
-            static_cast<unsigned long>(root_attrs),
-            static_cast<unsigned long>(scan_error));
-        HistoryLog(log);
-    }
-
-    AcquireSRWLockExclusive(&index_lock);
-    index_root=configured_root;
-    index_time=now;
-    index_files=std::make_shared<const std::vector<IndexedFile>>(std::move(built));
-    auto snapshot=index_files;
-    ReleaseSRWLockExclusive(&index_lock);
-    return snapshot;
-}
-
-
-void SetClassicTrackStatus(const Media& media,const char* status,const std::string& message,
-                           const std::wstring& path) {
-    if(!status||!*status)return;
-    Recent item;
-    item.title=media.title;
-    item.artist=media.artist;
-    item.album=media.album;
-    item.status=status;
-    item.message=message;
-    item.path=path;
-    item.time=GetTickCount64();
-    AcquireSRWLockExclusive(&recent_lock);
-    // Update an existing identity first so a DONE replaces CONVERTING.
-    bool replaced=false;
-    for(auto& existing:recent) {
-        if(!existing.title.empty()&&SameText(existing.title,item.title)&&
-           SameText(existing.album,item.album)&&
-           ComparableArtist(existing.artist)==ComparableArtist(item.artist)) {
-            existing=std::move(item);replaced=true;break;
-        }
-    }
-    if(!replaced) {
-        recent[recent_next]=std::move(item);
-        recent_next=(recent_next+1)%recent.size();
-    }
-    ReleaseSRWLockExclusive(&recent_lock);
-
-}
-
-std::vector<ClassicTrackResult> QueryClassicTrackStatuses(const std::vector<ClassicTrackQuery>& queries) {
-    std::vector<ClassicTrackResult> results;
-    results.reserve(queries.size());
-    auto settings=GetSettings();
-    const ULONGLONG now=GetTickCount64();
-
-    // Snapshot recent live states so filesystem walking never holds the lock.
-    std::array<Recent,64> live;
-    AcquireSRWLockShared(&recent_lock);live=recent;ReleaseSRWLockShared(&recent_lock);
-
-    struct Pending {
-        ClassicTrackQuery query;
-        ClassicPathQuery path_query;
-        std::wregex regex;
-        std::wregex legacy_flat_regex;
-        std::wregex original_folder_regex;
-        bool legacy_flat=false;
-        std::wstring match;
-        unsigned matches=0;
-    };
-    std::vector<Pending> pending;
-
-    for(const auto& q:queries) {
-        ClassicTrackResult result;result.uri=q.uri;
-        const Recent* newest=nullptr;
-        for(const auto& entry:live) {
-            if(!entry.title.empty() && SameText(q.title,entry.title) && (q.album.empty()||SameText(q.album,entry.album)) &&
-               ArtistMatches(q,entry) && now>=entry.time && now-entry.time<=120000 &&
-               (!newest||entry.time>newest->time))newest=&entry;
-        }
-        if(newest && (newest->status!="DONE" || !newest->path.empty())) {
-            result.status=newest->status;result.message=newest->message;result.path=newest->path;
-            results.push_back(std::move(result));continue;
-        }
-        try {
-            Pending item;
-            item.query=q;
-            item.path_query={q.title,q.artist,q.album,q.all_artists};
-            const auto& path_template=(q.uri.rfind("spotify:episode:",0)==0 && !settings.podcast_template.empty())
-                ?settings.podcast_template:settings.path_template;
-            item.regex=std::wregex(BuildClassicPathRegex(item.path_query,path_template,
-                                  settings.output_ext,settings.normalize_artist_separators,
-                                  settings.invalid_char_repl,true),
-                                  std::regex_constants::ECMAScript|std::regex_constants::icase);
-            item.legacy_flat=q.uri.rfind("spotify:track:",0)==0;
-            if(item.legacy_flat) {
-                item.original_folder_regex=std::wregex(BuildClassicPathRegex(item.path_query,
-                    L"{artist_name}/{album_name}{multi_disc_path}/{track_num}. {track_name}.{ext}",
-                    L"",true,L"unicode",true),
-                    std::regex_constants::ECMAScript|std::regex_constants::icase);
-            }
-            if(item.legacy_flat)
-                item.legacy_flat_regex=std::wregex(BuildLegacySoggfyFlatRegex(item.path_query),
-                    std::regex_constants::ECMAScript|std::regex_constants::icase);
-            pending.push_back(std::move(item));
-        } catch(...) {
-            result.status="WARN";result.message="Invalid path template";
-            results.push_back(std::move(result));
-        }
-    }
-
-    if(!pending.empty()) {
-        const auto files=FileIndex(settings.root,now);
-        for(const auto& file:*files) {
-            for(auto& p:pending) {
-                if(p.matches>=2)continue;
-                const bool current_match=std::regex_match(file.relative,p.regex);
-                const bool legacy_match=!current_match&&p.legacy_flat&&
-                    (std::regex_match(file.relative,p.legacy_flat_regex)||
-                     std::regex_match(file.relative,p.original_folder_regex));
-                if(current_match||legacy_match) {
-                    ++p.matches;
-                    if(p.matches==1)p.match=file.display;
-                }
-            }
-        }
-
-        for(auto& p:pending) {
-            ClassicTrackResult result;result.uri=p.query.uri;
-            if(p.matches==1) {
-                result.status="DONE";result.path=p.match;
-            } else if(p.matches>1) {
-                result.status="WARN";result.message="Different tracks mapping to the same file name";
-            }
-            results.push_back(std::move(result));
-        }
-
-        // When a folder contains thousands of existing tracks but the UI
-        // receives NONE, distinguish broken enumeration from row metadata
-        // mismatches. All diagnostics stay on this background worker.
-        static std::atomic<ULONGLONG> last_status_diag{0};
-        const auto last=last_status_diag.load(std::memory_order_relaxed);
-        if(DebugLoggingEnabled() && (now<last || now-last>=20000)) {
-            last_status_diag.store(now,std::memory_order_relaxed);
-            std::size_t done=0,warn=0,missing=0;
-            for(const auto& item:results) {
-                if(item.status=="DONE")++done;
-                else if(item.status=="WARN")++warn;
-                else if(item.status.empty())++missing;
-            }
-            char summary[256];
-            std::snprintf(summary,sizeof(summary),
-                "classic disk match query_count=%llu indexed_files=%llu done=%llu warn=%llu none=%llu",
-                static_cast<unsigned long long>(queries.size()),
-                static_cast<unsigned long long>(files->size()),
-                static_cast<unsigned long long>(done),
-                static_cast<unsigned long long>(warn),
-                static_cast<unsigned long long>(missing));
-            HistoryLog(summary);
-            unsigned shown=0;
-            for(const auto& p:pending) {
-                if(p.matches!=0)continue;
-                if(shown++>=3)break;
-                std::wstring folded=p.query.title;
-                for(auto& c:folded)c=static_cast<wchar_t>(towlower(c));
-                unsigned title_candidates=0;
-                for(const auto& file:*files) {
-                    std::wstring rel=file.relative;
-                    for(auto& c:rel)c=static_cast<wchar_t>(towlower(c));
-                    if(!folded.empty() && rel.find(folded)!=std::wstring::npos)
-                        ++title_candidates;
-                }
-                const auto info="classic disk miss title="+Utf8(p.query.title)+
-                    " artist="+Utf8(p.query.artist)+" all="+Utf8(p.query.all_artists)+
-                    " matching_title_files="+std::to_string(title_candidates);
-                HistoryLog(info.substr(0,480).c_str());
-            }
-        }
-    }
-    return results;
-}
-
+namespace { std::atomic<bool> current_ignored{false}; }
 
 namespace {
+static std::atomic<bool> m3u_busy{false};
 struct M3USaveJob {
     std::wstring suggested;
     std::string playlist;
     std::vector<ClassicM3UEntry> entries;
+    std::function<void(ClassicM3UResult)> completion;
 };
 static std::string CleanM3UText(std::string value) {
     for(char& c:value)if(c=='\r'||c=='\n')c=' ';
@@ -333,76 +43,68 @@ static std::string Utf8Path(const std::wstring& value) {
                            out.data(),size,nullptr,nullptr)!=size)return {};
     return out;
 }
+template<class T> struct M3UCom {
+    T* value=nullptr;
+    ~M3UCom(){if(value)value->Release();}
+};
+static ClassicM3UResult WriteM3U(const M3USaveJob& job) {
+    M3UCom<IFileSaveDialog> dialog;
+    if(FAILED(CoCreateInstance(CLSID_FileSaveDialog,nullptr,CLSCTX_INPROC_SERVER,
+             IID_IFileSaveDialog,reinterpret_cast<void**>(&dialog.value)))||!dialog.value)
+        return ClassicM3UResult::Failed;
+    COMDLG_FILTERSPEC types[]={{L"M3U8 playlist",L"*.m3u8"},{L"M3U playlist",L"*.m3u"}};
+    dialog.value->SetFileTypes(2,types);
+    dialog.value->SetDefaultExtension(L"m3u8");
+    dialog.value->SetTitle(L"Soggfy - Generate M3U");
+    dialog.value->SetFileName(job.suggested.c_str());
+    auto settings=GetSettings();
+    M3UCom<IShellItem> initial;
+    if(!settings.root.empty()&&SUCCEEDED(SHCreateItemFromParsingName(settings.root.c_str(),
+            nullptr,IID_IShellItem,reinterpret_cast<void**>(&initial.value))))
+        dialog.value->SetFolder(initial.value);
+    const HRESULT shown=dialog.value->Show(nullptr);
+    if(shown==HRESULT_FROM_WIN32(ERROR_CANCELLED))return ClassicM3UResult::Canceled;
+    if(FAILED(shown))return ClassicM3UResult::Failed;
+    M3UCom<IShellItem> item;
+    if(FAILED(dialog.value->GetResult(&item.value))||!item.value)return ClassicM3UResult::Failed;
+    struct SelectedPath {PWSTR value=nullptr;~SelectedPath(){CoTaskMemFree(value);}} selected;
+    if(FAILED(item.value->GetDisplayName(SIGDN_FILESYSPATH,&selected.value))||!selected.value)
+        return ClassicM3UResult::Failed;
+    std::filesystem::path output(selected.value),parent=output.parent_path();
+    std::string data="#EXTM3U\n#PLAYLIST:"+CleanM3UText(job.playlist)+"\n\n";
+    for(const auto& entry:job.entries) {
+        data+="#EXTINF:"+std::to_string(entry.duration_seconds)+","+
+              CleanM3UText(entry.artist)+" - "+CleanM3UText(entry.title)+"\n";
+        std::error_code ec;
+        auto relative=std::filesystem::proximate(std::filesystem::path(entry.path),parent,ec);
+        std::wstring value=ec?entry.path:relative.wstring();
+        std::replace(value.begin(),value.end(),L'\\',L'/');
+        auto path=Utf8Path(value);
+        if(path.empty())return ClassicM3UResult::Failed;
+        data+=path+"\n\n";
+    }
+    return ReplaceCompleteFile(output.wstring(),data.data(),data.size())?
+        ClassicM3UResult::Saved:ClassicM3UResult::Failed;
+}
 static DWORD WINAPI SaveM3UWorker(LPVOID param) {
     std::unique_ptr<M3USaveJob> job(static_cast<M3USaveJob*>(param));
-    HRESULT initialized=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
-    if(FAILED(initialized)&&initialized!=RPC_E_CHANGED_MODE)return 0;
-
-    IFileSaveDialog* dialog=nullptr;
-    HRESULT hr=CoCreateInstance(CLSID_FileSaveDialog,nullptr,CLSCTX_INPROC_SERVER,
-                                IID_IFileSaveDialog,reinterpret_cast<void**>(&dialog));
-    if(SUCCEEDED(hr)&&dialog) {
-        COMDLG_FILTERSPEC types[]={{L"M3U8 playlist",L"*.m3u8"},{L"M3U playlist",L"*.m3u"}};
-        dialog->SetFileTypes(2,types);
-        dialog->SetDefaultExtension(L"m3u8");
-        dialog->SetTitle(L"Soggfy — Generate M3U");
-        if(!job->suggested.empty())dialog->SetFileName(job->suggested.c_str());
-
-        auto settings=GetSettings();
-        IShellItem* initial=nullptr;
-        if(!settings.root.empty() &&
-           SUCCEEDED(SHCreateItemFromParsingName(settings.root.c_str(),nullptr,IID_IShellItem,
-                                                reinterpret_cast<void**>(&initial)))) {
-            dialog->SetFolder(initial);
-            initial->Release();
-        }
-
-        if(SUCCEEDED(dialog->Show(nullptr))) {
-            IShellItem* item=nullptr;
-            PWSTR selected=nullptr;
-            if(SUCCEEDED(dialog->GetResult(&item))&&item) {
-                if(SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH,&selected))&&selected) {
-                    std::filesystem::path output(selected);
-                    std::filesystem::path parent=output.parent_path();
-                    std::string data="#EXTM3U\n#PLAYLIST:"+CleanM3UText(job->playlist)+"\n\n";
-                    for(const auto& entry:job->entries) {
-                        data+="#EXTINF:"+std::to_string(entry.duration_seconds)+","+
-                              CleanM3UText(entry.artist)+" - "+CleanM3UText(entry.title)+"\n";
-                        std::error_code ec;
-                        auto relative=std::filesystem::proximate(std::filesystem::path(entry.path),parent,ec);
-                        std::wstring value=ec?entry.path:relative.wstring();
-                        std::replace(value.begin(),value.end(),L'\\',L'/');
-                        data+=Utf8Path(value)+"\n\n";
-                    }
-                    HANDLE file=CreateFileW(WindowsPath(output.wstring()).c_str(),GENERIC_WRITE,0,nullptr,
-                                            CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
-                    if(file!=INVALID_HANDLE_VALUE) {
-                        DWORD written=0;
-                        bool ok=data.size()<=MAXDWORD &&
-                            WriteFile(file,data.data(),DWORD(data.size()),&written,nullptr) &&
-                            written==data.size();
-                        CloseHandle(file);
-                        if(!ok) {
-                            DeleteFileW(WindowsPath(output.wstring()).c_str());
-                            HistoryLog("failed to write generated M3U playlist");
-                        } else {
-                            HistoryLog(("generated M3U tracks="+std::to_string(job->entries.size())).c_str());
-                        }
-                    } else HistoryLog("failed to create generated M3U playlist");
-                    CoTaskMemFree(selected);
-                }
-                item->Release();
-            }
-        }
-        dialog->Release();
+    const HRESULT initialized=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+    auto result=ClassicM3UResult::Failed;
+    if(SUCCEEDED(initialized)) {
+        try {result=WriteM3U(*job);}catch(...) {result=ClassicM3UResult::Failed;}
+        CoUninitialize();
     }
-    if(SUCCEEDED(initialized))CoUninitialize();
+    HistoryLog(result==ClassicM3UResult::Saved?"generated M3U playlist":
+        result==ClassicM3UResult::Canceled?"M3U save canceled":"failed to save generated M3U playlist; existing file retained");
+    m3u_busy=false;
+    try {if(job->completion)job->completion(result);}catch(...) {}
     return 0;
 }
 }
 
 bool SaveClassicM3U(const std::wstring& suggested_filename,const std::string& playlist_name,
-                    const std::vector<ClassicM3UEntry>& entries) {
+                    const std::vector<ClassicM3UEntry>& entries,
+                    std::function<void(ClassicM3UResult)> completion) {
     if(suggested_filename.size()>240||playlist_name.size()>4096||entries.size()>10000)return false;
     auto job=std::make_unique<M3USaveJob>();
     job->suggested=suggested_filename;
@@ -412,8 +114,10 @@ bool SaveClassicM3U(const std::wstring& suggested_filename,const std::string& pl
         job->suggested+=L".m3u8";
     job->playlist=playlist_name;
     job->entries=entries;
+    job->completion=std::move(completion);
+    if(m3u_busy.exchange(true))return false;
     HANDLE thread=CreateThread(nullptr,0,SaveM3UWorker,job.get(),0,nullptr);
-    if(!thread)return false;
+    if(!thread){m3u_busy=false;return false;}
     job.release();
     CloseHandle(thread);
     return true;
