@@ -1,4 +1,25 @@
-# Soggfy v3.0.0-rc.82 - validation helper deployment foundation
+# Soggfy v3.0.0-rc.83 - explicit connectivity workaround
+
+**Upgrade behavior:** the legacy Windows connectivity override is now off unless
+SpotifyHistory.ini contains exactly NetworkPatch=1 under [To Disk]. Earlier Soggfy
+builds applied it unconditionally. If you rely on that workaround, add the opt-in
+before restarting Spotify with this candidate. Missing, duplicate, malformed or
+unreadable settings leave the override off; INIs larger than 64 KiB also opt out.
+Plain ANSI, BOM-marked UTF-8 and BOM-marked UTF-16LE files are supported.
+
+The setting is startup-only. Classic settings saves preserve external INI edits;
+they neither change the active override nor detach existing COM hooks. Disabled
+startup skips connectivity import discovery, writes and retries. Enabled startup
+retains Soggfy's loader grace and unresolved delay-import safeguards. Telemetry
+filtering, SpotX, capture and playback-speed controls remain independent.
+
+Local Windows fixtures exercise disabled discovery using an invalid module,
+normal/delayed import mutation, strict INI parsing, restart-only state and settings
+persistence. Full CI and independent RC83 package verification are pending at
+source commit. No live installation, restart, merge or official release is implied.
+The other unfinished milestones remain listed in MILESTONES.md.
+
+## RC82 background - validation helper deployment foundation
 
 The release build compiles the pinned Vorbis/FLAC helper, strips it, verifies
 x64 PE imports, and embeds its finalized SHA-256 into the DLL trust entry point.

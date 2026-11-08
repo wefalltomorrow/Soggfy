@@ -58,8 +58,8 @@ The gated Windows test follows upstream's blocked-provider test approach.
 
 Normal-speed timeline continuity rules, late-capture retention, repeat/delayed
 identity handling and RC1's opt-in NetworkPatch defaults are not included in
-this candidate. They require separate compatibility work. RC1 itself does not
-claim that random pauses are solved.
+that RC64 candidate. Later work is listed below; RC83 adds the NetworkPatch
+opt-in policy. RC1 itself does not claim that random pauses are solved.
 
 ## Compatibility references
 
@@ -121,7 +121,7 @@ fixtures. These are small independent safety changes, not a capture-core rebase.
 | LogLevel 0/1/2/4 and independent bounded diagnostic lanes | Not ported | Reconcile with existing Soggfy diagnostics/settings and privacy behavior |
 | Deterministic sanitizer fuzz campaign | Not ported as an upstream campaign | Add after choosing the capture/identity boundaries to integrate |
 | CaptureSpeedLimit menu semantics and 1/2/4/8/10x choices | Intentionally not copied | Keep Classic 1x–30x and Downloads-off effective 1x with selection retained |
-| NetworkPatch default-off opt-in | Not ported | Keep separate from the native telemetry filter and SpotX policy |
+| NetworkPatch default-off opt-in | RC83 implementation | Startup-only explicit opt-in with bounded strict INI parsing. Keeps Soggfy loader/delay-import guards; independent of telemetry and SpotX. Local Windows fixtures pass; CI/package and live acceptance remain |
 
 Priority for deeper work: playback/decoder identity and ad isolation first; native
 podcast MP3 second; identity-aware duplicate routing/album provenance next; then

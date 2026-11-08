@@ -22,6 +22,9 @@ for source in buffer hook trampoline hde/hde64; do
         "native/vendor/minhook/src/$source.c" -o "build/windows-tests/minhook-${source//\//-}.o"
 done
 common=(-std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static)
+mkdir -p "$floggfy_test_root/network-patch"
+"$CXX" "${common[@]}" tests/windows_network_patch_test.cpp native/pe_imports.cpp -lole32 -luuid -lshell32 -liphlpapi -lws2_32 -o "$floggfy_test_root/network-patch/network-patch-test.exe"
+"$floggfy_test_root/network-patch/network-patch-test.exe"
 "$CXX" "${common[@]}" -municode tests/windows_validation_worker_trust_test.cpp native/validation_worker_trust.cpp -lbcrypt -o "$floggfy_test_root/validation-worker-trust-test.exe"
 worker_test_hash="$(sha256sum "$floggfy_test_root/validation-worker-trust-test.exe" | cut -d' ' -f1)"
 "$floggfy_test_root/validation-worker-trust-test.exe" "$worker_test_hash"

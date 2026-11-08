@@ -176,6 +176,19 @@ If the injected UI is unavailable after a Spotify update, capture can still be e
 
 ## Diagnostics
 
+### Optional connectivity workaround
+
+RC83 changes the legacy connectivity override from unconditional to explicit
+opt-in. If Windows incorrectly reports no Internet and you rely on this workaround,
+set NetworkPatch=1 under [To Disk] in SpotifyHistory.ini, then restart Spotify.
+The default and missing-key behavior is off. Only the unquoted value 1 enables it;
+duplicate keys, malformed/unreadable input and files larger than 64 KiB opt out.
+This option is separate from Block telemetry and SpotX. It treats a usable adapter
+address as Internet connectivity; it does not test actual Internet reachability.
+Edits take effect at the next startup and survive unrelated Classic settings saves.
+
+### Logging
+
 Choose **Log detail** in Classic settings, or set **LogLevel** under **[To Disk]**:
 0 disables logging; 1 records completions, warnings and failures; 2 adds activity;
 4 adds diagnostics. Fresh installs default to 1. Existing INIs without LogLevel

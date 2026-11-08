@@ -5,6 +5,7 @@ namespace history {
 struct Settings {
     bool downloads=false,ogg=true,flac=true,menu=false,classic_ui=true,music_folder=false;
     bool metadata=true,log=true,debug_log=false,normalize_artist_separators=true;
+    bool network_patch=false; // INI-only, fixed at startup; never persisted by UI saves.
 
     // Classic Soggfy behaviour/settings.
     double playback_speed=1.0;

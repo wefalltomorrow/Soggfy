@@ -10,6 +10,7 @@
 #include <cmath>
 #include "async_log.h"
 #include "log_policy.h"
+#include "network_patch_policy.h"
 namespace history {
 static SRWLOCK lock=SRWLOCK_INIT;
 static Settings settings;
@@ -50,6 +51,8 @@ static constexpr char default_ini[]=
     "Invalid Char Replacement=unicode\r\n"
     "\r\n"
     "[To Disk]\r\n"
+    "; Restart-only connectivity workaround. Set 1 only to opt in.\r\n"
+    "NetworkPatch=0\r\n"
     "Downloads=0\r\n"
     "; Empty uses the Windows Music folder plus \\Spotify.\r\n"
     "Save Location=\r\n"
@@ -178,6 +181,7 @@ void InitSettings(HMODULE proxy) {
        !CreateDefaultIni(ini))
         QueueDiagnostic("failed to create default SpotifyHistory.ini; using built-in settings");
     settings.downloads=GetPrivateProfileIntW(L"To Disk",L"Downloads",GetPrivateProfileIntW(L"History",L"Enabled",0,ini.c_str()),ini.c_str())!=0;
+    settings.network_patch=ReadNetworkPatch(ini);
     settings.classic_ui=GetPrivateProfileIntW(L"Soggfy",L"Classic UI",1,ini.c_str())!=0;
     settings.menu=GetPrivateProfileIntW(L"Soggfy",L"Native Menu",0,ini.c_str())!=0;
     settings.ogg=GetPrivateProfileIntW(L"To Disk",L"Ogg",1,ini.c_str())!=0;

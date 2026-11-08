@@ -18,7 +18,7 @@ It is a checkpoint, not completion of all work.
 | Saved-recording metadata refresh/preservation | Offline preparation and RC82 helper deployment verified | Inspection, isolated Ogg/FLAC decoding, minimal text/lyrics policy, output verification and preparation passed CI. RC82 DLL-bound helper packaging and installation passed CI/artifact verification. Local probes demonstrate concurrent ADS, attribute and DACL mutation despite the source lock. Filesystem metadata preservation, artwork replacement policy and production coordinator remain; see METADATA_REFRESH_DESIGN.md |
 | Log levels 0/1/2/4 and bounded lanes | RC78 CI/package verified | RC77 test collision corrected in RC78; live acceptance remains separate; both lanes share one disk worker |
 | Deterministic sanitizer/fuzz campaign | RC76 campaigns passed | 40,000 seeded iterations plus regressions; does not prove live callback safety |
-| NetworkPatch policy | Separate decision | Explicit opt-in design; no silent default change |
+| NetworkPatch policy | RC83 implemented; local Windows fixtures passed | Explicit default-off startup opt-in, strict bounded INI parsing, preserved external edits and disabled IAT bypass. Upgrade behavior documented. Full CI/package verification and pinned-client acceptance remain |
 | Pinned Spotify live acceptance/stalls | Separate gate | Authorized exact-artifact restart and walkthrough |
 | Merge/official release | Separate gate | Review, acceptance and authorization |
 
