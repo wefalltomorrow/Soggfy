@@ -171,12 +171,66 @@ object +0x110 as its output. Routine 0xc84bf4 invokes that callable again,
 writes the returned 16-byte result to object +0x110 and subsequently clears the
 payload variant at +0x7b8 (tag at +0xae8), destroying variant 1 through
 0xc821b8 where applicable. Thus the object address alone cannot establish
-an immutable playback identity. The callable implementation, event causing
-that mutation, synchronization, delayed decoder callbacks, preload and
-ad/DJ transitions remain unresolved. The payload's ID and object +0x110
+an immutable playback identity. The sections below trace the configured
+generator and one callback-selection event. Synchronization, delayed decoder
+callbacks, preload and ad/DJ transitions remain unresolved. The payload's ID and object +0x110
 must not be assumed interchangeable across transitions.
 
 The extended probe verifies 184 instructions, callable tables and two
 identity literals. Its JSON records the semantic inference separately from
 the instruction observations. No Spotify execution, runtime hooks or
 production reader changes were made.
+
+## Configured generator provenance
+
+The construction path now connects the candidate to its configured byte
+generator. This is conditional static dataflow for the pinned artifact, not
+an observation of a running client or a guarantee that a callable cannot be
+replaced later.
+
+1. Root factory 0xc42f3c supplies function 0xc485c8 at caller stack +0xa0
+   (0xc4423f/0xc44246). Factory 0xc45a30 reads that argument at rbp +0x3d0
+   and puts it into a callable with table 0x19f14e0. Its copy/move entry
+   0x899a00 preserves the function pointer; invoke entry 0x899a18 calls it
+   with the output buffer as rcx.
+2. That callable reaches manager constructor 0xc5afac at caller stack +0xa0,
+   corresponding to callee rbp +0x280. It moves into manager storage +0x8e8
+   (pointer +0x920), then is cloned into a temporary factory configuration.
+   Helpers 0xc5b900 and 0xc8d584 transfer it into factory storage +0x58
+   (pointer +0x90) at manager +0x938. Helper 0x5ca48 handles both inline
+   callable movement and heap-pointer transfer.
+3. Manager routine 0xc6b5f8 passes manager +0x938 to 0xc8df88. For the
+   input variant tag 0 at +0x2e0, that dispatches to 0xc8d6c4. Configuration
+   builder 0xc8e6f0 clones factory +0x90 into config storage +0x98
+   (pointer +0xd0). The config passes through 0xc8d23c and 0xc914a0 to
+   object constructor 0xc81640, which clones it into object storage +0xa8
+   (pointer +0xe0) before filling object +0x110.
+4. Configured function 0xc485c8 requests exactly 16 bytes through 0x17d448c.
+   That helper obtains a thread-local provider through 0x17d4578 and calls
+   its virtual slot +8 with output pointer and size. Provider construction
+   0x17d40c4 installs table 0x1c93938. Its fill entry 0x17d434c gathers
+   words through virtual slot +0x18 and copies the requested byte count
+   into the caller's output. This establishes the byte-generation path; it
+   does not establish uniqueness, cryptographic properties or safe lifetime.
+
+## Audio-driver recovery callback selection
+
+Routine 0xc89c84 only enters this handling path when object byte +0x500 is
+2. When the earlier 0xc8fac0 branch returns false, it calls 0xc8fa88. That
+predicate matches category identity from 0x13e1b2c and error value 12. The
+category object at 0x25aeb50 points to table 0x1bac490; its name entry
+returns `audio`, and its message entry maps 12 to
+`playback_error_audio_driver`.
+
+On that predicate's true branch, 0xc89c84 binds the object pointer to
+callback 0xc84bf4, previously traced to replace object +0x110 and clear the
+payload variant. It hands the callback to 0xc854d4, which forwards it to
+component object +0x10, virtual slot +0x48. The later call through callback
+storage +0x10 is a manager/cleanup operation, not evidence that the callback
+body ran. Selection and handoff are established; receiver ownership, actual
+invocation, timing and synchronization remain open. This recovery path must
+be included in identity acceptance tests.
+
+The probe now verifies 346 unique instructions, pointer/table entries and
+four literals. It records generator and recovery inferences separately from
+the checked observations. No production offsets or runtime hooks were added.
