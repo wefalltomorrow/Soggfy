@@ -181,6 +181,27 @@ Relevant Windows API contracts:
 - https://learn.microsoft.com/en-us/windows/win32/fileio/file-streams
 - https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilea
 
+An additional isolated probe, `tools/probe_refresh_replace_file.ps1`, exercises
+ReplaceFileW with each actual transaction handle independently held, and with
+both handles absent. PowerShell 7.6.9 and Windows PowerShell 5.1 produced the same
+four results on November 8, 2026. Holding either the source (GENERIC_READ|DELETE,
+share READ) or staging (GENERIC_READ|GENERIC_WRITE|DELETE, share READ) causes error
+32 without changing the source, consuming staging, or creating the backup.
+Unlocked replacement preserves the tested protected DACL and original named
+streams when staging has none. However, copying a named stream into staging,
+then editing that stream on the original, publishes the stale staging stream;
+only the backup retains the newer version. A newly added original stream that
+does not exist on staging survives. The fixture checks audio, stream contents,
+backup contents, staging consumption and DACL SDDL after every operation.
+
+This provides concrete evidence against combining a metadata snapshot copied to
+staging with ReplaceFile as a general concurrency solution. Omitting staged
+streams avoids this tested conflict, but releasing the held handles still loses
+the existing identity/namespace contract. These four synthetic cases do not
+validate SACLs, EFS, extended attributes, crash recovery or adversarial pathname
+replacement. The production coordinator remains disabled. Probe fixtures and
+reports are retained under outputs/replace-file-probes, outside release packages.
+
 The text policy fills absent lyrics and preserves existing timed/custom lyrics.
 It now permits a plain-to-line-timed upgrade only when normalized line endings
 leave exactly the same words and every timestamp is monotonic and within the

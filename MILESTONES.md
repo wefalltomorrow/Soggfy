@@ -1,7 +1,7 @@
 # Engineering milestones
 
-Updated November 8, 2026. RC84 passed all four jobs in CI 42459826370 and
-independent artifact verification. RC85 retention-conflict fixtures pass locally.
+Updated November 8, 2026. RC85 passed all four jobs in CI 42461370789 and
+independent artifact verification at source 89abeba4c351c21358184e741fe72ddc22955672.
 It is a checkpoint, not completion of all work.
 
 | Milestone | State | Completion evidence still required |
@@ -13,7 +13,7 @@ It is a checkpoint, not completion of all work.
 | Native playback/decoder identity | Static discovery compatible | Playback-ID ABI, lifetime, integration and transition fixtures |
 | Ad/DJ/interstitial isolation | Open | Trustworthy identity plus transition/live evidence |
 | Native podcast MP3 capture | Structural prototype | Bounded MPEG-1/2/2.5 layout and ID3 extents; 36 real mono/stereo CBR/VBR fixtures locally verified. Payload/reservoir/gapless/completeness validation and lifecycle integration remain; no production capture enabled |
-| Concurrent capture/cross-format association | RC84 shared-ready rejection CI/package verified; RC85 retention-conflict fix locally verified | Late first retention now rejects candidates shared by queued listens, including competing ready captures. RC85 CI/package checks, native identity-aware lifecycle, future-listen/preload and live transition evidence remain |
+| Concurrent capture/cross-format association | RC84 shared-ready rejection and RC85 retention-conflict fix CI/package verified | Late first retention now rejects candidates shared by queued listens, including competing ready captures. Native identity-aware lifecycle, future-listen/preload and live transition evidence remain |
 | Playback metadata refresh/instance-bound skip | Partial | RC78 queue fencing and RC79 exact-instance active/final/pending metadata refresh CI/packages verified; native current-track skip remains open |
 | Saved-recording metadata refresh/preservation | Offline preparation and RC82 helper deployment verified | Inspection, isolated Ogg/FLAC decoding, minimal text/lyrics policy, output verification and preparation passed CI. RC82 DLL-bound helper packaging and installation passed CI/artifact verification. Local probes demonstrate concurrent ADS, attribute and DACL mutation despite the source lock. Filesystem metadata preservation, artwork replacement policy and production coordinator remain; see METADATA_REFRESH_DESIGN.md |
 | Log levels 0/1/2/4 and bounded lanes | RC78 CI/package verified | RC77 test collision corrected in RC78; live acceptance remains separate; both lanes share one disk worker |
