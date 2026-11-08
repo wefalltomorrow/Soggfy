@@ -2,6 +2,9 @@
 set -euo pipefail
 cd -- "$(dirname -- "$0")"
 mkdir -p build
+g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/mp3_layout_test.cpp native/compressed_buffer.cpp -o build/mp3-layout-test
+build/mp3-layout-test
+python3 tests/mp3_layout_decode_test.py build/mp3-layout-test
 g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -pthread tests/log_queue_test.cpp -o build/log-queue-test
 build/log-queue-test
 g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -pthread tests/client_playback_test.cpp native/rich_metadata.cpp native/ogg_history_core.cpp -o build/client-playback-test

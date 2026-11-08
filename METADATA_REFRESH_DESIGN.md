@@ -173,7 +173,7 @@ the private staging file; the latter performs the bounded namespace operations.
 A Windows integration test stages, changes real settings, rejects the stale
 guard, and confirms the original survives and staging is cleaned up. The valid
 generation publishes successfully under the guard. These additions pass local
-tests; their full CI validation is pending. Filesystem metadata preservation and
+tests and all four jobs in CI 42450109385. Filesystem metadata preservation and
 the complete production coordinator remain unfinished.
 
 The Windows preparation prototype now joins held-source reading, owned-file
@@ -185,8 +185,9 @@ The caller must retain the transaction and acquire its settings fence after
 staging, rechecking cancellation before publication. Twelve real Ogg/FLAC cases
 pass locally, each exercising staging cleanup, fixture publication, no-op,
 conflicting identity, missing helper, plausible-but-wrong decoded coverage,
-immediate cancellation and throwing cancellation. MinGW CI for this preparation
-path is still pending. It is not production-connected or packaged.
+immediate cancellation and throwing cancellation. All four jobs in CI
+42450663860 passed, including the MinGW preparation path. It is not
+production-connected or packaged.
 
 1. Read metadata from complete native recordings. Require exact Spotify URI
    agreement and recognized complete-listen/capture provenance. Legacy or
