@@ -67,6 +67,24 @@ The helper SHA-256 is 16a4edcbf8458acbbc00682123653fe498dbbc49961c471d771fb14469
 Saved-file refresh and artwork replacement remain disabled. The separately
 staged RC86 live-acceptance target has not been replaced or installed.
 
+## MP3 reserved Huffman selectors
+
+The offline inspector now rejects pair-codebook selectors 4 and 14 in every
+declared region, including empty regions. This is an explicit strict-input
+policy; decoder tolerance is not evidence of a supported declaration. The
+pinned FFmpeg mpegaudiodec_common.c maps both selectors to table zero, and
+mpegaudiodec_template.c can synthesize zero coefficients for that mapping.
+Switched blocks have two selectors; the following subblock gains must not be
+mistaken for a third. No Huffman payload decoding or production MP3 capture
+is enabled by this check.
+
+Local diagnostic tests pass 6,912 selector declarations across all MPEG
+versions, granules/channels, long/switched blocks, CRC and fixed-block input.
+The real corpus passes 420 reserved-selector mutations while accepting all
+36 original encodings and 18 protected PCM-equivalent streams. The existing
+scalefactor, Xing, CRC and reservoir checks also pass. Full CI and independent
+package verification for this follow-up are pending.
+
 ## MP3 protected-frame follow-up
 
 The offline Layer III inspector now validates protected-frame CRC over the

@@ -147,6 +147,41 @@ static void Scalefactors() {
     }
     std::cout<<"PASS: scalefactor budgets, MPEG-1 reuse, all LSF ranges, intensity channel/mode, switched/mixed blocks and CRC layouts\n";
 }
+static void HuffmanSelectors() {
+    unsigned cases=0;
+    Mp3Layout info;const char* error=nullptr;
+    for(unsigned version:{3u,2u,0u})for(unsigned channels:{1u,2u})
+    for(bool crc:{false,true}) {
+        const bool high=version==3;
+        const unsigned prefix=crc?6:4,start=high?(channels==1?18:20):(channels==1?9:10);
+        for(unsigned record=0;record<channels*(high?2:1);++record)
+        for(unsigned block:{0u,1u,2u,3u})for(unsigned table=0;table<(block?2u:3u);++table)
+        for(unsigned selected=0;selected<32;++selected) {
+            auto frame=Frame((0xe3|(version<<3))-(crc?1:0),
+                             high?0x90:version==2?0x80:0x40,high?417:208,channels==1?0xc0:0);
+            const unsigned switched=start+record*(high?59:63)+(high?33:38);
+            if(block) {
+                SetBits(frame,prefix,switched,1,1);
+                SetBits(frame,prefix,switched+1,2,block);
+                // These bits are subblock gains, not a third table selector.
+                SetBits(frame,prefix,switched+14,5,14);
+            }
+            SetBits(frame,prefix,switched+(block?4:1)+5*table,5,selected);Crc(frame);
+            CompressedBuffer blocks;assert(blocks.Append(frame.data(),frame.size(),65536));
+            if(selected==4||selected==14) {
+                Reject(frame);
+                assert(!InspectMp3Layout(blocks,info,error));
+                assert(std::strcmp(error,"unsupported MP3 Huffman table selector")==0);
+            } else {
+                assert(InspectMp3Layout(frame,info,error));
+                assert(InspectMp3Layout(blocks,info,error));
+            }
+            ++cases;
+        }
+    }
+    assert(cases==6912);
+    std::cout<<"PASS: 6912 Huffman selector declarations across versions, records, blocks, CRC and fixed buffers; reserved selectors rejected even in empty regions\n";
+}
 int main(int argc,char** argv) {
     if(argc==2) {
         std::ifstream input(argv[1],std::ios::binary);assert(input);
@@ -156,7 +191,7 @@ int main(int argc,char** argv) {
         std::cout<<info.rate<<' '<<info.channels<<' '<<info.frames<<' '<<info.nominal_samples<<' '<<info.audio_offset<<' '<<info.audio_size<<'\n';
         return 0;
     }
-    assert(argc==1);Scalefactors();Xing();Mp3Layout info;const char* error="stale";
+    assert(argc==1);Scalefactors();Xing();HuffmanSelectors();Mp3Layout info;const char* error="stale";
     auto bytes=Frame();Append(bytes,Frame(0xfa,0xa2,523));Append(bytes,Frame());
     assert(InspectMp3Layout(bytes,info,error)&&!error);
     assert(info.rate==44100&&info.channels==2&&info.frames==3&&info.nominal_samples==3456&&info.audio_offset==0&&info.audio_size==1357);

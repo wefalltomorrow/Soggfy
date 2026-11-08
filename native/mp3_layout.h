@@ -131,6 +131,15 @@ bool InspectMp3Layout(const Bytes& bytes,Mp3Layout& output,const char*& error) {
                 const bool split=mp3_layout_detail::Bits(bytes,side,switched,1)!=0;
                 const unsigned block=split?mp3_layout_detail::Bits(bytes,side,switched+1,2):0;
                 const bool mixed=split&&mp3_layout_detail::Bits(bytes,side,switched+3,1);
+                // Reserved pair-codebook selectors have no decoding table.
+                // Reject them even for an empty region; do not silently turn
+                // an unsupported declaration into table-zero coefficients.
+                const size_t tables=switched+(split?4:1);
+                for(unsigned table=0;table<(split?2u:3u);++table) {
+                    const unsigned selected=mp3_layout_detail::Bits(bytes,side,tables+5*table,5);
+                    if(selected==4||selected==14)
+                        return fail("unsupported MP3 Huffman table selector");
+                }
                 const unsigned compress=mp3_layout_detail::Bits(bytes,side,bit+29,version==3?4:9);
                 const unsigned channel=i%channels;
                 const unsigned reuse=version==3&&i>=channels?

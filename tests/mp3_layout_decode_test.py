@@ -161,6 +161,7 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
     missing_predecessors = 0
     protected_cases = 0
     scalefactor_cases = 0
+    huffman_cases = 0
     xing_cases = 0
     for rate in (8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000):
         for channels in (1, 2):
@@ -199,6 +200,17 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
                 # scalefactors. Permissive decoders can silently accept this;
                 # rejection must come from our semantic bounds, not exit code.
                 for record in range(channels * (2 if high else 1)):
+                    record_bit = first_record + record * (59 if high else 63)
+                    switched = record_bit + (33 if high else 38)
+                    split = (source[middle + 4 + switched // 8] >> (7 - switched % 8)) & 1
+                    for table in range(2 if split else 3):
+                        for reserved in (4, 14):
+                            damaged = bytearray(source)
+                            set_bits(damaged, middle + 4, switched + (4 if split else 1) + 5 * table, 5, reserved)
+                            malformed = pathlib.Path(directory) / "huffman-selector.mp3"
+                            malformed.write_bytes(damaged)
+                            run(test, malformed, expected_return=1, expected_stderr=b"unsupported MP3 Huffman table selector")
+                            huffman_cases += 1
                     damaged = bytearray(source)
                     bit = first_record + record * (59 if high else 63)
                     set_bits(damaged, middle + 4, bit, 12, 0)
@@ -284,6 +296,8 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
     assert protected_cases == 18, protected_cases
     assert scalefactor_cases == 72, scalefactor_cases
     assert xing_cases == 36, xing_cases
+    assert 288 <= huffman_cases <= 432, huffman_cases
+    print(f"PASS: {huffman_cases} reserved Huffman selector mutations rejected in real-stream granules/channels")
     print("PASS: 36 real MPEG-1/2/2.5 mono/stereo CBR/VBR layouts agree with FFprobe and decoded sample counts; missing reservoir prefixes rejected")
     print("PASS: 18 CRC-protected reframed streams preserve decoded PCM; header, checksum and side-info corruption rejected by native inspection and FFmpeg")
     print("PASS: 72 real-stream side-information mutations rejected by native inspection and FFmpeg with matching causes")
