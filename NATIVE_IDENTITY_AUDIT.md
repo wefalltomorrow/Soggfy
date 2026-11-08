@@ -49,3 +49,45 @@ argument provenance are still unresolved. Evidence was obtained with the local
 Python/Capstone scripts against a byte-verified PE mapping. It is not REA provider
 evidence: Ghidra was unavailable. No playback-ID layout or lifetime is inferred
 from this table observation.
+
+## Parent and optional state argument follow-up
+
+The subsequent bounded trace resolves the invocation argument on one construction
+path. Factory 0xe41cd4 requests a 0x998-byte allocation, constructs it with
+0xe4c000, and passes a callable whose table is 0x1a52c00. Constructor 0xe4c000
+clones that callable through slot zero (0xe422f8) into its member at +0x88.
+Function 0xe52ad0 loads that member and invokes slot +0x10 at 0xe52b9c, with
+its third argument set to the containing object +0x20. The callable 0xe423cc
+forwards this argument to 0xe5b088, which stores it at pump owner +0x78.
+This resolves the earlier missing argument provenance for this path; it does
+not establish all dynamic dispatch paths or runtime identity.
+
+Consequently the upstream second dereference, source +0x1e8, selects the
+containing object's +0x208 pointer. At 0xe4c2ba–0xe4c2d9, the constructor
+initializes that pointer to its own +0x200 unless an optional external argument
+is non-null. In the null-argument case, if this fallback remains unchanged
+through pump use, the upstream final 16-byte read would start at parent +0xbb8
+and end at +0xbc8, beyond the 0x998-byte allocation. This is a conditional
+static counterexample to assuming that discovery alone validates the path.
+It is not an observed runtime read, proof that playback takes this fallback,
+or a claim of universal client incompatibility. Page readability would not
+establish that those bytes belong to the object.
+
+The external argument is also traced one level farther: caller 0xe42aec passes
+the address of its second argument's +0x3b8 member into 0xe41cd4, which
+dereferences it and forwards the value into constructor 0xe4c000. Its concrete
+type, nullability during real playback, ownership and lifetime remain unknown.
+A literal +0x208 reference scan found several virtual calls through this
+member; it cannot exclude later writes via aliases or composed offsets.
+Constructor linear disassembly also encounters a jump at 0xe4ca06 to
+0x224f884; this audit does not claim complete control-flow recovery.
+
+Reproduction: run tools/probe_native_identity_parent.py with the pinned DLL
+and an output JSON path (requires pefile and Capstone; an optional
+--capstone-path selects a local installation). The probe rejects any other
+DLL hash, maps the PE itself, checks selected instructions from unwind starts
+and the callable table, and saves instruction bytes and neighboring windows.
+Local evidence: outputs/Soggfy-native-parent-path-20261108.json. No client code
+was executed and no identity reader or hook was enabled. Next evidence needed:
+the external state's concrete layout, later mutations, ID encoding, lifecycle,
+reuse and preloading/interstitial transitions.
