@@ -6,7 +6,8 @@
  const prefix='FLOGGFY_METADATA_V1:',seenPayload=new Map(),records=[];
  let reported=false,player,root,queue=[],seen=new Set(),walked=0,lastPlayback='',playbackTime=-Infinity;
  function playback(data){
-  const payload=Object.entries(data).filter(([,v])=>v!==undefined&&v!==null&&v!=='').map(([k,v])=>k+'='+encodeURIComponent(String(v))).join('&');
+  let payload=Object.entries(data).filter(([,v])=>v!==undefined&&v!==null&&v!=='').map(([k,v])=>k+'='+encodeURIComponent(String(v))).join('&');
+  if(payload.length>4096)payload='v=1';
   const now=performance.now();
   if(payload.length<=4096&&(payload!==lastPlayback||now-playbackTime>=1000)){
    console.info('FLOGGFY_PLAYBACK_V1:'+payload);lastPlayback=payload;playbackTime=now;
@@ -104,7 +105,6 @@
    scan();
    if(player&&method(player,'getState')&&method(player,'getEvents'))
     window.__soggfyVerifiedPlayerAPI=player;
-   if(window.__soggfyMetadataEnabled===false)return;
    if(!player){playback({v:1});return;}
    if(!reported){console.info('FLOGGFY_STATUS:cached player found');reported=true;}
    const state=method(player,'getState').call(player),item=own(state,'item'),m=own(item,'metadata')||{},uri=text(own(item,'uri'));
@@ -128,7 +128,19 @@
     Number.isInteger(raw)&&raw>=1&&raw<=6?['','low','normal','high','very_high','lossless','lossless_24'][raw]:undefined;
    if(level==='hifi24')level='lossless_24';
    if(['low','normal','high','very_high','lossless','lossless_24','hifi'].includes(level))data.playback_quality=level;
-   playback({v:1,title:data.title,artist:data.artist,album:data.album,uri,duration:data.duration,playback_quality:data.playback_quality});
+   const rawInstance=own(state,'playbackId');
+   const instance=typeof rawInstance==='string'&&/^[a-fA-F0-9]{32}$/.test(rawInstance)&&!/^0{32}$/.test(rawInstance)?rawInstance.toLowerCase():undefined;
+   const flag=key=>typeof own(state,key)==='boolean'?Number(own(state,key)):undefined;
+   const stamp=own(state,'timestamp'),rawPosition=own(state,'positionAsOfTimestamp'),speed=own(state,'speed')??1;
+   const age=Date.now()-stamp;
+   const position=typeof stamp==='number'&&Number.isFinite(age)&&age>=0&&age<=86400000&&
+    typeof rawPosition==='number'&&Number.isFinite(rawPosition)&&rawPosition>=0&&
+    typeof speed==='number'&&Number.isFinite(speed)&&speed>=1&&speed<=30&&
+    flag('isPaused')!==undefined&&flag('isBuffering')!==undefined?
+    Math.min(data.duration,(rawPosition+((flag('isPaused')||flag('isBuffering'))?0:age*speed))/1000):undefined;
+   playback({v:1,title:data.title,artist:data.artist,album:data.album,uri,duration:data.duration,playback_quality:data.playback_quality,
+    instance,position,paused:flag('isPaused'),buffering:flag('isBuffering'),local:flag('isActiveDevice')});
+   if(window.__soggfyMetadataEnabled===false)return;
    // Keep the current-item heartbeat for episodes even when Spotify omits
    // show/publisher fields. Rich podcast enrichment still requires both.
    if(isEpisode&&(!data.artist||!data.album))return;
@@ -141,7 +153,7 @@
    if(payload.length>131072||(last&&last.payload===payload&&now-last.time<15000))return;
    seenPayload.set(uri,{payload,time:now});if(seenPayload.size>64)seenPayload.delete(seenPayload.keys().next().value);
    console.info(prefix+payload);
-  }catch{/* Missing or changed caches leave ordinary tags intact. */}
+  }catch{playback({v:1});/* Invalidate the heartbeat when the cached state is unreadable. */}
  }
  window.__floggfyPoll=tick;
  console.info('FLOGGFY_STATUS:cache-only collector started');

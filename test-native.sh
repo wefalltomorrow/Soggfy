@@ -2,6 +2,8 @@
 set -euo pipefail
 cd -- "$(dirname -- "$0")"
 mkdir -p build
+g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -pthread tests/client_playback_test.cpp native/rich_metadata.cpp native/ogg_history_core.cpp -o build/client-playback-test
+build/client-playback-test
 g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -pthread tests/decoder_context_test.cpp tests/decoder_context_probe.cpp -o build/decoder-context-test
 build/decoder-context-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/hook_init_state_test.cpp -o build/hook-init-state-test
@@ -67,6 +69,7 @@ for script in native/ui/classic_core.js native/ui/classic_settings.js native/ui/
     node --check "$script"
 done
 node tests/metadata_collector_test.js
+node tests/client_playback_collector_test.js
 node tests/classic_status_icons_test.js
 node tests/classic_row_binding_test.js
 node tests/classic_skip_downloaded_test.js

@@ -14,6 +14,10 @@ static history::DecodeResult* Decode(void* self,history::DecodeResult* output,fl
     std::uint64_t* samples,const unsigned char*,std::uint64_t* encoded,unsigned char){
     const auto context=ReadOtherTranslationUnit();
     assert(context.active&&context.owner==reinterpret_cast<std::uintptr_t>(self)&&context.epoch==test_epoch);
+    assert(context.boundary==history::client_playback.Token());
+    history::client_playback.Publish({},1);
+    history::ClientPlayback observed;observed.available=true;history::client_playback.Publish(observed,1);
+    assert(ReadOtherTranslationUnit().boundary==context.boundary);
     ++test_epoch;
     assert(ReadOtherTranslationUnit().epoch==test_epoch-1);
     if(samples)*samples=300;

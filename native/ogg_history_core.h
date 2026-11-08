@@ -49,6 +49,7 @@ struct Listen {
     ListenReject reject = ListenReject::None;
     void Invalidate(ListenReject reason=ListenReject::ClockDiscontinuity);
     std::string Observe(const std::string& key, double position, double length,
-                        bool is_playing, double time, double playback_rate=1.0);
+                        bool is_playing, double time, double playback_rate=1.0,
+                        bool exact_identity=false);
 };
 }

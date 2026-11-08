@@ -1,5 +1,37 @@
 # Changelog
 
+## 3.0.0-rc.74 — client playback boundaries (test build)
+
+RC74 adds cached client playback IDs, position, pause/buffering and active-device
+flags independently of optional metadata enrichment. Client identity is accepted
+only when SMTC labels, duration and position agree. Delayed disagreement waits
+up to the existing three-second observation timeout. Explicit IDs distinguish
+repeats from same-instance rewinds; missing identity after it was seen cannot
+silently fall back to title-only identity.
+
+Unknown/unsupported content, an explicitly inactive device and stale heartbeats
+fence capture events on entry and exit. The worker discards pending captures and
+listening coverage, including A -> interstitial -> A. Decoder scopes retain their
+entry fence; audio callbacks read a lock-free atomic. Downloads-off quality
+observation remains bounded. Already-selected publication jobs may finish.
+
+This is client observation, not exact decoder-to-playback binding. Capture/listen
+selection still uses timing/duration and known decoder ownership. One-second
+polling can miss brief interstitials; preloads, pointer reuse and unscoped callbacks
+remain gaps. Missing/inconsistent timeline fields may discard valid recordings.
+No claim is made that all ads are isolated or historical pauses/stalls are fixed.
+
+The upstream v1.3-RC6 private hook cannot be directly ported to the pinned Spotify
+1.3.1.234 executable: neither its dispatcher nor playback-pump instruction anchor
+occurs there. No guessed offsets or new private-memory reads were added. Further
+native analysis and live validation remain required.
+
+Includes RC63–RC73, Classic UI, file-based status, Unicode/custom/legacy/podcast
+paths, strict Ogg/FLAC validation, MP3 320 kbps and 1x–30x. Downloads off stays
+at effective 1x and preserves the selection. Full CI and package verification are
+required. This candidate does not authorize installation, merge or release.
+
+
 ## 3.0.0-rc.73 — decoder-event isolation (test build)
 
 RC73 rejects Ogg/FLAC callback events whose capture settings changed while the

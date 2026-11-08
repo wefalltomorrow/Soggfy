@@ -116,7 +116,7 @@ bool NaturalEnd(const Listen& l,double time) {
 }
 }
 std::string Listen::Observe(const std::string& key,double pos,double length,
-                            bool is_playing,double time,double playback_rate) {
+                            bool is_playing,double time,double playback_rate,bool exact_identity) {
     transient=false;reject=ListenReject::None;
     if(!std::isfinite(playback_rate) || playback_rate<0.25 || playback_rate>100.0)playback_rate=1;
     if(!std::isfinite(pos) || !std::isfinite(length) || !std::isfinite(time) ||
@@ -133,6 +133,11 @@ std::string Listen::Observe(const std::string& key,double pos,double length,
     auto finish_time=[&] {return std::min(time,last_time+std::max(0.0,duration-last_position)/last_rate);};
     std::string done;
     if(key!=identity) {
+        if(exact_identity) {
+            if(!key.empty()&&NaturalEnd(*this,time))done=CompleteListen(*this,finish_time());
+            BeginListen(*this,key,pos,length,is_playing,time,playback_rate,time-pos/playback_rate);
+            return done;
+        }
         if(!key.empty() && eligible && phase==ListenPhase::ProvisionalRepeat &&
            IdentityWindowOpen(*this,time) &&
            Continues(last_position,last_time,playing,last_rate,pos,length,is_playing,time)) {
@@ -154,7 +159,7 @@ std::string Listen::Observe(const std::string& key,double pos,double length,
     if(key.empty()) {Invalidate();sample();return {};}
     // Require a visible backward reset, not merely a short song inside the
     // accelerated start window. A new wrap takes precedence over reconciliation.
-    if(phase!=ListenPhase::AwaitingIdentity && NaturalEnd(*this,time) && is_playing &&
+    if(!exact_identity && phase!=ListenPhase::AwaitingIdentity && NaturalEnd(*this,time) && is_playing &&
        pos<=start_window && pos<last_position-0.1) {
         phase=ListenPhase::AwaitingIdentity;wrap_time=time;wrap_start=time-pos/playback_rate;
         wrap_position=pos;wrap_length=length;wrap_last_time=time;wrap_last_position=pos;

@@ -1,5 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include "metadata_bridge.h"
+#include "client_playback.h"
 #include "cef_identity.h"
 #include "hook_init_state.h"
 #include "hook_installation.h"
@@ -374,11 +375,14 @@ static bool CurrentPlayback(const String* text) {
   if(text->length<=n+4096) {
    std::string payload;payload.reserve(text->length-n);
    for(size_t i=n;i<text->length;++i) {
-    if(text->str[i]>127){PublishClientPlaybackQuality({});return true;}
+    if(text->str[i]>127){client_playback.Publish({},double(GetTickCount64())/1000);PublishClientPlaybackQuality({});return true;}
     payload+=char(text->str[i]);
    }
-   RichMetadata record;std::string error;
-   if(ParsePlaybackMetadata(payload,record,error)) {
+   ClientPlayback observation;
+   const bool parsed=ParseClientPlayback(payload,observation);
+   client_playback.Publish(observation,double(GetTickCount64())/1000);
+   const auto& record=observation.media;
+   if(parsed && observation.available) {
     snapshot.identity=PlaybackIdentity(record.kind=="episode"
         ? record.uri : record.title+"\x1f"+record.artist+"\x1f"+record.album);
     snapshot.level=ParsePlaybackLevel(record.playback_quality);
@@ -391,9 +395,9 @@ static bool CurrentPlayback(const String* text) {
      std::copy_n(title.begin(),count,snapshot.title.begin());
     }
    }
-  }
+  } else client_playback.Publish({},double(GetTickCount64())/1000);
   PublishClientPlaybackQuality(snapshot);
- }catch(...){PublishClientPlaybackQuality({});}
+ }catch(...){client_playback.Publish({},double(GetTickCount64())/1000);PublishClientPlaybackQuality({});}
  return true;
 }
 

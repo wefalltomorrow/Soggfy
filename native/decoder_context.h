@@ -2,13 +2,13 @@
 #include <cstdint>
 namespace history {
 // Dynamic call context, not a Spotify playback ID. No private object offsets.
-struct DecoderContext {std::uintptr_t owner=0;unsigned epoch=0;bool active=false;};
+struct DecoderContext {std::uintptr_t owner=0;unsigned epoch=0;bool active=false;std::uint64_t boundary=0;};
 inline thread_local DecoderContext decoder_context;
 class DecoderScope {
     DecoderContext previous_;
 public:
-    DecoderScope(std::uintptr_t owner,unsigned epoch) noexcept:previous_(decoder_context) {
-        decoder_context={owner,epoch,true};
+    DecoderScope(std::uintptr_t owner,unsigned epoch,std::uint64_t boundary=0) noexcept:previous_(decoder_context) {
+        decoder_context={owner,epoch,true,boundary};
     }
     ~DecoderScope(){decoder_context=previous_;}
     DecoderScope(const DecoderScope&)=delete;

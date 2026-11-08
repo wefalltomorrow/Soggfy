@@ -74,6 +74,16 @@ int main(){
     current={clear_message,wcslen(clear_message),nullptr};
     assert(history::CurrentPlayback(&current));
     assert(history::ReadPlaybackQuality().title[0]==0);
+    const auto blocked_boundary=history::client_playback.Token();
+    assert(blocked_boundary&1);
+    wchar_t identity_message[]=L"FLOGGFY_PLAYBACK_V1:v=1&title=Next&artist=Artist&album=Album&uri=spotify:track:0000000000000000000001&duration=200&instance=1234567890ABCDEF1234567890ABCDEF&position=0&paused=0&buffering=1&local=1";
+    current={identity_message,wcslen(identity_message),nullptr};
+    assert(history::CurrentPlayback(&current));
+    const auto client=history::client_playback.Read(double(GetTickCount64())/1000);
+    assert(client.available&&client.instance=="1234567890abcdef1234567890abcdef"&&client.buffering==1);
+    assert(client.boundary==blocked_boundary+1&&client.position==0);
+    current={clear_message,wcslen(clear_message),nullptr};
+    assert(history::CurrentPlayback(&current)&&history::client_playback.Token()==blocked_boundary+2);
 
     // Current quality is a fresh exact cached identity, not a historical setting.
     history::Media media; media.title=L"Song";media.artist=L"Artist";media.album=L"Album";media.duration=200;

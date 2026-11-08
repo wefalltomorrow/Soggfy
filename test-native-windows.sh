@@ -58,7 +58,7 @@ quality_sources=(native/playback_quality.cpp native/flac_history_core.cpp native
 
 "$CXX" "${common[@]}" -I native/vendor/libogg/include tests/windows_quality_observer_test.cpp \
  native/playback_quality_windows.cpp "${quality_sources[@]}" native/media_session.cpp native/library_layout.cpp \
- native/existing_quality.cpp native/file_publication.cpp native/spotify_hook_discovery.cpp \
+ native/existing_quality.cpp native/file_publication.cpp native/spotify_hook_discovery.cpp native/rich_metadata.cpp \
  native/async_log.cpp native/classic_ui_backend.cpp native/classic_status_backend.cpp native/classic_path_match.cpp \
  native/post_process.cpp build/windows-tests/minhook-*.o "$fp_runtime" -lole32 -luuid -lshell32 -lruntimeobject -lwinhttp \
  -o "$floggfy_test_root/windows-quality-observer-test.exe"

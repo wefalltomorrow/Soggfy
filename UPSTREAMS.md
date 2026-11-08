@@ -1,3 +1,12 @@
+## RC74 client playback boundaries — November 8, 2026
+
+Continues the pinned v1.3-RC6 (7b825e3b942596c3e912fbbf7a0487abd7578e47)
+review. Its cached PlayerAPI fields informed client-ID observation and unsupported
+content fencing. The pinned Spotify binary lacks both instruction anchors used
+by its private playback-ID hook; that hook and offsets were not copied.
+This is not a fresh latest-release survey or full feature parity. Exact native
+playback binding, native podcast MP3 capture and live acceptance remain open.
+
 ## RC73 decoder-event isolation — November 8, 2026
 
 Continues the source review of Floggfy v1.3-RC6

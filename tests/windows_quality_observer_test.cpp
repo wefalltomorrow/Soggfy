@@ -14,9 +14,15 @@ DecodeProbeSnapshot ReadPlaybackSpeedProbe() { return {}; }
 } // namespace history
 static int parser_calls = 0;
 static bool switch_epoch=false;
+static bool switch_client=false;
+static void ClientTransition() {
+  client_playback.Publish({},Now());
+  ClientPlayback media;media.available=true;client_playback.Publish(media,Now());
+}
 static int32_t Parser(void *, OggPage *) {
   ++parser_calls;
   if(switch_epoch){assert(SetDownloads(false));assert(SetDownloads(true));}
+  if(switch_client)ClientTransition();
   return 58;
 }
 static int FlacReader(void*,unsigned char*,size_t*) {
@@ -96,6 +102,29 @@ int main() {
   while(Pop(observed)){assert(observed.loss==before_overflow.loss);++drained;}
   assert(drained==capacity);
   FlacEvent(reinterpret_cast<void*>(2),before_overflow,2);assert(!Pop(observed));
+  // Crossing an interstitial and returning to the same track while the
+  // original parser is running must reject that original callback's bytes.
+  switch_client=true;
+  assert(Hook(reinterpret_cast<void*>(1),&page)==58&&!Pop(observed));
+  switch_client=false;
+  assert(Hook(reinterpret_cast<void*>(1),&page)==58&&Pop(observed));
+  assert(observed.boundary==client_playback.Token());
+  const auto before_ad=BeginEvent(true);ClientTransition();
+  FlacEvent(reinterpret_cast<void*>(2),before_ad,3,data.data(),32);assert(!Pop(observed));
+  {
+    DecoderScope scope(123,CaptureEpoch(),client_playback.Token());
+    ClientTransition();
+    assert(Hook(reinterpret_cast<void*>(1),&page)==58&&!Pop(observed));
+    FlacEvent(reinterpret_cast<void*>(2),BeginEvent(true),3,data.data(),32);assert(!Pop(observed));
+  }
+  client_playback.Publish({},Now());
+  assert(!BeginEvent(false).capture&&!BeginEvent(true).capture);
+  assert(Hook(reinterpret_cast<void*>(1),&page)==58&&!Pop(observed));
+  quality_enabled=true;
+  assert(Hook(reinterpret_cast<void*>(1),&page)==58&&Pop(observed)&&!observed.capture);
+  FlacEvent(reinterpret_cast<void*>(2),BeginEvent(true),3,data.data(),32);
+  assert(Pop(observed)&&!observed.capture);
+  quality_enabled=false;
   assert(SetDownloads(false));CloseHandle(history::settings_signal);history::settings_signal=nullptr;
   CloseHandle(event);
   event = nullptr;

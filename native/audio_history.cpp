@@ -5,6 +5,7 @@
 #include "flac_history_core.h"
 #include "capture_association.h"
 #include "decoder_context.h"
+#include "client_playback.h"
 #include "history_settings.h"
 #include "hook_init_state.h"
 #include "hook_rollback.h"
@@ -52,7 +53,7 @@ FlacFrame original_flac_frame;
 FlacError original_flac_error;
 void* flac_targets[4]={};
 hooks::CallbackCounter audio_callbacks;
-struct Slot { uintptr_t context,owner; unsigned length; double time; unsigned kind,epoch; LONG loss; uint64_t input_length;
+struct Slot { uintptr_t context,owner; unsigned length; double time; unsigned kind,epoch; LONG loss; uint64_t input_length,boundary;
     uint32_t format; bool matched,capture; unsigned char bytes[65307]; };
 constexpr unsigned capacity=128;
 Slot* queue;
@@ -63,15 +64,17 @@ volatile LONG dropped=0,calls=0,pages=0;
 std::atomic<bool> quality_enabled{false};
 std::wstring output;
 size_t memory_limit=500*1024*1024;
-struct CaptureEvent {unsigned epoch;LONG loss;uintptr_t owner;bool capture;};
+struct CaptureEvent {unsigned epoch;LONG loss;uintptr_t owner;bool capture;uint64_t boundary;};
 static CaptureEvent BeginEvent(bool flac) {
     const auto policy=ReadCapturePolicy();
     const auto scope=decoder_context;
+    const auto current_boundary=client_playback.Token();
+    const auto boundary=scope.active?scope.boundary:current_boundary;
     return {scope.active?scope.epoch:policy.epoch,InterlockedCompareExchange(&dropped,0,0),scope.owner,
-        (flac?policy.flac:policy.ogg)&&(!scope.active||scope.epoch==policy.epoch)};
+        boundary==current_boundary&&!(boundary&1)&&(flac?policy.flac:policy.ogg)&&(!scope.active||scope.epoch==policy.epoch),boundary};
 }
 static bool EventCurrent(const CaptureEvent& e) {
-    return e.epoch==CaptureEpoch()&&e.loss==InterlockedCompareExchange(&dropped,0,0);
+    return e.epoch==CaptureEpoch()&&e.loss==InterlockedCompareExchange(&dropped,0,0)&&e.boundary==client_playback.Token();
 }
 static double Now() { return double(GetTickCount64())/1000.0; }
 static void Log(const char* message) {
@@ -123,7 +126,7 @@ static int32_t Hook(void* sync,OggPage* page) {
     if(count==capacity) InterlockedIncrement(&dropped);
     else {
         Slot& s=queue[tail]; s.context=reinterpret_cast<uintptr_t>(sync);
-        s.length=unsigned(result); s.time=Now(); s.kind=0; s.epoch=entry.epoch; s.capture=capture;s.owner=entry.owner;s.loss=entry.loss;
+        s.length=unsigned(result); s.time=Now(); s.kind=0; s.epoch=entry.epoch; s.capture=capture;s.owner=entry.owner;s.loss=entry.loss;s.boundary=entry.boundary;
         std::memcpy(s.bytes,page->header,page->header_length);
         if(page->body_length) std::memcpy(s.bytes+page->header_length,page->body,page->body_length);
         tail=(tail+1)%capacity; ++count;
@@ -164,7 +167,7 @@ static void FlacEvent(void* context,const CaptureEvent& entry,unsigned kind,cons
         Slot& s=queue[tail]; s.context=reinterpret_cast<uintptr_t>(context); s.kind=kind;
         s.capture=capture; s.input_length=amount;
         s.length=(!capture && kind==3) ? std::min(amount,42u) : amount;
-        s.time=Now(); s.format=status; s.epoch=entry.epoch;s.owner=entry.owner;s.loss=entry.loss;
+        s.time=Now(); s.format=status; s.epoch=entry.epoch;s.owner=entry.owner;s.loss=entry.loss;s.boundary=entry.boundary;
         if(s.length) memcpy(s.bytes,bytes,s.length);
         tail=(tail+1)%capacity; ++count;
         n-=amount;
@@ -443,12 +446,20 @@ static DWORD WINAPI Worker(LPVOID) {
     Listen listen; MediaSnapshotReader reader; Media current; PlaybackQualityTracker quality; std::string client_quality;
     double last_media=Now(),next_log=0,next_probe=0;
     uint64_t media_sequence=0;bool observer_started=false,media_unavailable=false;
+    uint64_t client_boundary=0;double boundary_time=0;bool instance_seen=false;
     DecodeProbeSnapshot previous_probe{};
     LONG previous_ogg_calls=0,previous_ogg_pages=0;
     unsigned generation=~0u,epoch=~0u; bool enabled=false,current_ignored=false;
     try {
         while(workers_running.load(std::memory_order_acquire)) {
             double now=Now();
+            const auto client=client_playback.Read(now);
+            if(client.boundary!=client_boundary) {
+                client_boundary=client.boundary;boundary_time=now;
+                if(!current.title.empty())SetClassicTrackStatus(current,"ERROR","Canceled: client playback boundary");
+                active.clear();ready.clear();heard.clear();listen={};current={};quality.ClearStreams();
+                Log("client playback boundary; pending captures and listening coverage invalidated");
+            }
             auto preferences=GetSettings();
             const double playback_rate=ClassicEffectiveSpeed(
                 preferences.downloads,preferences.playback_speed,PlaybackSpeedSupported());
@@ -506,7 +517,7 @@ static DWORD WINAPI Worker(LPVOID) {
                     char line[180]; snprintf(line,sizeof(line),"FORMAT kind=%u matched=%d input_bytes=%llu prefix=%s",
                       s.format,s.matched,static_cast<unsigned long long>(s.input_length),prefix); Log(line); continue;
                 }
-                if(s.epoch!=epoch||s.loss!=overflow)continue;
+                if(s.epoch!=epoch||s.loss!=overflow||s.boundary!=client_boundary)continue;
                 const auto key=std::make_pair(s.kind>=2?1u:0u,s.context);
                 if(quality_enabled.load(std::memory_order_relaxed)) {
                     switch(s.kind) {
@@ -637,8 +648,27 @@ static DWORD WINAPI Worker(LPVOID) {
             const MediaReadOptions media_options{preferences.generation,epoch,playback_rate,enabled};
             if(!observer_started)observer_started=reader.Start(media_options);
             Media media;double observed_at=0;
-            const auto observation=observer_started
+            auto observation=observer_started
                 ?reader.TryRead(media,observed_at,media_sequence,media_options):MediaRead::Pending;
+            std::string listen_key;
+            if(observation==MediaRead::Ready) {
+                // Client state corroborates the SMTC sample; never attach an ID
+                // to stale labels or silently fall back after ID support was seen.
+                if(client.boundary!=client_playback.Token()||observed_at<boundary_time||
+                   (client.seen&&!client.available)||
+                   (instance_seen&&client.instance.empty()))observation=MediaRead::Failed;
+                else if(client.seen&&!ClientPlaybackAgrees(client,Utf8(media.title),Utf8(media.artist),
+                    Utf8(media.album),media.position,media.duration,observed_at,playback_rate))
+                    observation=MediaRead::Pending;
+                else {
+                    listen_key=media.Key();
+                    if(!client.instance.empty()) {
+                        if(!instance_seen){listen={};instance_seen=true;}
+                        listen_key=client.media.uri+"/"+client.instance;
+                    }
+                    if(client.paused==1||client.buffering==1)media.playing=false;
+                }
+            }
             // Discard a result if settings changed concurrently with polling.
             if(GetSettings().generation!=generation)continue;
             if(observation==MediaRead::Ready) {
@@ -660,7 +690,7 @@ static DWORD WINAPI Worker(LPVOID) {
                         preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,listen.eligible,active.size(),ready.size());
                     Log(line);
                 }
-                std::string done=listen.Observe(media.Key(),media.position,media.duration,media.playing,observed_at,playback_rate);
+                std::string done=listen.Observe(listen_key,media.position,media.duration,media.playing,observed_at,playback_rate,!client.instance.empty());
                 if(previous_instance!=listen.generation || previous_phase!=listen.phase || previous!=listen.identity) {
                     char line[512];snprintf(line,sizeof(line),
                         "listen_instance generation=%llu previous=%llu phase=%u previous_phase=%u relabeled=%d completed=%llu start=%.3f wrap=%.3f",
@@ -737,7 +767,8 @@ static DWORD WINAPI Worker(LPVOID) {
             now=Now();
             PublishPlaybackQuality(quality.Snapshot(client_quality));
             // Apply concurrent menu changes before considering publication.
-            if(GetSettings().generation!=generation||InterlockedCompareExchange(&dropped,0,0)!=overflow) continue;
+            if(GetSettings().generation!=generation||InterlockedCompareExchange(&dropped,0,0)!=overflow||
+               client_boundary!=client_playback.Token()||(client_boundary&1)) {WaitForSingleObject(event,50);continue;}
             for(auto h=heard.begin();h!=heard.end();) {
                 const auto selection=SelectCapture(active,ready,*h,now);
                 const auto match=selection.index,matches=selection.matches;

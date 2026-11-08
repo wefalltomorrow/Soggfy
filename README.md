@@ -24,6 +24,11 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
 
+RC74 adds cached playback IDs, pause/buffering checks and capture fences around
+observed unsupported, remote or stale playback. The heartbeat runs with metadata
+enrichment off. Exact decoder-to-playback binding and live acceptance remain open;
+one-second polling does not guarantee all ads are isolated. See RELEASE_NOTES.md.
+
 RC73 isolates decoder events across settings changes and queue loss, carries
 scoped decoder ownership through nested calls, and rejects known owner conflicts.
 It does not yet establish Spotify playback-instance or advertisement identity.

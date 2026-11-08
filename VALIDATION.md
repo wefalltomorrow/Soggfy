@@ -1,3 +1,24 @@
+## RC74 candidate scope
+
+Portable tests cover strict IDs/URIs/flags/positions, expiry, concurrent snapshots,
+A-interstitial-A fences, delayed SMTC labels/positions, explicit repeats versus
+same-ID seeks, and pause/resume at 1/2/10/30x. Collector tests cover metadata off,
+remote/unsupported content, invalid IDs, oversize and throwing snapshots. Windows
+tests exercise production CEF parsing, real Ogg/FLAC event fences and decoder
+scope retention across changes during original calls. Full previous suites and
+MinGW packaging remain required; local Zig artifacts are diagnostic only.
+
+Static check: archived Spotify.exe file/product version 1.3.1.234, SHA256
+b8d42c0308aeff8834e47d4e721c830d89335d5ac2a4926e1bfd450d84e00fe3.
+Both v1.3-RC6 DiscoverDecodedOutputTarget instruction anchors have zero matches
+in its mapped image (Python/pefile search, not REA decompilation or runtime proof).
+REA had no configured Ghidra/IDA provider. No provider was installed.
+
+Live identity cadence, transition/buffering behavior, metadata formatting, ad
+coverage, callback latency and historical stalls remain unvalidated. Strict
+disagreement may discard valid recordings. Preserve RC63–RC73 packages and
+the historical extraction.
+
 ## RC73 candidate scope
 
 Portable tests exercise cross-translation-unit decoder context, nested and exception
