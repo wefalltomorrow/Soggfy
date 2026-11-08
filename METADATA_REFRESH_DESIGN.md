@@ -124,9 +124,10 @@ cancellation/failure after the original move attempts rollback. If a concurrent
 creator occupies the destination, neither publication nor rollback overwrites it,
 and the result reports the preserved original's backup path. Rename/recovery
 storage is allocated before mutation. Local tests cover these paths, directory
-and file locks, single-use transactions and hard-link rejection. CI is pending.
+and file locks, single-use transactions and hard-link rejection. These passed
+all four CI jobs in run 42449594271.
 This prototype still needs filesystem security/stream/attribute preservation,
-the actual settings-generation fence, validated-delta integration and production
+validated-delta integration and production
 packaging. Network/redirected roots are conservatively rejected. Its callback
 checks do not by themselves make settings-generation publication atomic.
 
@@ -143,13 +144,13 @@ malformed timing and changed words preserve the original. The cached collector
 retains validated LINE_SYNCED/SYLLABLE_SYNCED line start times without requests;
 syllable-level timing is not represented. Matching plain text from another cache
 does not downgrade collected timing. Collector and planner regression tests pass
-locally; full CI for these changes is pending. Artwork comparison and completed
+locally and in all four jobs of CI 42449594271. Artwork comparison and completed
 transaction integration remain necessary before saved files may change.
 
 The helper's first Windows CI attempt (42448808402) stopped at an explicit-return
 warning in the test program's wmain; an explicit success return fixes that
-compiler portability issue. A new complete CI run must validate the helper and
-transaction together.
+compiler portability issue. CI 42449594271 subsequently validated the helper and
+transaction together, including the MinGW build and package checks.
 
 ## Remaining implementation and acceptance requirements
 
@@ -174,6 +175,18 @@ guard, and confirms the original survives and staging is cleaned up. The valid
 generation publishes successfully under the guard. These additions pass local
 tests; their full CI validation is pending. Filesystem metadata preservation and
 the complete production coordinator remain unfinished.
+
+The Windows preparation prototype now joins held-source reading, owned-file
+inspection, minimal text planning, isolated full decoding, exact decoded/header
+coverage agreement, retagging, independent output verification and private
+staging. It never publishes by itself. A no-op skips decoding and does not claim
+audio validity. Incoming artwork is ignored and existing artwork remains exact.
+The caller must retain the transaction and acquire its settings fence after
+staging, rechecking cancellation before publication. Twelve real Ogg/FLAC cases
+pass locally, each exercising staging cleanup, fixture publication, no-op,
+conflicting identity, missing helper, plausible-but-wrong decoded coverage,
+immediate cancellation and throwing cancellation. MinGW CI for this preparation
+path is still pending. It is not production-connected or packaged.
 
 1. Read metadata from complete native recordings. Require exact Spotify URI
    agreement and recognized complete-listen/capture provenance. Legacy or
