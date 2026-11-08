@@ -208,6 +208,15 @@ missing, empty and oversized helpers fail the build. Both helper/source locks
 remain held during preparation. This closes the runtime-selected-digest gap in
 the offline harness; the shipping DLL/build/package do not yet include it.
 
+The reusable offline worker builder now strips the linked executable, checks
+GNU objdump output for x64 PE format and exactly KERNEL32/MSVCRT imports with
+an empty delay-import directory, then generates the digest. Unexpected dynamic
+codec, GCC or UCRT dependencies fail the build. It removes an older digest
+header before linking so a failed rebuild cannot retain a prior binding. Windows
+CI runs the decode/preparation tests against this finalized worker. This build
+policy is not a signature check or a security sandbox; shipping deployment and
+installer ownership remain separate unfinished work.
+
 1. Read metadata from complete native recordings. Require exact Spotify URI
    agreement and recognized complete-listen/capture provenance. Legacy or
    uncertain identity cannot authorize a rewrite. Metadata/header checks and
