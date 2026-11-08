@@ -22,7 +22,12 @@ try {
         $failed = $false
         $clock = [Diagnostics.Stopwatch]::StartNew()
         try { & $script -InputPath $source -FFmpegPath $ConverterPath -DeleteOriginal:($mode -ne 'keep') -TimeoutSeconds 2 }
-        catch { $failed = $true }
+        catch {
+            $failed = $true
+            if ($mode -match 'error|flood') {
+                Assert ($_.Exception.Message -notmatch 'timed out') 'Converter diagnostics were only rejected by timeout'
+            }
+        }
         $expectedFailure = $mode -in 'fail','empty','corrupt','race','directory','hang','validation-hang','encode-error','encode-flood','validation-error','validation-flood'
         Assert ($failed -eq $expectedFailure) "Unexpected outcome for $mode"
         if ($mode -in 'ok','source-lock') { Assert (-not (Test-Path -LiteralPath $source)) 'Validated conversion did not delete source' }
@@ -84,7 +89,7 @@ try {
         Assert (($tags -join [char]10).Contains("SPOTIFY_ALBUM_URI=$album")) 'Converted album identity lost'
         }
     }
-    Write-Host 'PASS: manual conversion validation, 320k arguments, original retention/deletion, conflicts and cleanup'
+    Write-Host 'PASS: manual zero-exit errors/floods, validation, 320k arguments, original retention/deletion, conflicts and cleanup'
 } finally {
     foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) }
     $resolved = [IO.Path]::GetFullPath($testRoot)

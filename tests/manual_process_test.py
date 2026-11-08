@@ -59,6 +59,32 @@ with tempfile.TemporaryDirectory(prefix="soggfy-process-test-") as folder:
     assert result.returncode == 0, result.stderr
     assert fixture.with_suffix(".mp3").is_file() and fixture.read_bytes() == good
     fixture.with_suffix(".mp3").unlink()
+    # A real malformed MP3 passed through a wrapper that masks FFmpeg's exit
+    # code must still fail validation and retain the valid FLAC source.
+    damaged = base / "damaged.mp3"
+    subprocess.run([ffmpeg, "-v", "error", "-i", str(fixture), "-ar", "44100",
+                    "-ac", "1", "-c:a", "libmp3lame", "-b:a", "64k",
+                    "-write_xing", "0", "-id3v2_version", "0", str(damaged)], check=True)
+    data = bytearray(damaged.read_bytes())
+    offset = 0
+    for _ in range(10):
+        assert data[offset:offset + 2] == b"\xff\xfb"
+        offset += 144000 * 64 // 44100 + ((data[offset + 2] >> 1) & 1)
+    # MPEG-1 mono, first granule big_values: 18-bit prefix + 12-bit length.
+    for bit in range(9):
+        position = 30 + bit
+        at, mask = offset + 4 + position // 8, 1 << (7 - position % 8)
+        data[at] = (data[at] & ~mask) | (mask if 289 & (1 << (8 - bit)) else 0)
+    damaged.write_bytes(data)
+    diagnostic = subprocess.run([ffmpeg, "-v", "error", "-xerror", "-i", str(damaged),
+                                 "-f", "null", "-"], capture_output=True, timeout=20)
+    assert b"big_values too big" in diagnostic.stderr, diagnostic.stderr
+    wrapper.write_text("if ($args -contains '-y') { [IO.File]::Copy(" + quote(damaged) +
+        ", $args[-1]); exit 0 }; & " + quote(ffmpeg) + " @args; exit 0", encoding="utf-8-sig")
+    result = subprocess.run(command(fixture, wrapper, "-DeleteOriginal"), capture_output=True, timeout=20)
+    assert result.returncode != 0, "Masked decoder error was accepted"
+    assert fixture.read_bytes() == good and not fixture.with_suffix(".mp3").exists()
+    assert not list(base.glob("*.soggfy-converting-*"))
     # A single budget covers both encode and validation; it must not reset.
     wrapper.write_text("Start-Sleep -Seconds 2; & " + quote(ffmpeg) +
                        " @args; exit $LASTEXITCODE", encoding="utf-8-sig")
@@ -105,4 +131,4 @@ with tempfile.TemporaryDirectory(prefix="soggfy-process-test-") as folder:
             if process.poll() is None:
                 process.terminate()
                 process.wait(timeout=10)
-print("PASS: Unicode/metacharacter wrapper paths, shared deadline, watcher recovery, parent-exit child cleanup")
+print("PASS: real damaged MP3 rejected despite masked exit; Unicode/metacharacter wrappers, shared deadline, watcher recovery, parent-exit cleanup")

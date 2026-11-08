@@ -140,6 +140,8 @@ int main() {
         if(std::wstring(mode)==L"cancel")control.canceled=[&]{return GetTickCount64()-started>700;};
         const auto result=run(mode,control);
         assert(result.state==PostProcessResult::State::Failed);assert(!result.error.empty());assert(read(native)=="native-original");
+        if(std::wstring(mode).find(L"error")!=std::wstring::npos||std::wstring(mode).find(L"flood")!=std::wstring::npos)
+            assert(result.error.find("timed out")==std::string::npos);
         assert(GetTickCount64()-started<6000);
         if(std::wstring(mode)==L"race")assert(read(final)=="other-file");
         else assert(!fs::exists(final));
@@ -233,5 +235,5 @@ int main() {
         std::printf("PASS: real FFmpeg MP3 320k encode/decode, FLAC/Ogg retry and corrupt-source/output verification (%llu ms)\n",GetTickCount64()-started);
     }
     fs::remove_all(base);
-    std::puts("PASS: conversion conflicts, validation, no-overwrite race, timeout/cancel, child cleanup and native retention");
+    std::puts("PASS: conversion conflicts, zero-exit errors/floods, validation, no-overwrite race, timeout/cancel, child cleanup and native retention");
 }
