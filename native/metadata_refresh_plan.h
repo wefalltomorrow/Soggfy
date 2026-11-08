@@ -3,6 +3,7 @@
 #include "spotify_identity.h"
 #include "rich_metadata.h"
 #include "vorbis_comments.h"
+#include "synchronized_lyrics.h"
 #include <map>
 #include <set>
 #include <string_view>
@@ -68,6 +69,14 @@ inline bool AddSize(size_t& bytes,size_t amount) {
     if(amount>VorbisCommentByteLimit-bytes)return false;
     bytes+=amount;return true;
 }
+inline bool Decimal(const std::string& value,uint64_t& number) {
+    number=0;if(value.empty()||value.size()>20)return false;
+    for(char c:value) {
+        if(c<'0'||c>'9'||number>(UINT64_MAX-unsigned(c-'0'))/10)return false;
+        number=number*10+unsigned(c-'0');
+    }
+    return true;
+}
 }
 
 // Policy only. A successful plan NEVER authorizes a file rewrite: the caller
@@ -122,6 +131,16 @@ inline MetadataPlanState PlanMetadataRefresh(const VorbisComments& existing,
         for(const auto& value:group.second)
             if(!value.empty())plan.fields.emplace_back(group.first,value);
     }
+    // Upgrade only exact same-word plain lyrics to validated line timing.
+    // Existing timed/custom or conflicting duplicated lyrics remain untouched.
+    std::string old_lyrics,new_lyrics,samples_text,rate_text,plain;
+    uint64_t samples=0,rate=0;
+    if(Single(old,"LYRICS",old_lyrics)&&PlainLyrics(old_lyrics)&&
+       Single(fresh,"LYRICS",new_lyrics)&&Single(old,"HISTORY_SAMPLES",samples_text)&&
+       Single(old,"HISTORY_SAMPLE_RATE",rate_text)&&Decimal(samples_text,samples)&&
+       Decimal(rate_text,rate)&&rate&&rate<=655350&&samples/rate<86400&&
+       SynchronizedLyricText(new_lyrics,(samples/rate)*1000+(samples%rate)*1000/rate,plain)&&
+       plain==LyricNewlines(old_lyrics))plan.fields.emplace_back("LYRICS",new_lyrics);
     std::string old_date,old_year,new_date,new_year;
     const bool coherent=Single(old,"DATE",old_date)&&Single(old,"YEAR",old_year)&&
         Single(fresh,"DATE",new_date)&&Single(fresh,"YEAR",new_year)&&

@@ -89,6 +89,21 @@ int main() {
     fresh.fields.push_back({"LYRICS","different"});run(MetadataPlanState::Unchanged);
     old=Original();run(MetadataPlanState::Changed);assert(Values(delta,"LYRICS")==std::vector<std::string>({"different"}));
     // Limits apply to both direct inputs and the merged output.
+    old=Original();old.fields.push_back("HISTORY_SAMPLE_RATE=1000");
+    old.fields.push_back("LYRICS=one\r\ntwo é");fresh=Incoming();
+    fresh.fields.push_back({"LYRICS","[00:01.000]one\n[00:12.345]two é"});
+    run(MetadataPlanState::Changed);assert(Values(delta,"LYRICS")==std::vector<std::string>({fresh.fields.back().second}));
+    for(const auto* lyrics:{"[00:01.000]other\n[00:12.345]two é","[00:02.000]one\n[00:01.000]two é",
+        "[00:01.000]one\n[00:12.346]two é","[00:60.000]one\n[00:12.345]two é",
+        "[offset:1]\n[00:01.000]one\n[00:12.345]two é","[00:01.000]one\n[00:12.345]two é\n",
+        "[00:01.000]one\n[00:12.]two é","[00:01.000]one\n[00:12.3]two é"}) {
+        fresh.fields.back().second=lyrics;run(MetadataPlanState::Unchanged);
+    }
+    fresh.fields.back().second="[00:01.00]one\n[00:12.34]two é";
+    run(MetadataPlanState::Changed);
+    old.fields.push_back("LYRICS=different");run(MetadataPlanState::Unchanged);
+    old=Original();fresh=Incoming();fresh.fields.push_back({"LYRICS","different"});
+    // Limits apply to both direct inputs and the merged output.
     old.fields.resize(VorbisCommentFieldLimit,"CUSTOM=x");run(MetadataPlanState::Rejected);
     old.fields.back()="LYRICS=";run(MetadataPlanState::Changed);
     old.fields.push_back("CUSTOM=x");run(MetadataPlanState::Rejected);

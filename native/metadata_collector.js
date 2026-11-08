@@ -3,7 +3,7 @@
  'use strict';
  if(window.__floggfyMetadata)return;
  window.__floggfyMetadata=true;
- const prefix='FLOGGFY_METADATA_V1:',seenPayload=new Map(),records=[];
+ const prefix='FLOGGFY_METADATA_V1:',seenPayload=new Map(),records=[],lyricDetails=new WeakMap();
  let reported=false,player,root,queue=[],seen=new Set(),walked=0,lastPlayback='',playbackTime=-Infinity;
  function playback(data){
   let payload=Object.entries(data).filter(([,v])=>v!==undefined&&v!==null&&v!=='').map(([k,v])=>k+'='+encodeURIComponent(String(v))).join('&');
@@ -79,10 +79,27 @@
    const value=text(own(m,key)||own(source,key)||own(album,key));if(value&&value.length<=4096&&(!/NUMBER|TOTAL/.test(tag)||/^[1-9]\d{0,5}$/.test(value)))data[tag]=value;
   }
   const lyric=own(source,'lyrics')||own(m,'lyrics');
-  let words=text(lyric);
+  let words=text(lyric),plainWords=words,synchronized=false;
   const lines=own(lyric,'lines');
-  if(Array.isArray(lines)&&lines.length<=2000)words=entries(lines,2000).map(l=>text(own(l,'words'))||'').join('\n');
-  if(words&&words.length<=20000)data.LYRICS=words;
+  if(Array.isArray(lines)&&lines.length<=2000){
+   const rows=entries(lines,2000),plain=rows.map(l=>text(own(l,'words'))||'');
+   words=plainWords=plain.join('\n');
+   const sync=own(lyric,'syncType');let previous=-1;
+   if((sync==='LINE_SYNCED'||sync==='SYLLABLE_SYNCED')&&rows.length&&rows.every((line,i)=>{
+    const raw=text(own(line,'startTimeMs')),time=Number(raw);
+    if(!/^\d{1,8}$/.test(raw||'')||!Number.isSafeInteger(time)||time<previous||time>Math.min(data.duration*1000,86400000)||/[\r\n]/.test(plain[i]))return false;
+    previous=time;return true;
+   })){synchronized=true;words=rows.map((line,i)=>{
+    const time=Number(text(own(line,'startTimeMs')));
+    return '['+String(Math.floor(time/60000)).padStart(2,'0')+':'+String(Math.floor(time/1000)%60).padStart(2,'0')+'.'+String(time%1000).padStart(3,'0')+']'+plain[i];
+   }).join('\n');}
+  }
+  if(words&&words.length<=20000){
+   const previous=lyricDetails.get(data);
+   if(!previous||!previous.synchronized||synchronized||previous.plainWords!==plainWords){
+    data.LYRICS=words;lyricDetails.set(data,{synchronized,plainWords});
+   }
+  }
  }
  function cached(data,o){
   const uri=own(o,'uri')||own(o,'trackUri');

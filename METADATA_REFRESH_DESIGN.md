@@ -135,10 +135,21 @@ Reference sources inspected:
 - https://github.com/xiph/vorbis/blob/c2aa86b05e981c96bf381fc6aa11cdd03eccc2fb/lib/block.c
 - https://github.com/FFmpeg/FFmpeg/blob/n8.0/libavformat/oggparsevorbis.c
 
-The text policy fills absent lyrics and preserves existing lyrics. Upgrading
-plain lyrics to a verified synchronized version remains required. Full payload
-validation, artwork comparison and the transaction below remain necessary
-before any actual saved recording may be changed.
+The text policy fills absent lyrics and preserves existing timed/custom lyrics.
+It now permits a plain-to-line-timed upgrade only when normalized line endings
+leave exactly the same words and every timestamp is monotonic and within the
+source's declared sample coverage. Conflicting duplicates, LRC headers/offsets,
+malformed timing and changed words preserve the original. The cached collector
+retains validated LINE_SYNCED/SYLLABLE_SYNCED line start times without requests;
+syllable-level timing is not represented. Matching plain text from another cache
+does not downgrade collected timing. Collector and planner regression tests pass
+locally; full CI for these changes is pending. Artwork comparison and completed
+transaction integration remain necessary before saved files may change.
+
+The helper's first Windows CI attempt (42448808402) stopped at an explicit-return
+warning in the test program's wmain; an explicit success return fixes that
+compiler portability issue. A new complete CI run must validate the helper and
+transaction together.
 
 ## Remaining implementation and acceptance requirements
 

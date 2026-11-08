@@ -74,4 +74,5 @@ int wmain(int argc,wchar_t** argv) {
     CloseHandle(source);
     assert(!history::ValidateRecordingProcess(INVALID_HANDLE_VALUE,argv[2],format,reply,error));
     std::cout<<"PASS: isolated decoding, source lock/position, malformed replies, memory limit, timeout and cancellation\n";
+    return 0;
 }

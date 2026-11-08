@@ -23,6 +23,18 @@ const count=output.length;context.window.__floggfyPoll();assert.equal(output.len
 elapsed=16000;context.window.__floggfyPoll();assert.equal(output.length,count+2);
 query.state.data.lyrics.lines.push({words:'cached update'});
 context.window.__floggfyPoll();assert(output.at(-1).includes('cached%20update'));
+query.state.data.lyrics={syncType:'LINE_SYNCED',lines:[{words:'one',startTimeMs:'1000'},{words:'two é',startTimeMs:'2345'}]};
+context.window.__floggfyPoll();assert(output.at(-1).includes('LYRICS=%5B00%3A01.000%5Done%0A%5B00%3A02.345%5Dtwo%20%C3%A9'));
+state.item.metadata.lyrics='one\ntwo é';context.window.__floggfyPoll();
+assert(output.at(-1).includes('LYRICS=%5B00%3A01.000%5Done%0A%5B00%3A02.345%5Dtwo%20%C3%A9'));
+delete state.item.metadata.lyrics;
+for(const time of ['999','-1','200001','bad']){
+ query.state.data.lyrics.lines[1].startTimeMs=time;context.window.__floggfyPoll();
+ assert(output.at(-1).includes('LYRICS=one%0Atwo%20%C3%A9'));
+}
+query.state.data.lyrics.lines[1].startTimeMs='2345';
+Object.defineProperty(query.state.data.lyrics.lines[0],'startTimeMs',{configurable:true,get(){getters++;forbidden();}});
+context.window.__floggfyPoll();assert(output.at(-1).includes('LYRICS=one%0Atwo%20%C3%A9'));
 state.item={uri:'spotify:track:0000000000000000000003',metadata:{title:'Other',artist_name:'Artist',album_title:'Album',duration:'100000'}};
 context.window.__floggfyPoll();assert(currentMessages().at(-1).includes('title=Other'));assert(!output.at(-1).includes('DATE=')&&!output.at(-1).includes('LYRICS='));
 state.item.metadata.year='2024';state.item.metadata.genre='Jazz';
