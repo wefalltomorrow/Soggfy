@@ -315,3 +315,28 @@ path, so this is another copy/formatting use of the candidate at payload
 +0x1b0. This connects the guarded callback and candidate to the same
 configuration-building path; it does not establish later request dispatch,
 callback timing, a decoder drain, or the identity of all emitted audio.
+
+## Dispatcher-provider provenance
+
+The provider used by 0xc46b8c is now traced back through its factories.
+Function 0xc40e4c reads the first pointer from the table referenced by its
+fourth argument, checks it for null, and passes it at caller stack +0xe8
+to 0xc40b8c. That function reads rbp +0x1e8 and forwards the pointer at
+caller stack +0xe8 to 0xc42f3c. The two frame bases are entry rsp -0xf8
+and entry rsp -0xa78 respectively, so the latter reads rbp +0xb68.
+
+The root factory retains this pointer at local rbp +0x88, then passes it
+at caller stack +0x30 to 0xc42d2c. That constructor stores it at temporary
++0x1d0. The move into the heap callable by 0xc4512c places it at callable
++0x1d8, which is callable payload +0x1d0. No concrete implementation is
+identified merely by following this service-table entry.
+
+At 0xc46f61 the registration routine loads the provider, invokes virtual
+slot +0x20 and retains the returned receiver. It copies the configuration
+through 0x82c538 and passes the result to 0xc47044. That function loads
+the receiver's callable pointer at +0x38 and invokes its slot +0x10, or
+takes a separate null path. This identifies the dispatch boundary and
+its provider source; the provider implementation, configuration-copy
+semantics, callback scheduling/completion and actual runtime selection
+still require evidence. The pinned probe now verifies 693 unique
+instruction locations plus its table entries and literals.

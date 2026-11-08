@@ -63,6 +63,9 @@ jobs:
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
         with:
           msystem: MINGW64
+          # Reuse the runner installation; still update packages and enforce
+          # the compiler floor below. Avoid a separate installer download.
+          release: false
           update: true
           suppress-deprecation-warnings: msystem-mingw64
           install: >-
