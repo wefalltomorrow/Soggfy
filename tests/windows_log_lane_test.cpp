@@ -1,6 +1,7 @@
 // Use the actual queues, drain and file writer without starting a background worker.
 #include "../native/async_log.cpp"
 #include <cassert>
+#include <csignal> // Keep the C library name visible on every test toolchain.
 #include <fstream>
 #include <filesystem>
 namespace history {
@@ -19,7 +20,7 @@ int main() {
     wchar_t temp[MAX_PATH];assert(GetTempPathW(MAX_PATH,temp));
     test_settings.root=std::wstring(temp)+L"Soggfy-log-lanes-"+std::to_wstring(GetCurrentProcessId());
     assert(CreateDirectoryW(test_settings.root.c_str(),nullptr));
-    signal=CreateEventW(nullptr,FALSE,FALSE,nullptr);assert(signal);ready.store(true);
+    history::signal=CreateEventW(nullptr,FALSE,FALSE,nullptr);assert(history::signal);ready.store(true);
     test_settings.log_level=4;
     for(unsigned i=0;i<129;++i)QueueDiagnostic("diagnostic-only");
     LogActivity("finished","completion-survives");
@@ -42,7 +43,7 @@ int main() {
     assert(activity.find("reduced-before-drain")==std::string::npos);
     assert(activity.find("omitted-at-level") ==std::string::npos);
     assert(diagnostic.find("disabled-before-drain")==std::string::npos);
-    ready.store(false);CloseHandle(signal);signal=nullptr;
+    ready.store(false);CloseHandle(history::signal);history::signal=nullptr;
     assert(DeleteFileW((test_settings.root+L"\\Soggfy.log").c_str()));
     assert(DeleteFileW((test_settings.root+L"\\Soggfy-diagnostics.log").c_str()));
     assert(RemoveDirectoryW(test_settings.root.c_str()));
