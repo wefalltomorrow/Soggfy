@@ -32,11 +32,14 @@ for name in ['jconfig.h','jconfigint.h','jversion.h']:
         template+='\n#include <stddef.h>\n_Static_assert(sizeof(size_t)==8,"JPEG configuration requires 64-bit size_t");\n'
     (dest/name).write_text(template)
 includes=['-I'+str(dest),'-I'+str(vendor/'src')]
+# Neither environment helper is needed by the standalone decoder. NO_PUTENV
+# also avoids an unused POSIX setenv helper under strict C11 on Linux.
+definitions=['-DNO_GETENV','-DNO_PUTENV']
 objects=[]
 for unit in manifest['decoder_units']:
     obj=dest/(Path(unit).stem+'.o')
-    subprocess.run([cc,'-std=c11',*flags,*includes,'-DNO_GETENV','-c',str(vendor/unit),'-o',str(obj)],check=True)
+    subprocess.run([cc,'-std=c11',*flags,*includes,*definitions,'-c',str(vendor/unit),'-o',str(obj)],check=True)
     objects.append(str(obj))
-subprocess.run([cc,'-std=c11','-UNDEBUG','-Wall','-Wextra','-Werror',*flags,*includes,'-DNO_GETENV',
+subprocess.run([cc,'-std=c11','-UNDEBUG','-Wall','-Wextra','-Werror',*flags,*includes,*definitions,
                 'native/jpeg_validation.c','tests/jpeg_validation_test.c',*objects,'-lm',
                 '-o',str(dest/'jpeg-validation-test.exe')],check=True)
