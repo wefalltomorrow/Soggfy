@@ -248,7 +248,7 @@ executing it. The full effects of the preceding helpers, receiver lifetime,
 decoder cancellation, delayed callbacks and cross-thread ordering remain
 unverified.
 
-The probe now verifies 553 unique instructions, pointer/table entries and
+The probe now verifies 644 unique instructions, pointer/table entries and
 four literals. It records generator and recovery inferences separately from
 the checked observations. No production offsets or runtime hooks were added.
 
@@ -287,3 +287,31 @@ by itself establish immediate destruction of the native playback object.
 Other owners, remaining token consumers, outstanding callbacks and the ordering of
 decoder teardown relative to ID replacement remain open. These are static
 observations on the pinned artifact, not observed client execution.
+
+## Guarded callback registration and identity copy
+
+The configured receiver of 0xc6ab84 is now traced. Root factory 0xc42f3c
+uses 0xc4512c to construct a heap callable with table 0x1a29310 and stores
+its pointer in local callable storage +0x38 (rbp +0x4b8). That storage at
+rbp +0x480 is passed at caller stack +0x50 to 0xc45a30. The latter
+forwards it at caller stack +0x50 to 0xc5afac, whose rbp +0x230 argument
+moves into manager callable storage +0x268, pointer +0x2a0.
+
+Routine 0xc6ab84 loads that pointer and invokes slot +0x10, which resolves
+to 0xc47c3c. Both functions forward the original fifth-argument callback
+at caller stack +0x20. Function 0xc47c3c passes its callable payload
+(callable +8) to 0xc46b8c, where the forwarded callback is read from
+rbp +0x730. Routine 0xc41fb8 clones the supplied callback via its table
+slot 0 into a separate wrapper. For the guarded callable, clone entry
+0xc8339c copies the shared token plus object/payload pointers and retains
+table 0x1a2cb90. Wrapper invoke 0xc47edc calls that clone's slot +0x10.
+The token guard therefore survives this copy path.
+
+Within 0xc46b8c, the 16 bytes at nested input +0x188 are copied into local
+configuration at rbp +0x340, and the callback wrapper is constructed at
+rbp +0x380. The same bytes are formatted through 0x17ea5d0 into a
+32-character string. The input is payload +0x28 on the traced caller
+path, so this is another copy/formatting use of the candidate at payload
++0x1b0. This connects the guarded callback and candidate to the same
+configuration-building path; it does not establish later request dispatch,
+callback timing, a decoder drain, or the identity of all emitted audio.
