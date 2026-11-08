@@ -1,7 +1,7 @@
 # Engineering milestones
 
-Updated November 8, 2026. RC82 adds helper build/package/installer integration;
-its CI and independent artifact verification are pending at source commit.
+Updated November 8, 2026. RC82 helper build/package/installer integration passed
+all four jobs in CI 42456886343 and independent artifact verification.
 It is a checkpoint, not completion of all work.
 
 | Milestone | State | Completion evidence still required |
@@ -15,7 +15,7 @@ It is a checkpoint, not completion of all work.
 | Native podcast MP3 capture | Structural prototype | Bounded MPEG-1/2/2.5 layout and ID3 extents; 36 real mono/stereo CBR/VBR fixtures locally verified. Payload/reservoir/gapless/completeness validation and lifecycle integration remain; no production capture enabled |
 | Concurrent capture/cross-format association | Partial | Identity-aware lifecycle and conflicting capture tests |
 | Playback metadata refresh/instance-bound skip | Partial | RC78 queue fencing and RC79 exact-instance active/final/pending metadata refresh CI/packages verified; native current-track skip remains open |
-| Saved-recording metadata refresh/preservation | Offline preparation verified; RC82 helper deployment candidate | Inspection, isolated Ogg/FLAC decoding, minimal text/lyrics policy, output verification and preparation passed CI. RC82 adds DLL-bound helper packaging and installation; CI/artifact verification pending at commit. Filesystem metadata preservation, artwork replacement policy and production coordinator remain; see METADATA_REFRESH_DESIGN.md |
+| Saved-recording metadata refresh/preservation | Offline preparation and RC82 helper deployment verified | Inspection, isolated Ogg/FLAC decoding, minimal text/lyrics policy, output verification and preparation passed CI. RC82 DLL-bound helper packaging and installation passed CI/artifact verification. Local probes demonstrate concurrent ADS, attribute and DACL mutation despite the source lock. Filesystem metadata preservation, artwork replacement policy and production coordinator remain; see METADATA_REFRESH_DESIGN.md |
 | Log levels 0/1/2/4 and bounded lanes | RC78 CI/package verified | RC77 test collision corrected in RC78; live acceptance remains separate; both lanes share one disk worker |
 | Deterministic sanitizer/fuzz campaign | RC76 campaigns passed | 40,000 seeded iterations plus regressions; does not prove live callback safety |
 | NetworkPatch policy | Separate decision | Explicit opt-in design; no silent default change |

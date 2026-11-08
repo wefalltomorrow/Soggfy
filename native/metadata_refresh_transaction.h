@@ -11,8 +11,11 @@ struct RefreshTransactionResult {
     std::wstring retained_original;
     std::string error;
 };
-// Prototype only. Holds the original identity and local ancestor directories
-// against modification/rename. The owner must validate payload and output first,
+// Prototype only. Holds the default data stream against writes and its file
+// identity/local ancestor names against rename. Alternate streams and file
+// attributes/DACL are NOT immutable under these sharing flags. Filesystem metadata
+// preservation is unfinished; this must not publish production recordings.
+// The owner must validate payload and output first,
 // and hold its settings-generation publication fence throughout Commit.
 class MetadataRefreshTransaction {
     HANDLE source_=INVALID_HANDLE_VALUE;

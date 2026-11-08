@@ -136,6 +136,51 @@ Reference sources inspected:
 - https://github.com/xiph/vorbis/blob/c2aa86b05e981c96bf381fc6aa11cdd03eccc2fb/lib/block.c
 - https://github.com/FFmpeg/FFmpeg/blob/n8.0/libavformat/oggparsevorbis.c
 
+### Filesystem preservation evidence (November 8, 2026)
+
+A local Windows probe using the transaction's exact source access/share flags
+confirmed that GENERIC_READ|DELETE plus FILE_SHARE_READ blocks default-stream
+writes but permits another handle to modify an existing alternate data stream,
+create a new alternate stream, and change file attributes. The audio bytes and
+file identity remained unchanged. Source-handle stability therefore establishes
+audio-byte stability, not a complete immutable filesystem-metadata snapshot.
+The declaration in metadata_refresh_transaction.h states this distinction.
+
+CopyFileEx succeeded while that source handle remained open and copied the
+alternate-stream bytes. It did not preserve the source's protected DACL: the
+copy inherited its destination-directory DACL. Comparing security descriptors
+also reported a difference. The PowerShell Set-Acl attempt while locked failed;
+this is evidence about that API path only, not proof that all security-descriptor
+mutation is excluded by the lock. A direct DACL-only SetFileSecurityW call then
+succeeded under the same held handle. Reading the DACL confirmed the newly added
+probe ACE. Removing that ACE succeeded too; Windows normalized the descriptor
+(ACE ordering/control bits), so restoration was not byte-for-byte identical.
+The probe checks ACE removal and retained DACL protection separately. All probes
+used isolated synthetic files. Both shells confirmed the native DACL mutation.
+
+These results rule out treating CopyFileEx alone as the preservation step.
+Reproduce with `tools/probe_refresh_file_preservation.ps1 -OutputDirectory <directory>`
+under PowerShell 7 or Windows PowerShell 5.1. The diagnostic creates a unique
+subdirectory containing synthetic files and result.json, and retains them for
+inspection. Both shells produced the same stream/attribute/DACL results locally.
+The implementation still needs an explicit metadata snapshot/copy/verification
+contract, including concurrent stream creation and metadata changes. A check
+only at Open or Stage cannot establish what exists at publication. BackupRead
+also does not read SACLs unless the source handle has ACCESS_SYSTEM_SECURITY;
+successful backup reads alone cannot prove complete security preservation.
+Do not enable the production coordinator on the strength of audio/tag/PCM tests.
+Default-stream oplocks alone are also insufficient: NTFS oplocks are per stream,
+as are sharing modes. ReplaceFile documents preservation of DACLs and named
+streams absent from the replacement, but it is not a drop-in for this transaction:
+its pathname acquisition and failure states need a separate identity/rollback
+contract, and its listed preservation guarantees do not cover all security data.
+
+Relevant Windows API contracts:
+- https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-copyfileexa
+- https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-backupread
+- https://learn.microsoft.com/en-us/windows/win32/fileio/file-streams
+- https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilea
+
 The text policy fills absent lyrics and preserves existing timed/custom lyrics.
 It now permits a plain-to-line-timed upgrade only when normalized line endings
 leave exactly the same words and every timestamp is monotonic and within the
