@@ -410,6 +410,51 @@ def main():
         0x17d43ef: 'mov rcx, rdi',
         0x17d43f2: 'call 0x185d440',
     })
+    # Conditional direct invocation through the configured receiver.
+    checks.update({
+        0xc5afe4: 'mov r15, rcx',
+        0xc5afe7: 'mov qword ptr [rsp + 0x20], rcx',
+        0xc5b095: 'lea r12, [r15 + 0x10]',
+        0xc5b0b2: 'lea rax, [rip + 0xdcffd7]',
+        0xc5b0b9: 'mov qword ptr [r12], rax',
+        0xc5b161: 'mov rdi, qword ptr [rsp + 0x20]',
+        0xc5b339: 'mov qword ptr [rbp + 0xc0], r12',
+        0xc5b90a: 'mov rax, qword ptr [rdx]',
+        0xc5b910: 'mov qword ptr [rcx], rax',
+        0xc8e70a: 'mov rax, qword ptr [rcx]',
+        0xc8e70d: 'mov qword ptr [rdx], rax',
+        0xc81682: 'mov rax, qword ptr [rdx]',
+        0xc81685: 'mov qword ptr [rcx + 0x10], rax',
+        0xc6cbae: 'mov r15, r9',
+        0xc6cbb7: 'mov rdi, rcx',
+        0xc6cbba: 'lea r14, [rcx - 0x10]',
+        0xc6cd7c: 'mov r9, r15',
+        0xc6cd85: 'mov rcx, r14',
+        0xc6cd88: 'call 0xc66b54',
+        0xc66b86: 'mov qword ptr [rsp + 0x48], r9',
+        0xc66dc0: 'mov rcx, qword ptr [rsp + 0x48]',
+        0xc66dc5: 'mov qword ptr [rsp + 0x30], rcx',
+        0xc66de5: 'call 0xc66eb8',
+        0xc66ec5: 'lea rbp, [rsp - 0x12d8]',
+        0xc66f08: 'mov rax, qword ptr [rbp + 0x1350]',
+        0xc66f0f: 'mov qword ptr [rsp + 0x68], rax',
+        0xc670ae: 'call 0xc6542c',
+        0xc670b3: 'mov rsi, rax',
+        0xc670b6: 'test rax, rax',
+        0xc670b9: 'je 0xc67575',
+        0xc672da: 'call 0xc71a80',
+        0xc67353: 'call 0xc8afa4',
+        0xc67358: 'mov rcx, qword ptr [rsp + 0x68]',
+        0xc6735d: 'xor esi, esi',
+        0xc6735f: 'cmp qword ptr [rcx + 0x10], rsi',
+        0xc67363: 'je 0xc6736c',
+        0xc67365: 'mov rax, qword ptr [rcx + 0x18]',
+        0xc67369: 'call rax',
+        0xc84c0d: 'mov rbx, rcx',
+        0xc84c10: 'mov rax, qword ptr [rcx]',
+        0xc84c13: 'mov byte ptr [rax + 0x500], 0',
+        0xc84c39: 'mov rax, qword ptr [rbx]',
+    })
     windows = []
     for address, expected_instruction in checks.items():
         decoded = instructions(address)
@@ -430,7 +475,8 @@ def main():
                       0x1bac498: 0x13e14a0, 0x1bac4a0: 0x13e14a8,
                       0x25aeb50: 0x1bac490, 0x25aeb58: 0x25aeb50,
                       0x19f14e0: 0x899a00, 0x19f14e8: 0x899a00,
-                      0x19f14f0: 0x899a18, 0x1c93940: 0x17d434c}
+                      0x19f14f0: 0x899a18, 0x1c93940: 0x17d434c,
+                      0x1a2b0d8: 0xc6cb80}
     for entry, target in caller_entries.items():
         if struct.unpack_from('<Q', data, entry)[0] - base != target:
             raise ValueError(f'Unexpected caller table entry at {entry:x}')
@@ -468,7 +514,9 @@ def main():
             error='playback_error_audio_driver',
             callback='c89c84 binds object to c84bf4, which replaces object +0x110 and clears the payload variant',
             handoff='c854d4 forwards callback to component at object +0x10, virtual slot +0x48',
-            limit='Selection and handoff only; invocation timing, receiver ownership and synchronization unresolved'),
+            invocation='Configured receiver c6cb80 forwards through c66b54 to c66eb8; if c6542c returns non-null and this branch completes, c67369 directly calls callback storage +0x18 before returning',
+            order='c71a80 and c8afa4 return before this callback call; their complete lifecycle effects and cross-thread ordering are not established',
+            limit='Conditional synchronous invocation path; actual execution, all branches, receiver lifetime and decoder synchronization unresolved'),
         generator_provenance=dict(
             condition='Traced c42f3c/c45a30 manager construction and c8df88 variant-0 factory branch, with no later callable replacement',
             callable='Table 0x19f14e0 clones a function pointer and invokes it through 0x899a18',

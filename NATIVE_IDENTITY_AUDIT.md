@@ -227,10 +227,27 @@ callback 0xc84bf4, previously traced to replace object +0x110 and clear the
 payload variant. It hands the callback to 0xc854d4, which forwards it to
 component object +0x10, virtual slot +0x48. The later call through callback
 storage +0x10 is a manager/cleanup operation, not evidence that the callback
-body ran. Selection and handoff are established; receiver ownership, actual
-invocation, timing and synchronization remain open. This recovery path must
-be included in identity acceptance tests.
+body ran. This recovery path must be included in identity acceptance tests.
 
-The probe now verifies 346 unique instructions, pointer/table entries and
+The configured receiver can also be traced statically. The manager's +0x10
+interface is supplied as the factory/config first member and becomes
+object +0x10. Manager construction installs table 0x1a2b090 on that interface;
+slot +0x48 resolves to 0xc6cb80. That function forwards the original callback
+through r9 to 0xc66b54, which passes it at caller stack +0x30 to 0xc66eb8
+(callee rbp +0x1350, then local rsp +0x68).
+
+When helper 0xc6542c returns non-null and the selected branch completes,
+0xc66eb8 calls 0xc71a80 and 0xc8afa4, then loads the original callback.
+If its manager field +0x10 is non-null, 0xc67369 directly calls its invoke
+field +0x18 with the callback storage as rcx. For the binding above, that
+executes 0xc84bf4 synchronously on this call chain: the callback retrieves
+the bound object, resets object +0x500 to zero, replaces the ID, and clears
+the payload variant. This is a conditional direct-invocation path, not a
+claim that every recovery takes this branch or that the client was observed
+executing it. The full effects of the preceding helpers, receiver lifetime,
+decoder cancellation, delayed callbacks and cross-thread ordering remain
+unverified.
+
+The probe now verifies 388 unique instructions, pointer/table entries and
 four literals. It records generator and recovery inferences separately from
 the checked observations. No production offsets or runtime hooks were added.
