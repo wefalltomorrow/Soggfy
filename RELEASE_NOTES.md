@@ -1,4 +1,21 @@
-# Soggfy v3.0.0-rc.84 - reject shared capture ownership
+# Soggfy v3.0.0-rc.85 - reject ambiguous late retention
+
+An unfinished capture first retained after two overlapping listens have queued
+could previously bind to whichever listen appeared first. RC85 scans the eligible
+batch before binding. Shared candidates become persistent rejection markers:
+neither they nor a competing ready candidate can publish for affected listens,
+even after one listen is removed. Markers retain the bounded completion deadline
+and are pruned when expired or when no affected listen remains.
+
+Fixtures cover the fast-transition overlap that postpones retention, both queue
+orders, active/completed Ogg/FLAC markers, ready competitors, unrelated captures,
+and expiry. Earlier-generation retention remains unchanged when established
+before the next listen queued. Diagnostics include retention_conflicts.
+Local regression and production compilation passed; full CI/package verification
+is pending at source commit. Native identity and future/preload ownership remain
+unverified, and no live installation or restart is implied.
+
+## RC84 background - reject shared capture ownership
 
 Completed captures that match two queued listens are now rejected before either
 listen can consume them. Previously, processing order could label a timing-only

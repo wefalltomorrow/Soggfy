@@ -814,9 +814,9 @@ static DWORD WINAPI Worker(LPVOID) {
                         candidates+=item;
                     }
                     char line[1400];snprintf(line,sizeof(line),
-                        "%s - %s (stream association failed matches=%zu ready=%zu retained_active=%zu shared_listen_matches=%zu media_duration=%.3f listen_start=%.3f listen_finish=%.3f wait=%.3f candidates=[%s])",
+                        "%s - %s (stream association failed matches=%zu ready=%zu retained_active=%zu shared_listen_matches=%zu retention_conflicts=%zu media_duration=%.3f listen_start=%.3f listen_finish=%.3f wait=%.3f candidates=[%s])",
                         Utf8(h->media.artist).c_str(),Utf8(h->media.title).c_str(),matches,ready.size(),
-                        selection.pending,shared_captures[heard_index],h->media.duration,h->start,h->finish,now-h->finish,candidates.c_str());
+                        selection.pending,shared_captures[heard_index],selection.retention_conflicts,h->media.duration,h->start,h->finish,now-h->finish,candidates.c_str());
                     LogActivity("failed",line);QueueDiagnostic(line);
                     h=heard.erase(h);
                 } else ++h;

@@ -102,9 +102,10 @@ int main() {
         assert(!active.count(1));
     }
     {
-        Active active;Ready ready;HeardList heard{h,{{10},106,112}};
+        Active active;Ready ready;HeardList heard{h};
         begin(active,ready);begin(active,ready,2,106);
         CleanupCaptureTransition(active,ready,heard,100,106,true,110);
+        heard.push_back({{10},106,112});
         CleanupCaptureTransition(active,ready,heard,106,112,true,112);
         assert(active.at(1)->retention.until==120 && active.at(2)->retention.until==122);
         finish(active,ready,1,113);finish(active,ready,2,113);
@@ -210,8 +211,9 @@ int main() {
         assert(RejectSharedCaptures(ready,HeardList{}).empty() && ready.size()==1);
     }
     {
-        Active active;Ready ready;HeardList heard{h,{{10},106,112,2}};
+        Active active;Ready ready;HeardList heard{h};
         begin(active,ready);CleanupCaptureTransition(active,ready,heard,100,110,true,110);
+        heard.push_back({{10},106,112,2});
         finish(active,ready);
         // A candidate already retained for one generation remains usable.
         const auto conflicts=RejectSharedCaptures(ready,heard);
@@ -219,5 +221,44 @@ int main() {
         assert(SelectCapture(active,ready,heard[0],113).state==CaptureAssociation::Ready);
         assert(SelectCapture(active,ready,heard[1],113).state==CaptureAssociation::Wait);
     }
-    std::puts("PASS: late Ogg/FLAC completion, owned retention, repeat generations, skips, 30x, cross-listen ambiguity, integrity and expiry");
+    for(bool reverse:{false,true})for(bool finished:{false,true})for(bool lossless:{false,true}) {
+        Active active;Ready ready;
+        HeardList heard{{{10},100,106,1},{{10},106,112,2}};
+        // Fast-transition overlap prevented retention at the first boundary.
+        begin(active,ready,1,103);
+        CleanupCaptureTransition(active,ready,HeardList{heard[0]},100,106,true,106);
+        assert(!active.at(1)->retention.until);
+        if(reverse)std::reverse(heard.begin(),heard.end());
+        CleanupCaptureTransition(active,ready,heard,106,112,true,112);
+        assert(active.at(1)->retention.ambiguous && active.at(1)->retention.until==122);
+        assert(!CaptureMatches(*active.at(1),heard[0]));
+        assert(!CaptureMatches(*active.at(1),heard[1]));
+        if(finished) {
+            finish(active,ready,1,113);
+            if(lossless){ready[0]->lossless=true;ready[0]->coverage.samples=441000;}
+        } else if(lossless)active.at(1)->lossless=true;
+        // A separately ready competitor cannot win once the shared capture
+        // becomes ambiguous, even after the other listen is removed.
+        begin(active,ready,2,106);finish(active,ready,2,113);
+        auto s=SelectCapture(active,ready,heard[0],113);
+        assert(s.state==CaptureAssociation::Ambiguous && s.retention_conflicts==1);
+        heard.erase(heard.begin());
+        s=SelectCapture(active,ready,heard[0],113);
+        assert(s.state==CaptureAssociation::Ambiguous && s.retention_conflicts==1);
+        const TestHeard unrelated{{10},200,210,3};
+        begin(active,ready,3,200);finish(active,ready,3,211);
+        assert(SelectCapture(active,ready,unrelated,211).state==CaptureAssociation::Ready);
+        PruneRetainedCaptures(active,ready,heard,122.001);
+        assert(active.empty());
+        for(const auto& c:ready)assert(!c->retention.ambiguous);
+    }
+    {
+        TestCapture c;c.born=103;
+        HeardList heard{{{10},100,106,1},{{10},106,112,2}};
+        assert(RetainPendingCapture(c,heard,117));
+        assert(!c.retention.ambiguous && c.retention.generation==2);
+        // Expired listeners cannot create a new retention conflict.
+        assert(!RetainPendingCapture(c,heard,123));
+    }
+    std::puts("PASS: late Ogg/FLAC completion, owned retention, repeat generations, skips, 30x, cross-listen ambiguity, retention ambiguity, integrity and expiry");
 }

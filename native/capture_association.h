@@ -10,33 +10,45 @@ constexpr double capture_completion_wait=10;
 struct CaptureRetention {
     double until=0,start=0,finish=0;
     std::uint64_t generation=0;
+    bool ambiguous=false;
 };
 
 template<class Capture,class Heard>
 bool CaptureTimingMatches(const Capture& c,const Heard& h) {
-    // Preserve the existing start window. Retention belongs to one completed
-    // listen, so an overlapping later listen cannot inherit its audio.
+    // Preserve the existing start window. Unambiguous retention belongs to
+    // one completed listen. Ambiguous retention only rejects; it never matches
+    // publishable audio, even after another overlapping listen is removed.
     return c.born>=h.start-20 && c.born<=h.start+3 &&
-        (!c.retention.until ||
+        (!c.retention.until || c.retention.ambiguous ||
          (c.retention.start==h.start && c.retention.finish==h.finish && c.retention.generation==h.generation));
 }
 template<class Capture,class Heard>
 bool CaptureMatches(const Capture& c,const Heard& h) {
-    return CaptureTimingMatches(c,h) &&
+    return !c.retention.ambiguous && CaptureTimingMatches(c,h) &&
         (!c.retention.until || c.finished<=c.retention.until) &&
         std::fabs(c.Duration()-h.media.duration)<=1.0;
 }
 template<class Capture,class HeardList>
 bool RetainPendingCapture(Capture& c,const HeardList& heard,double now) {
+    CaptureRetention candidate;
+    std::size_t matches=0;
     for(const auto& h:heard) {
         const double deadline=h.finish+capture_completion_wait;
         if(CaptureTimingMatches(c,h) && now<=deadline &&
            (!c.retention.until || now<=c.retention.until)) {
-            if(!c.retention.until)c.retention={deadline,h.start,h.finish,h.generation};
-            return true;
+            if(c.retention.until)return true;
+            if(!matches)candidate={deadline,h.start,h.finish,h.generation};
+            else candidate.until=std::max(candidate.until,deadline);
+            ++matches;
         }
     }
-    return false;
+    if(!matches)return false;
+    // Keep a disputed candidate as a rejection marker until selection has
+    // seen every affected listen. Erasing it here could make a competitor
+    // appear unique. Never let later queue removal resolve this ambiguity.
+    candidate.ambiguous=matches>1;
+    c.retention=candidate;
+    return true;
 }
 template<class Active,class Ready,class HeardList>
 void CleanupCaptureTransition(Active& active,Ready& ready,const HeardList& heard,
@@ -90,22 +102,25 @@ std::vector<std::size_t> RejectSharedCaptures(Ready& ready,const HeardList& hear
 }
 struct CaptureSelection {
     CaptureAssociation state=CaptureAssociation::Wait;
-    std::size_t index=0,matches=0,pending=0;
+    std::size_t index=0,matches=0,pending=0,retention_conflicts=0;
 };
 template<class Active,class Ready,class Heard>
 CaptureSelection SelectCapture(const Active& active,const Ready& ready,const Heard& h,double now) {
     CaptureSelection result;
     for(std::size_t i=0;i<ready.size();++i) {
+        if(ready[i]->retention.ambiguous && CaptureTimingMatches(*ready[i],h))
+            ++result.retention_conflicts;
         if(CaptureMatches(*ready[i],h)) {result.index=i;++result.matches;}
     }
     for(const auto& entry:active) {
         const auto& c=*entry.second;
-        if(c.retention.until && CaptureTimingMatches(c,h))++result.pending;
+        if(c.retention.ambiguous && CaptureTimingMatches(c,h))++result.retention_conflicts;
+        else if(c.retention.until && CaptureTimingMatches(c,h))++result.pending;
     }
     // Retaining a second, unfinished candidate must not let the first ready
     // candidate win a race. Wait for strict codec validation, then reject
     // multiple matches (or an unresolved competitor at the deadline).
-    if(result.matches>1)result.state=CaptureAssociation::Ambiguous;
+    if(result.retention_conflicts || result.matches>1)result.state=CaptureAssociation::Ambiguous;
     else if(result.matches==1 && !result.pending)result.state=CaptureAssociation::Ready;
     else if(now-h.finish>capture_completion_wait)
         result.state=result.matches?CaptureAssociation::Ambiguous:CaptureAssociation::Missing;
