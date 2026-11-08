@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.0-rc.86
+
+- Reject converter stderr errors even when FFmpeg returns success; retain originals in native and manual workflows.
+- Monitor a fixed error pipe, terminate error-producing converter jobs and restrict inherited handles.
+- Test single-byte and pipe-filling diagnostics during encoding and validation on native Windows and both PowerShell versions.
+
 ## 3.0.0-rc.82
 
 - Build the validation helper from pinned Vorbis/FLAC sources, finalize and inspect its dependencies before compiling its hash into the DLL.

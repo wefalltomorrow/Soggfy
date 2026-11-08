@@ -7,6 +7,7 @@ It is a checkpoint, not completion of all work.
 | Milestone | State | Completion evidence still required |
 | --- | --- | --- |
 | RC63-74 selective reliability work | CI/package checkpoints complete | Pinned-client acceptance remains separate |
+| Converter error reporting | RC86 local regression complete | Native and both PowerShell versions reject zero-exit stderr errors and pipe-filling diagnostics in encoding/validation. CI, MinGW package verification and live acceptance remain |
 | Installation-directory transaction | RC75 CI/package verified | Live installation acceptance |
 | Manual watch scan cost | RC75 CI/package verified | Live acceptance |
 | Native playlist save result | RC75 CI/package verified | Live save dialog |

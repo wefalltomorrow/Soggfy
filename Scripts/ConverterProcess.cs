@@ -101,7 +101,12 @@ namespace Soggfy {
     // A suspended launch prevents a wrapper from escaping supervision before
     // assignment. Closing the job also stops descendants if PowerShell exits.
     public sealed class ConverterProcess : IDisposable {
-        private IntPtr job, process;
+        private IntPtr job, process, errorReader;
+        private bool reportedError;
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Security { public int size; public IntPtr descriptor; public int inherit; }
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ExtendedStartup { public Startup startup; public IntPtr attributes; }
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         private struct Startup {
             public int cb; public string reserved, desktop, title;
@@ -127,7 +132,20 @@ namespace Soggfy {
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool SetInformationJobObject(IntPtr job, int kind, ref Limits limits, int size);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern bool CreateProcess(string exe, StringBuilder command, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string cwd, ref Startup startup, out ProcessInfo info);
+        private static extern bool CreateProcess(string exe, StringBuilder command, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string cwd, ref ExtendedStartup startup, out ProcessInfo info);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CreatePipe(out IntPtr reader, out IntPtr writer, ref Security security, uint size);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetHandleInformation(IntPtr handle, uint mask, uint flags);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr CreateFile(string name, uint access, uint share, ref Security security, uint mode, uint flags, IntPtr template);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool InitializeProcThreadAttributeList(IntPtr list, int count, uint flags, ref IntPtr size);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool UpdateProcThreadAttribute(IntPtr list, uint flags, IntPtr attribute, IntPtr value, IntPtr size, IntPtr previous, IntPtr returned);
+        [DllImport("kernel32.dll")] private static extern void DeleteProcThreadAttributeList(IntPtr list);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool PeekNamedPipe(IntPtr pipe, IntPtr buffer, uint size, IntPtr read, out uint available, IntPtr remaining);
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -150,6 +168,8 @@ namespace Soggfy {
         }
         public ConverterProcess(string exe, string[] arguments, string cwd) {
             ProcessInfo info = new ProcessInfo();
+            IntPtr writer = IntPtr.Zero, nullFile = new IntPtr(-1), attributes = IntPtr.Zero, handles = IntPtr.Zero;
+            bool initialized = false;
             try {
                 job = CreateJobObject(IntPtr.Zero, null);
                 if (job == IntPtr.Zero) throw new Win32Exception();
@@ -157,8 +177,24 @@ namespace Soggfy {
                 if (!SetInformationJobObject(job, 9, ref limits, Marshal.SizeOf(limits))) throw new Win32Exception();
                 var command = new StringBuilder(Quote(exe));
                 foreach (string arg in arguments) command.Append(' ').Append(Quote(arg));
-                var startup = new Startup(); startup.cb = Marshal.SizeOf(startup);
-                if (!CreateProcess(exe, command, IntPtr.Zero, IntPtr.Zero, false, 0x08000004, IntPtr.Zero, cwd, ref startup, out info)) throw new Win32Exception();
+                var security = new Security(); security.size = Marshal.SizeOf(security); security.inherit = 1;
+                if (!CreatePipe(out errorReader, out writer, ref security, 4096) ||
+                    !SetHandleInformation(errorReader, 1, 0)) throw new Win32Exception();
+                nullFile = CreateFile("NUL", 0xc0000000, 3, ref security, 3, 0, IntPtr.Zero);
+                if (nullFile == new IntPtr(-1)) throw new Win32Exception();
+                IntPtr size = IntPtr.Zero;
+                InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
+                attributes = Marshal.AllocHGlobal(size);
+                if (!InitializeProcThreadAttributeList(attributes, 1, 0, ref size)) throw new Win32Exception();
+                initialized = true;
+                handles = Marshal.AllocHGlobal(2 * IntPtr.Size);
+                Marshal.WriteIntPtr(handles, writer); Marshal.WriteIntPtr(handles, IntPtr.Size, nullFile);
+                if (!UpdateProcThreadAttribute(attributes, 0, new IntPtr(0x20002), handles,
+                    new IntPtr(2 * IntPtr.Size), IntPtr.Zero, IntPtr.Zero)) throw new Win32Exception();
+                var startup = new ExtendedStartup(); startup.startup.cb = Marshal.SizeOf(startup);
+                startup.attributes = attributes; startup.startup.flags = 0x100;
+                startup.startup.input = startup.startup.output = nullFile; startup.startup.error = writer;
+                if (!CreateProcess(exe, command, IntPtr.Zero, IntPtr.Zero, true, 0x08080004, IntPtr.Zero, cwd, ref startup, out info)) throw new Win32Exception();
                 process = info.process;
                 if (!AssignProcessToJobObject(job, process) || ResumeThread(info.thread) == uint.MaxValue) {
                     int error = Marshal.GetLastWin32Error();
@@ -166,17 +202,34 @@ namespace Soggfy {
                     throw new Win32Exception(error);
                 }
             } catch { Dispose(); throw; }
-            finally { if (info.thread != IntPtr.Zero) CloseHandle(info.thread); }
+            finally {
+                if (info.thread != IntPtr.Zero) CloseHandle(info.thread);
+                if (initialized) DeleteProcThreadAttributeList(attributes);
+                if (attributes != IntPtr.Zero) Marshal.FreeHGlobal(attributes);
+                if (handles != IntPtr.Zero) Marshal.FreeHGlobal(handles);
+                if (writer != IntPtr.Zero) CloseHandle(writer);
+                if (nullFile != new IntPtr(-1)) CloseHandle(nullFile);
+            }
         }
         public bool Wait(uint milliseconds) {
             uint result = WaitForSingleObject(process, milliseconds);
             if (result == uint.MaxValue) throw new Win32Exception();
+            uint available;
+            if (!PeekNamedPipe(errorReader, IntPtr.Zero, 0, IntPtr.Zero, out available, IntPtr.Zero)) {
+                int error = Marshal.GetLastWin32Error();
+                if (error != 109) throw new Win32Exception(error); // closed pipe
+            } else if (available != 0) {
+                // Fail on the first error byte. No unbounded log storage or
+                // drain thread; a pipe-filling child is terminated as well.
+                reportedError = true; TerminateJobObject(job, 1);
+            }
             return result == 0;
         }
-        public uint ExitCode { get { uint code; if (!GetExitCodeProcess(process, out code)) throw new Win32Exception(); return code; } }
+        public uint ExitCode { get { uint code; if (!GetExitCodeProcess(process, out code)) throw new Win32Exception(); return reportedError && code == 0 ? 1 : code; } }
         public void Dispose() {
             if (job != IntPtr.Zero) { TerminateJobObject(job, 1); CloseHandle(job); job = IntPtr.Zero; }
             if (process != IntPtr.Zero) { WaitForSingleObject(process, 2000); CloseHandle(process); process = IntPtr.Zero; }
+            if (errorReader != IntPtr.Zero) { CloseHandle(errorReader); errorReader = IntPtr.Zero; }
             GC.SuppressFinalize(this);
         }
         ~ConverterProcess() { Dispose(); }

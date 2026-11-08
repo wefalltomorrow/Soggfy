@@ -5,6 +5,7 @@
 #include "existing_quality.h"
 #include "history_settings.h"
 #include "conversion_source.h"
+#include "converter_error_pipe.h"
 #include <algorithm>
 #include <filesystem>
 
@@ -89,18 +90,27 @@ bool Run(const std::wstring& exe,const std::wstring& command,DWORD& exit_code,
         CloseHandle(job);error="Could not configure converter job";return false;
     }
     std::wstring mutable_command=Quote(exe)+L" "+command;
-    STARTUPINFOW si{};si.cb=sizeof(si);
+    post_process_detail::ConverterErrorPipe diagnostics;
+    if(!diagnostics.Open()){CloseHandle(job);error="Could not monitor converter errors";return false;}
     PROCESS_INFORMATION pi{};
-    if(!CreateProcessW(exe.c_str(),mutable_command.data(),nullptr,nullptr,FALSE,
-                      CREATE_NO_WINDOW|CREATE_SUSPENDED,nullptr,nullptr,&si,&pi)) {
+    if(!CreateProcessW(exe.c_str(),mutable_command.data(),nullptr,nullptr,TRUE,
+                      CREATE_NO_WINDOW|CREATE_SUSPENDED|EXTENDED_STARTUPINFO_PRESENT,
+                      nullptr,nullptr,&diagnostics.startup.StartupInfo,&pi)) {
         error="Could not start FFmpeg (Windows error "+std::to_string(GetLastError())+")";
         CloseHandle(job);return false;
     }
+    diagnostics.CloseWriter();
     bool ok=AssignProcessToJobObject(job,pi.hProcess)!=0;
     if(ok)ok=ResumeThread(pi.hThread)!=DWORD(-1);
     if(!ok){error="Could not supervise FFmpeg";TerminateProcess(pi.hProcess,1);}
     while(ok) {
         const DWORD waited=WaitForSingleObject(pi.hProcess,100);
+        bool reported_error=false;
+        if(!diagnostics.HasError(reported_error)){error="Could not inspect converter errors";ok=false;break;}
+        if(reported_error) {
+            TerminateJobObject(job,1);WaitForSingleObject(pi.hProcess,2000);
+            exit_code=1;break;
+        }
         if(waited==WAIT_OBJECT_0){ok=GetExitCodeProcess(pi.hProcess,&exit_code)!=0;break;}
         if(waited!=WAIT_TIMEOUT){error="Could not wait for FFmpeg";ok=false;break;}
         if(Canceled(control)){error="Conversion canceled; native original retained";ok=false;break;}
@@ -199,7 +209,7 @@ static PostProcessResult ProcessFile(const std::wstring& native_path,const Setti
         if(!WriteBytes(cover_path,cover))cover_path.clear();
     }
 
-    std::wstring command=L"-y -hide_banner -loglevel warning -xerror -abort_on empty_output -nostdin -i "+Quote(native_path);
+    std::wstring command=L"-y -hide_banner -loglevel error -xerror -abort_on empty_output -nostdin -i "+Quote(native_path);
     const auto final_ext=ExtensionOf(result.path);
     if(!cover_path.empty() && (final_ext==L"mp3"||final_ext==L"m4a"||final_ext==L"mp4")) {
         command+=L" -i "+Quote(cover_path)+L" -map 0:a:0 -map 1:v:0 -map_metadata 0 -c:v copy -disposition:v attached_pic";
@@ -223,7 +233,7 @@ static PostProcessResult ProcessFile(const std::wstring& native_path,const Setti
         // Most redistributable FFmpeg builds omit non-free libfdk_aac. Preserve
         // old Soggfy's UI preset but fall back to FFmpeg's native AAC encoder.
         DeleteFileW(WindowsPath(temp.wstring()).c_str());
-        std::wstring fallback=L"-y -hide_banner -loglevel warning -xerror -abort_on empty_output -nostdin -i "+Quote(native_path);
+        std::wstring fallback=L"-y -hide_banner -loglevel error -xerror -abort_on empty_output -nostdin -i "+Quote(native_path);
         if(!cover_path.empty()) {
             fallback+=L" -i "+Quote(cover_path)+L" -map 0:a:0 -map 1:v:0 -map_metadata 0 -c:v copy -disposition:v attached_pic";
         } else if(existing&&settings.embed_cover_art)

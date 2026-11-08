@@ -9,7 +9,7 @@ function Assert($Condition, [string]$Message) { if (-not $Condition) { throw $Me
 $saved = @{}
 foreach ($name in 'SGF_TEST_MODE','SGF_TEST_FINAL','SGF_TEST_ARGS','SGF_TEST_PID') { $saved[$name] = [Environment]::GetEnvironmentVariable($name) }
 try {
-    foreach ($mode in 'fail','empty','corrupt','race','directory','ok','keep','existing','source-lock','hang','validation-hang') {
+    foreach ($mode in 'fail','empty','corrupt','race','directory','ok','keep','existing','source-lock','hang','validation-hang','encode-error','encode-flood','validation-error','validation-flood') {
         $source = Join-Path $testRoot "$mode.ogg"
         $dest = [IO.Path]::ChangeExtension($source, 'mp3')
         [IO.File]::WriteAllText($source, 'native-original')
@@ -23,7 +23,7 @@ try {
         $clock = [Diagnostics.Stopwatch]::StartNew()
         try { & $script -InputPath $source -FFmpegPath $ConverterPath -DeleteOriginal:($mode -ne 'keep') -TimeoutSeconds 2 }
         catch { $failed = $true }
-        $expectedFailure = $mode -in 'fail','empty','corrupt','race','directory','hang','validation-hang'
+        $expectedFailure = $mode -in 'fail','empty','corrupt','race','directory','hang','validation-hang','encode-error','encode-flood','validation-error','validation-flood'
         Assert ($failed -eq $expectedFailure) "Unexpected outcome for $mode"
         if ($mode -in 'ok','source-lock') { Assert (-not (Test-Path -LiteralPath $source)) 'Validated conversion did not delete source' }
         else { Assert ([IO.File]::ReadAllText($source) -eq 'native-original') "Original changed for $mode" }

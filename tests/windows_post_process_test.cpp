@@ -13,6 +13,11 @@ using namespace history;
 static void write(const fs::path& p,const std::string& bytes){std::ofstream f(p,std::ios::binary);f<<bytes;assert(f.good());}
 static std::string read(const fs::path& p){std::ifstream f(p,std::ios::binary);return {std::istreambuf_iterator<char>(f),{}};}
 static std::wstring env(const wchar_t* name){wchar_t b[32768]{};GetEnvironmentVariableW(name,b,32768);return b;}
+static void reportError(bool flood) {
+    const std::string diagnostic(flood?1024*1024:1,'E');
+    DWORD written=0;
+    WriteFile(GetStdHandle(STD_ERROR_HANDLE),diagnostic.data(),DWORD(diagnostic.size()),&written,nullptr);
+}
 static void hang(const std::wstring& exe) {
     std::wstring command=L"\""+exe+L"\" child";STARTUPINFOW si{};si.cb=sizeof(si);PROCESS_INFORMATION pi{};
     assert(CreateProcessW(exe.c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&si,&pi));
@@ -41,6 +46,8 @@ int main() {
     if(argc>1&&args[1]==L"child"){Sleep(60000);return 0;}
     if(argc>1&&args[1]==L"-hide_banner") {
         if(env(L"SGF_TEST_MODE")==L"validation-hang")hang(args[0]);
+        if(env(L"SGF_TEST_MODE")==L"validation-error")reportError(false);
+        if(env(L"SGF_TEST_MODE")==L"validation-flood")reportError(true);
         auto input=std::find(args.begin(),args.end(),L"-i");assert(input!=args.end());
         const auto bytes=read(fs::path(*++input));
         return bytes=="valid-audio"||bytes==identifiedFlac()?0:2;
@@ -69,6 +76,8 @@ int main() {
             write(fs::path(log),joined);
         }
         write(fs::path(args.back()),mode==L"empty"?"":mode==L"corrupt"?"not-audio":"valid-audio");
+        if(mode==L"encode-error")reportError(false);
+        if(mode==L"encode-flood")reportError(true);
         return 0;
     }
     wchar_t executable[32768]{};GetModuleFileNameW(nullptr,executable,32768);
@@ -124,7 +133,8 @@ int main() {
         assert(result.state==(existing==3?PostProcessResult::State::Skipped:PostProcessResult::State::Failed));
         assert(read(native)=="native-original");if(locked!=INVALID_HANDLE_VALUE)CloseHandle(locked);
     }
-    for(auto mode:{L"fail",L"empty",L"corrupt",L"race",L"hang",L"validation-hang",L"cancel"}) {
+    for(auto mode:{L"fail",L"empty",L"corrupt",L"race",L"hang",L"validation-hang",L"cancel",
+                  L"encode-error",L"encode-flood",L"validation-error",L"validation-flood"}) {
         reset();fs::remove(pidfile);PostProcessControl control;control.timeout_ms=1500;
         const auto started=GetTickCount64();
         if(std::wstring(mode)==L"cancel")control.canceled=[&]{return GetTickCount64()-started>700;};

@@ -1,4 +1,23 @@
-# Soggfy v3.0.0-rc.85 - reject ambiguous late retention
+# Soggfy v3.0.0-rc.86 - retain originals when FFmpeg reports errors
+
+Native and manual conversion now reject FFmpeg error output even when the
+converter exits with code zero. Both encoding and final audio validation run
+at error log level. The first stderr byte invalidates that attempt and stops
+its supervised process tree; temporary output is removed and the original is
+retained. The existing native AAC preset fallback remains available.
+
+A fixed pipe detects errors without storing logs or starting a reader thread.
+An explicit handle inheritance list passes only that pipe and NUL standard
+input/output to the converter. Custom converters and PowerShell wrappers must
+keep stderr empty on success; informational output can use stdout.
+
+Local native, PowerShell 7 and PowerShell 5.1 tests cover zero-exit diagnostics
+and pipe-filling output in both stages, clean real FFmpeg conversion, original
+retention, conflicts, deadlines and descendant cleanup. Full CI and independent
+MinGW package verification remain pending at source commit. No live install,
+Spotify restart, merge or official release is implied.
+
+## RC85 background - reject ambiguous late retention
 
 An unfinished capture first retained after two overlapping listens have queued
 could previously bind to whichever listen appeared first. RC85 scans the eligible

@@ -87,7 +87,7 @@ function Convert-One([string]$Path) {
     }
 
     # A playable output does not prove all input frames decoded successfully.
-    $args = @('-y','-hide_banner','-loglevel','warning','-xerror','-abort_on','empty_output','-nostdin','-i',$Path,'-map','0:a:0','-map_metadata','0','-map_metadata','0:s:a:0')
+    $args = @('-y','-hide_banner','-loglevel','error','-xerror','-abort_on','empty_output','-nostdin','-i',$Path,'-map','0:a:0','-map_metadata','0','-map_metadata','0:s:a:0')
     if ($Format -ne 'opus') {
         $args += @('-map','0:v?','-c:v','copy')
     }
