@@ -101,8 +101,13 @@ combinations. Synthetic frame tests exercise exact and one-bit-short budgets,
 CRC/non-CRC layouts, every granule/channel and intensity mode isolation.
 The real-corpus regression adds 72 impossible scalefactor declarations across
 all MPEG versions, mono/stereo and CBR/VBR, while preserving acceptance of the
-36 original files and 18 protected PCM-equivalence fixtures. CI and package
-verification are pending for this follow-up. Full Huffman semantics, gapless
+36 original files and 18 protected PCM-equivalence fixtures. All four jobs
+passed in CI 42476996697 at source 2e5e81fd7e6e2b1125b8f2ee16032e4110cd9c53.
+Independent MinGW package verification matched the source/merge tree, scripts,
+manifest, helper binding and PE dependencies. DLL, launcher and helper are
+byte-identical to CI 42475271762. Package SHA256:
+03103325ee0a094bc627d6e59bd43773419ced1c5b0f7822bc2eed29286549fb.
+Full Huffman semantics, gapless
 timing, completeness and capture lifetime remain open; production MP3 capture
 is still disabled.
 
@@ -120,7 +125,11 @@ all MPEG versions/channel layouts, protected frames and fixed-block input.
 Another 36 real tagged encodings cover mono/stereo and CBR/VBR at all nine
 supported sample rates. They pass independent packet-count comparisons, 360
 count/truncation/reservoir rejection cases, ID3 exclusion and protected seek
-header PCM-equivalence checks. CI and package verification are pending.
+header PCM-equivalence checks. All four jobs passed in CI 42477717796 at source
+9b45a527956813bb9b5dbe704396a444691af8bd. Independent package verification
+matched the source/merge tree, scripts, manifest, helper binding and PE
+dependencies. Package SHA256:
+c18a876a3fc7e37f58173f308b9b92b1a6d46ef23e79973a809210e3b9151db2.
 
 These are consistency checks on untrusted declarations. A stripped or rewritten
 tag cannot establish completeness; absent counts remain unknown. Nominal sample
@@ -129,3 +138,44 @@ Encoder delay/padding, LAME extension CRC, VBRI, iTunSMPB, full Huffman semantic
 provenance and capture lifecycle remain separate work. No native capture enabled.
 Primary cross-checks: FFmpeg cc583787bbecd4914fee7c2bf7f09463113822fe,
 libavformat/mp3dec.c and mp3enc.c; LAME libmp3lame/VbrTag.c, lame_get_lametag_frame.
+
+## Gapless tag compatibility audit
+
+The local FFmpeg 9.0.2 audit generated 36 real Xing/Info fixtures across all
+nine sample rates, mono/stereo and CBR/VBR. In every fixture, declared audio
+frames times samples-per-frame minus encoder delay and padding matches the
+independently decoded PCM sample count. This does not establish trustworthy
+delay/padding for native capture or files with changed metadata.
+
+Only six fixtures match a LAME tag CRC calculated from the MPEG header through
+the byte immediately before the stored tag CRC. All 36 match the fixed
+190-byte calculation in pinned FFmpeg mp3enc.c (CRC placeholder zeroed when
+inside that extent, and zero padding beyond a short seek frame). The six
+matching both calculations are MPEG-1 stereo; the other layouts place the
+CRC earlier. Requiring just the LAME field-boundary checksum would reject
+these 30 otherwise decodable local FFmpeg fixtures. No permissive production
+fallback has been introduced; extension compatibility remains explicit work.
+
+Evidence and fixture hashes: outputs/Soggfy-MP3-gapless-tag-audit.json.
+Harness: work/probe_mp3_gapless.py; CRC oracle includes the CRC-16/ARC standard
+check vector. Pinned mp3enc.c SHA256:
+8dec50d701aafec3b1d81fb47ad1a9e3144938cbcf776a5f5633d0b091883f33.
+
+## Independent decode fixture correction
+
+Positive FFmpeg fixture generation, probing and decoding must now produce no
+error-level diagnostics, even with a zero exit code. Both MP3 and metadata
+refresh harnesses exercise a zero-exit error process to check this requirement.
+Native test programs retain their own pass/fail assertions; debug libFLAC may
+print normal rewind messages while they exercise expected failure cases.
+
+This exposed malformed artwork in the real metadata fixtures: the synthetic
+"opaque" picture comment produced an FFmpeg error even though decoded audio
+matched. Real fixtures now contain a generated valid 1x1 PNG, independently
+decoded to the expected RGB pixel before and after refresh. Malformed artwork
+preservation remains covered by synthetic container tests. All 12 real Ogg/FLAC
+cases pass locally through isolated validation and preparation, with identical
+PCM, preserved artwork pixels and clean FFmpeg diagnostics. The complete MP3
+corpus also passes the stronger harness. CI verification of this correction is
+pending. These are fixture/evidence corrections; runtime validation and the
+disabled metadata refresh coordinator have not changed.
