@@ -24,7 +24,12 @@ def run(*args, expected_return=0, expected_stderr=None):
             args = tuple(subprocess.check_output([mapper, "-w", str(arg)], text=True).strip()
                          if isinstance(arg, pathlib.Path) else arg for arg in args)
     result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
-    matches = result.returncode != 0 if expected_return is None else result.returncode == expected_return
+    # Some FFmpeg versions report a decode error but exit zero even with
+    # -xerror. Those negative fixtures require the specific diagnostic AND
+    # non-equivalent PCM at the call site, not a particular process status.
+    if expected_return is None:
+        assert expected_stderr, "unconstrained exits require an error diagnostic"
+    matches = expected_return is None or result.returncode == expected_return
     if not matches:
         sys.stderr.write(result.stderr.decode("utf-8", errors="replace"))
         result.check_returncode()
@@ -125,9 +130,10 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
                     malformed = pathlib.Path(directory) / "side-info.mp3"
                     malformed.write_bytes(damaged)
                     run(test, malformed, expected_return=1, expected_stderr=native_error)
-                    run(ffmpeg, "-v", "error", "-nostdin", "-xerror", "-err_detect", "explode",
-                        "-i", malformed, "-f", "null", "-", expected_return=None,
-                        expected_stderr=decoder_error)
+                    damaged_pcm = run(ffmpeg, "-v", "error", "-nostdin", "-xerror", "-err_detect", "explode",
+                                      "-i", malformed, "-f", "s16le", "-", expected_return=None,
+                                      expected_stderr=decoder_error)
+                    assert damaged_pcm != pcm
                 corrupted = bytearray(source)
                 # A complete first frame may not refer to absent preceding
                 # main-data bytes. Flip only its side-info back-reference.
@@ -166,7 +172,8 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
                         return run(ffmpeg, "-v", "error", "-nostdin", "-xerror",
                                    "-err_detect", "crccheck+explode", "-i", path,
                                    "-map", "0:a:0", "-f", "s16le", "-")
-                    assert decode(protected_path) == decode(plain)
+                    plain_pcm = decode(plain)
+                    assert decode(protected_path) == plain_pcm
                     # Corrupt a middle frame so rejection cannot be attributed
                     # only to demuxer probing of the first frame.
                     protected_packets = json.loads(run(ffprobe, "-v", "error", "-show_packets",
@@ -177,9 +184,10 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
                         damaged[byte] ^= 1
                         bad.write_bytes(damaged)
                         run(test, bad, expected_return=1)
-                        run(ffmpeg, "-v", "error", "-nostdin", "-xerror", "-err_detect",
-                            "crccheck+explode", "-i", bad, "-f", "null", "-",
-                            expected_return=None, expected_stderr=b"CRC mismatch")
+                        damaged_pcm = run(ffmpeg, "-v", "error", "-nostdin", "-xerror", "-err_detect",
+                                          "crccheck+explode", "-i", bad, "-f", "s16le", "-",
+                                          expected_return=None, expected_stderr=b"CRC mismatch")
+                        assert damaged_pcm != plain_pcm
                     protected_cases += 1
     assert missing_predecessors == 36, missing_predecessors
     assert protected_cases == 18, protected_cases
