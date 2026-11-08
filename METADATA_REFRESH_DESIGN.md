@@ -222,6 +222,53 @@ publication remains disabled. Reports are retained as
 `outputs/Soggfy-oplock-preservation-PS51-20261108.json`; synthetic fixtures remain
 under `outputs/oplock-probes`. No recording or installed client was modified.
 
+### Same-file stream rename counterexample
+
+The isolated `tools/probe_refresh_stream_swap.ps1` and
+`tools/probe_refresh_stream_interference.ps1` probes investigate keeping the
+same NTFS file record while renaming its default data stream to a retained
+`:previous` stream and publishing a prepared `:candidate` stream as default.
+All 14 cases produced matching observations under PowerShell 7.6.9 and Windows
+PowerShell 5.1.19041.7802 on November 8, 2026. These are synthetic local fixtures,
+not production publication or a general filesystem guarantee.
+
+- Staging with share READ alone fails with sharing violation 32. Sharing READ
+  and DELETE permits preparation while the original READ|DELETE handle stays
+  open with share READ. The tested full-file rename fails with 32 both before
+  and after moving the original default stream.
+- Successful publication retains file identity, protected DACL, edits to an
+  existing custom stream and creation of another stream after acquiring handles.
+  Hidden is retained, but Archive is added: exact attribute preservation is
+  not established. Timestamps, SACL, EFS, compression and extended attributes
+  have not been validated.
+- A competitor can rename staging or mark it for deletion through another
+  handle. In these cases the held staging handle still publishes the tested
+  bytes and they remain readable after all handles close. This observation
+  does not establish general pending-delete or cleanup safety.
+- Cancellation in the gap can restore the original when the new empty default
+  stream is unused. A competing writer filling it causes both publication and
+  rollback to fail with 87; the competing content and both retained streams
+  survive.
+- More critically, merely holding the empty default stream open for READ or
+  WRITE (even sharing READ|WRITE|DELETE) also makes publication and rollback
+  fail with 87. After handles close, the normal pathname is still empty and
+  original audio exists only in `:previous`.
+
+The last case disproves treating this two-rename sequence as atomic replacement
+with guaranteed immediate rollback. Keeping recoverable bytes in an alternate
+stream is insufficient for normal player access. Do not enable this approach
+in the production coordinator. A future design must close the observable empty
+stream gap or explicitly establish a recovery contract, durable crash journal,
+identity-safe restart and cleanup, concurrent metadata policy, and unsupported
+filesystem behavior. No journal or recovery coordinator is implemented here.
+
+Reports are `outputs/Soggfy-stream-swap-PS7-20261108.json`,
+`outputs/Soggfy-stream-swap-PS51-20261108.json`,
+`outputs/Soggfy-stream-interference-PS7-20261108.json` and
+`outputs/Soggfy-stream-interference-PS51-20261108.json`; each records retained
+fixture paths under `outputs/stream-swap-probes`. Assertions check contents,
+identity, protected permissions, retained Hidden state and return codes.
+
 The text policy fills absent lyrics and preserves existing timed/custom lyrics.
 It now permits a plain-to-line-timed upgrade only when normalized line endings
 leave exactly the same words and every timestamp is monotonic and within the
@@ -263,9 +310,23 @@ comparison remain required before replacement can be enabled.
 Local diagnostic tests cover every truncated fixture prefix, UINT32_MAX length
 fields, UTF-8 edge cases, canonical base64 vectors, bounds, stale-result clearing,
 10,000 deterministic envelope mutations and mixed opaque/parsed Ogg/FLAC entries.
-The tests are registered in native, Windows and both sanitizer suites. CI and
-independent artifact verification for this checkpoint are pending. Production
-refresh remains disconnected; the shipped image-writing behavior is unchanged.
+All four jobs passed in CI 42471578020 at source
+ec4b62c7abc0387ed74fd18e3fad23c236a26ab7. Each job exercised the envelope regression
+and 12 real Ogg/FLAC PCM-preservation fixtures; the two sanitizer campaigns each
+completed 20,000 seeded iterations. Independent MinGW package verification passed
+source/merge-tree, archive/manifest, scripts, PE imports and helper binding checks.
+Package SHA256: bf75271f7d40e783b19777a66947c74fb5741e0c2166e81c7b4bb3b14d101865.
+Evidence is isolated in outputs/CI-run185; the original RC85 acceptance package
+is preserved. Production refresh remains disconnected; shipped image-writing
+behavior is unchanged.
+
+A follow-up caps the combined native-block/comment picture inventory at the
+existing 100,000 comment-field limit. Without a count cap, tiny malformed FLAC
+picture blocks could expand a bounded metadata region into millions of summary
+objects. Files exceeding the cap fail inspection with cleared output; they are
+never rewritten. Local diagnostic boundary tests cover exactly the combined
+limit, one excess comment picture and excess native blocks, plus all 12 PCM
+fixtures. CI for this follow-up is pending.
 
 Primary format contract: https://www.rfc-editor.org/rfc/rfc9639.html#section-8.8
 

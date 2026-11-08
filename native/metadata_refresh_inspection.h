@@ -8,6 +8,9 @@
 
 namespace history {
 enum class NativeRecordingFormat { Unknown, Ogg, Flac };
+// A byte bound alone permits millions of empty native FLAC picture blocks.
+// Bound the combined inventory independently, matching the comment field cap.
+inline constexpr size_t MetadataPictureCountLimit=VorbisCommentFieldLimit;
 struct MetadataInspection {
     NativeRecordingFormat format=NativeRecordingFormat::Unknown;
     VorbisComments comments;
@@ -39,7 +42,10 @@ inline bool InspectMetadataRefreshSource(const std::vector<uint8_t>& source,
                 if(comments||!ParseVorbisComments(source.data()+at,length,false,found.comments))return false;
                 comments=true;
             }
-            if(kind==6)found.pictures.push_back(SummarizePicture(source.data()+at,length));
+            if(kind==6) {
+                if(found.pictures.size()==MetadataPictureCountLimit)return false;
+                found.pictures.push_back(SummarizePicture(source.data()+at,length));
+            }
             at+=length;
         }
         if(!comments)return false;
@@ -91,6 +97,7 @@ inline bool InspectMetadataRefreshSource(const std::vector<uint8_t>& source,
     for(const auto& field:found.comments.fields) {
         const auto eq=field.find('=');
         if(metadata_plan_detail::Key(std::string_view(field).substr(0,eq))=="METADATA_BLOCK_PICTURE") {
+            if(found.pictures.size()==MetadataPictureCountLimit)return false;
             std::vector<uint8_t> decoded;
             if(eq!=std::string::npos&&DecodePictureBase64(std::string_view(field).substr(eq+1),decoded))
                 found.pictures.push_back(SummarizePicture(decoded.data(),decoded.size()));

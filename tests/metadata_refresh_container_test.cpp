@@ -204,6 +204,19 @@ int main(int argc,char** argv) {
     assert(InspectMetadataRefreshSource(artFlac,uri,art));
     assert(art.pictures.size()==2&&art.pictures[0].envelope_valid&&!art.pictures[1].envelope_valid);
     assert(art.pictures[0].mime=="image/png"&&art.pictures[0].data_bytes==1);
+    // Four-byte empty native blocks must not amplify a small file into an
+    // unbounded summary vector. Native blocks and comment pictures share a cap.
+    Bytes crowded={'f','L','a','C'};Block(crowded,0,info);
+    for(size_t n=0;n<MetadataPictureCountLimit-1;++n)Block(crowded,6,{});
+    const auto crowdedPrefix=crowded;
+    Block(crowded,128|4,comments);crowded.insert(crowded.end(),{255,248});
+    assert(InspectMetadataRefreshSource(crowded,uri,art));
+    assert(art.pictures.size()==MetadataPictureCountLimit); // one opaque comment picture
+    crowded=crowdedPrefix;Block(crowded,6,{});Block(crowded,128|4,comments);
+    crowded.insert(crowded.end(),{255,248});Reject(crowded); // combined limit
+    crowded=crowdedPrefix;Block(crowded,6,{});Block(crowded,6,{});
+    Block(crowded,128|4,comments);crowded.insert(crowded.end(),{255,248});
+    Reject(crowded); // native-block limit, before comment inspection
 
     assert(inspection.comments.fields==old.fields);
     const size_t metadata_end=source.size()-8;
