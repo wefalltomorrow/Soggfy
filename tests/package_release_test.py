@@ -19,10 +19,15 @@ with tempfile.TemporaryDirectory(prefix="soggfy-package-test-") as folder:
         target = fixture / "native/vendor" / vendor
         target.mkdir(parents=True)
         shutil.copy2(root / "native/vendor" / vendor / "LICENSE.txt", target / "LICENSE.txt")
-    for vendor, name in (("libvorbis", "COPYING"), ("libFLAC", "COPYING.Xiph")):
+    licenses = (("libvorbis", "COPYING"), ("libFLAC", "COPYING.Xiph"),
+                ("libpng", "LICENSE"), ("zlib", "LICENSE"),
+                ("libjpeg-turbo", "LICENSE.md"))
+    for vendor, name in licenses:
         target = fixture / "native/vendor" / vendor
         target.mkdir(parents=True)
         shutil.copy2(root / "native/vendor" / vendor / name, target / name)
+    shutil.copy2(root / "native/vendor/libjpeg-turbo/README.ijg",
+                 fixture / "native/vendor/libjpeg-turbo/README.ijg")
     (fixture / "build").mkdir()
     for name in ("version.dll", "Soggfy.exe", "BUILDINFO.txt"):
         (fixture / "build" / name).write_bytes(b"fixture")
@@ -36,7 +41,7 @@ with tempfile.TemporaryDirectory(prefix="soggfy-package-test-") as folder:
     previous = fixture / "dist/Soggfy-vold-Windows-x64.zip"
     previous.write_bytes(b"previous-package")
     command = [sys.executable, str(fixture / "package-release.py")]
-    subprocess.run(command, check=True, capture_output=True)
+    subprocess.run(command, check=True)
     version = (fixture / "VERSION").read_text().strip()
     archive = fixture / f"dist/Soggfy-v{version}-Windows-x64.zip"
     expected = archive.read_bytes()
@@ -48,9 +53,12 @@ with tempfile.TemporaryDirectory(prefix="soggfy-package-test-") as folder:
         for line in package.read("SHA256SUMS.txt").decode().splitlines():
             digest, name = line.split("  ", 1)
             assert hashlib.sha256(package.read(name)).hexdigest() == digest
-        assert package.read("third-party/libvorbis/LICENSE.txt")
-        assert package.read("third-party/libFLAC/LICENSE.txt")
-    subprocess.run(command, check=True, capture_output=True)
+        for vendor, name in licenses:
+            assert package.read(f"third-party/{vendor}/LICENSE.txt") == (
+                root / "native/vendor" / vendor / name).read_bytes()
+        assert package.read("third-party/libjpeg-turbo/README.ijg") == (
+            root / "native/vendor/libjpeg-turbo/README.ijg").read_bytes()
+    subprocess.run(command, check=True)
     assert archive.read_bytes() == expected, "Nondeterministic archive"
     worker.write_bytes(b"substituted-worker")
     assert subprocess.run(command, capture_output=True).returncode != 0
