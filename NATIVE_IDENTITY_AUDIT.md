@@ -422,3 +422,41 @@ service resolution remain open. No production reader or hook is enabled.
 The expanded pinned probe passes 981 unique instruction checks plus table
 and literal checks. Evidence: outputs/Soggfy-native-stream-receiver-20261108.json.
 This is Python/Capstone static evidence, not REA-provider or live-client evidence.
+
+## Cleanup completion before wrapper destruction
+
+Destructor 0x834064 calls 0x838940 before its previously traced destruction
+of the retained wrapper at object +0x3a8. Helper 0x838940 clears object
++0x1d0 and +0x328 and passes their old pointers to cleanup callbacks
+0x8381e8 and 0x838218 through 0x17d1de0. The dispatch receivers are object
++0x10 and +0x18 respectively. The first cleanup calls 0x83f0b8 and frees
+the 0x248-byte allocation; the second invokes its object's destruction slot.
+The internals of those component destructors are not established here.
+
+The dispatch helper is more than a submission call. Leaf 0x17d2280 compares
+the supplied receiver to a TLS pointer. On equality, 0x17d1de0 invokes the
+cleanup inline. Otherwise it calls 0x17d1bfc, which allocates a shared 64-bit
+counter initialized to one and builds a wrapper carrying the original
+callback pointer and counter ownership. Helper 0x17d1f9c submits that wrapper
+through receiver virtual slot +0x18. Actual receiver implementation and
+scheduling order are still unresolved.
+
+The wrapper's invoke entry is the leaf trampoline 0x17d1bf4, which loads its
+heap state and tail-jumps to 0x17d1b94. That function invokes the original
+cleanup, then atomically decrements the shared counter and calls 0x17f8418
+on the transition to zero. After submission, 0x17d1bfc reads the same counter
+and returns normally only after it reaches zero. While positive it calls
+0x7e784, which loops until the observed value changes, using 0x17f84e8 as
+the wait helper. A negative counter goes to a failure path.
+
+Thus, on these normal returning paths, both submitted component cleanup
+operations complete before the destructor proceeds to destroy the retained
+wrapper. This narrows the synchronization gap; it does not prove that those
+operations drain every audio callback or decoder task. Their component
+internals, callback producers, all exception paths, runtime service selection,
+and association with the decoder remain open. No runtime hook is enabled.
+
+The pinned probe now checks 1,142 unique instructions plus tables and literals.
+Evidence: outputs/Soggfy-native-cleanup-completion-20261108.json. Leaf decoding
+ends at the trampoline's terminal jump; it does not treat the following
+function as part of that leaf. Evidence remains Python/Capstone static analysis.
