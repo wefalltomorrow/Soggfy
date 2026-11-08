@@ -125,7 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           bash build-native.sh
-          cmp build/validation-worker/validation-worker.exe build/windows-tests/validation-process/validation-worker.exe
+          python -c "from pathlib import Path; a=Path('build/validation-worker/validation-worker.exe').read_bytes(); b=Path('build/windows-tests/validation-process/validation-worker.exe').read_bytes(); raise SystemExit(0 if a == b else 'Release helper differs from tested helper')"
           echo 'Release helper matches the fully exercised test helper byte-for-byte.'
 
       - name: Package release
