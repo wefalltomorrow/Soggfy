@@ -1,3 +1,21 @@
+# Soggfy v3.0.0-rc.76 - sanitizer coverage and optional FLAC artwork (test build)
+
+FLAC publication no longer fails when artwork is missing, disabled, oversized or
+unsupported. Existing pictures survive when no usable replacement is available;
+a valid replacement is inserted once. Compressed audio remains byte-identical.
+
+CI and release builds now require two deterministic Clang ASan/UBSan campaigns
+(20,000 mutations each, seeds 4043931417 and 1592594996), plus instrumented
+regressions. Valid baseline Ogg, FLAC, ID3 and playback observations are asserted
+before truncation/mutation. Models exercise buffers, coverage, decoder scope,
+owner conflicts and listening at 1x-30x. This is bounded portable coverage, not
+proof of Windows callback races, native playback ownership or live compatibility.
+
+RC75 passed MinGW CI and independent artifact verification. RC76 sanitizer/CI
+results remain pending until its workflow finishes. Native identity, podcast
+capture, concurrent association and the other MILESTONES.md entries remain open.
+Live installation, merge and official release retain separate approval gates.
+
 # Soggfy v3.0.0-rc.75 - maintenance reliability (test build)
 
 RC75 snapshots and hashes the selected installation directory before xpui repair,
@@ -19,7 +37,7 @@ in the pinned Spotify.dll; playback-ID layout and lifetime remain unverified.
 See NATIVE_IDENTITY_AUDIT.md and MILESTONES.md. Live installation, merge and
 official release remain separately gated.
 
-# Soggfy v3.0.0-rc.74 — client playback boundaries (test build)
+# Soggfy v3.0.0-rc.74 â€” client playback boundaries (test build)
 
 RC74 adds cached client playback IDs, position, pause/buffering and active-device
 flags independently of optional metadata enrichment. Client identity is accepted
@@ -47,12 +65,12 @@ Ogg/FLAC ownership discovery succeeds on a relocated static image. The earlier
 incompatibility conclusion was incorrect. RC74 itself adds no private-memory
 reads; playback-ID layout, lifetime and live integration still require validation.
 
-Includes RC63–RC73, Classic UI, file-based status, Unicode/custom/legacy/podcast
-paths, strict Ogg/FLAC validation, MP3 320 kbps and 1x–30x. Downloads off stays
+Includes RC63â€“RC73, Classic UI, file-based status, Unicode/custom/legacy/podcast
+paths, strict Ogg/FLAC validation, MP3 320 kbps and 1xâ€“30x. Downloads off stays
 at effective 1x and preserves the selection. Full CI and package verification are
 required. This candidate does not authorize installation, merge or release.
 
-# Soggfy v3.0.0-rc.73 — decoder-event isolation (test build)
+# Soggfy v3.0.0-rc.73 â€” decoder-event isolation (test build)
 
 RC73 rejects Ogg/FLAC callback events whose capture settings changed while the
 original decoder call was running. A locked policy snapshot pairs codec enablement
@@ -67,14 +85,14 @@ and completed-capture/listen association still require separate work and live ev
 The shared policy lock does no disk I/O, but live decoder latency remains unmeasured.
 Historical stalls are not claimed fixed.
 
-Includes RC63–RC72, Classic UI, Unicode/custom/legacy/podcast paths, file-based
+Includes RC63â€“RC72, Classic UI, Unicode/custom/legacy/podcast paths, file-based
 status, cached PlayerAPI metadata, per-entry UIDs, strict Ogg/FLAC validation,
-MP3 320 kbps and 1x–30x controls. Downloads off remains effective 1x without
+MP3 320 kbps and 1xâ€“30x controls. Downloads off remains effective 1x without
 changing the selected speed. Full portable and Windows CI/package verification
 are required. Spotify 1.3.1.234.g59d6bf59 live validation is separate; this candidate
 does not authorize installation, merge or official release.
 
-# Soggfy v3.0.0-rc.72 — track identity and album provenance (test build)
+# Soggfy v3.0.0-rc.72 â€” track identity and album provenance (test build)
 
 RC72 completes a selective duplicate-routing and album-tagging milestone against
 Floggfy v1.3-RC6. Different full Spotify track IDs at the same configured filename
@@ -101,7 +119,7 @@ interruption or a concurrent creator prevents rollback, the complete previous fi
 remains at a .complete-<process>-<sequence>.previous recovery path. This is not a
 crash-atomic two-file transaction or automatic recovery implementation.
 
-This candidate includes RC63–RC71. Full portable/Windows CI and package verification
+This candidate includes RC63â€“RC71. Full portable/Windows CI and package verification
 are required. No live installation, merge or official release precedes separate
 Spotify 1.3.1.234.g59d6bf59 validation. Decoder ownership/ad isolation, native podcast
 MP3 capture and historical playback stalls remain outstanding; see UPSTREAMS.md.
@@ -125,12 +143,12 @@ New regression gates cover allocation failures, rejected launcher inputs and
 uninstall ownership under PowerShell 5.1 and 7. UPSTREAMS.md records the larger
 playback-identity, ad-isolation, native podcast MP3 and duplicate-routing work still
 missing. This candidate does not establish resolution of historical playback stalls.
-Preserve RC63–RC70. Installer transactions and live validation remain outstanding.
+Preserve RC63â€“RC70. Installer transactions and live validation remain outstanding.
 No live installation, merge or official release is part of RC71.
 
 ## RC70 scope (historical)
 
-RC70 includes RC63–RC69 and follows up the conversion limits from the maintenance audit. The target remains Spotify **1.3.1.234.g59d6bf59, Windows x64**. Live validation is still required; historical random pauses and decoder stalls are not established as fixed.
+RC70 includes RC63â€“RC69 and follows up the conversion limits from the maintenance audit. The target remains Spotify **1.3.1.234.g59d6bf59, Windows x64**. Live validation is still required; historical random pauses and decoder stalls are not established as fixed.
 
 ## RC70 changes
 
@@ -152,7 +170,7 @@ Unicode/metacharacter wrapper paths, watcher recovery, locked sources and replac
 at deletion. Both Windows PowerShell 5.1 and PowerShell 7 run the manual suite.
 Scripts/ConverterProcess.cs is included and required beside PostProcess.ps1.
 
-Preserve RC63–RC69. Recurring full watch scans, nontransactional installer writes,
+Preserve RC63â€“RC69. Recurring full watch scans, nontransactional installer writes,
 uninstaller ownership after external DLL replacement, and live playback/API behavior
 remain limits. No live installation, merge or official release is part of RC70.
 
@@ -178,7 +196,7 @@ Historical pauses/decoder stalls and live API variants remain unverified.
 
 ## RC68 changes
 
-Large-library status lookup filters impossible filenames before running the existing matching expressions. An unchanged directory rescan preserves cached matches, while deleted/locked files and unreadable matching candidates are rechecked. A local assertion-enabled diagnostic benchmark of 32,768 files and 128 misses fell from about 46 seconds in RC67 to 0.55–0.81 seconds, with zero regex checks and a sub-millisecond warm lookup. This measures synthetic misses on local storage, not live Spotify or every naming layout; title-free custom templates retain full matching.
+Large-library status lookup filters impossible filenames before running the existing matching expressions. An unchanged directory rescan preserves cached matches, while deleted/locked files and unreadable matching candidates are rechecked. A local assertion-enabled diagnostic benchmark of 32,768 files and 128 misses fell from about 46 seconds in RC67 to 0.55â€“0.81 seconds, with zero regex checks and a sub-millisecond warm lookup. This measures synthetic misses on local storage, not live Spotify or every naming layout; title-free custom templates retain full matching.
 
 Directory traversal is bounded by 100,000 files, 10,000 scheduled directories and depth 12. Incomplete scans, unavailable roots and skipped reparse directories report uncertain status rather than downloaded/absent conclusions. New requests cancel obsolete native work; a seven-second cooperative deadline returns only completed queries. Blocking OS calls or a single regex call cannot be interrupted by that deadline. Positive status still means filename association and a readable nonempty file, not full audio verification.
 
@@ -186,11 +204,11 @@ Visible rows are queried in sequential pages of 128, deduplicated by URI and pri
 
 The manual PostProcess script now requests MP3 320 kbps, validates nonempty output by full decoding, uses a unique temporary name and publishes without overwriting a raced file or directory. Failure preserves the original. Equal/higher-quality retained native files can retry conversion when a capture reaches the existing-file branch. Retry requires recognized Ogg/FLAC headers and full source decoding, preserves the existing original even when keep-original is off, and never overwrites a destination. This is not a background retry: Skip Downloaded can prevent that capture attempt; disable it for a replay or use the manual converter.
 
-Windows maintenance checks share one runner, require real FFmpeg codec tests in CI, and cover failed/recovered FLAC and Ogg conversion, corrupt source/output, manual conversion conflicts and original retention. Checked procedure-pointer loading replaces incompatible casts. Classic UI, 1–30x behavior, Downloads-off effective 1x, cached PlayerAPI/per-entry UIDs, Unicode/legacy/podcast layouts, strict capture validation and file-based status remain intact.
+Windows maintenance checks share one runner, require real FFmpeg codec tests in CI, and cover failed/recovered FLAC and Ogg conversion, corrupt source/output, manual conversion conflicts and original retention. Checked procedure-pointer loading replaces incompatible casts. Classic UI, 1â€“30x behavior, Downloads-off effective 1x, cached PlayerAPI/per-entry UIDs, Unicode/legacy/podcast layouts, strict capture validation and file-based status remain intact.
 
 ## RC67 overview
 
-RC67 addresses the RC66 maintenance review and includes RC63–RC66. PR #64 remains a test candidate pending live validation on Spotify **1.3.1.234.g59d6bf59, Windows x64**. It does **not** claim to eliminate decoder stalls, random pauses or historical missing-stream failures.
+RC67 addresses the RC66 maintenance review and includes RC63â€“RC66. PR #64 remains a test candidate pending live validation on Spotify **1.3.1.234.g59d6bf59, Windows x64**. It does **not** claim to eliminate decoder stalls, random pauses or historical missing-stream failures.
 
 ## RC67 changes
 

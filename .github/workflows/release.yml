@@ -18,8 +18,25 @@ jobs:
       - name: Run native regression suite
         run: bash test-native.sh
 
+  sanitizer-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [4043931417, 1592594996]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install sanitizer toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Run deterministic ASan and UBSan campaign
+        env:
+          CC: clang
+          CXX: clang++
+        run: bash test-sanitizers.sh 20000 ${{ matrix.seed }}
+
   build-and-release:
-    needs: native-tests
+    needs: [native-tests, sanitizer-tests]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
