@@ -180,5 +180,44 @@ int main() {
         assert(SelectCapture(active,ready,heard[0],108).state==CaptureAssociation::Ready);
         assert(SelectCapture(active,ready,other,108).state==CaptureAssociation::Wait);
     }
-    std::puts("PASS: late Ogg/FLAC completion, owned retention, repeat generations, skips, 30x, ambiguity, integrity and expiry");
+    for(bool lossless:{false,true})for(bool reverse:{false,true}) {
+        Active active;Ready ready;HeardList heard{h,{{10},106,112,2}};
+        begin(active,ready);finish(active,ready);
+        if(lossless) {
+            ready[0]->lossless=true;ready[0]->coverage.samples=441000;
+        }
+        if(reverse)std::reverse(heard.begin(),heard.end());
+        // Before the batch check, either listen would independently win.
+        assert(SelectCapture(active,ready,heard[0],113).state==CaptureAssociation::Ready);
+        assert(SelectCapture(active,ready,heard[1],113).state==CaptureAssociation::Ready);
+        const auto conflicts=RejectSharedCaptures(ready,heard);
+        assert((conflicts==std::vector<std::size_t>{1,1}) && ready.empty());
+        heard.erase(heard.begin());
+        assert(SelectCapture(active,ready,heard[0],113).state==CaptureAssociation::Wait);
+    }
+    for(bool reverse:{false,true}) {
+        Active active;Ready ready;HeardList heard{h,{{10},106,112,2},{{10},200,210,3}};
+        begin(active,ready);finish(active,ready);
+        begin(active,ready,2,200);finish(active,ready,2,211);
+        begin(active,ready,3);finish(active,ready,3);
+        ready.back()->lossless=true;ready.back()->coverage.samples=441000;
+        if(reverse)std::reverse(ready.begin(),ready.end());
+        // Mixed Ogg/FLAC competitors are removed together; an unrelated
+        // recording still publishes regardless of the ready queue's order.
+        const auto conflicts=RejectSharedCaptures(ready,heard);
+        assert((conflicts==std::vector<std::size_t>{2,2,0}) && ready.size()==1);
+        assert(SelectCapture(active,ready,heard[2],211).state==CaptureAssociation::Ready);
+        assert(RejectSharedCaptures(ready,HeardList{}).empty() && ready.size()==1);
+    }
+    {
+        Active active;Ready ready;HeardList heard{h,{{10},106,112,2}};
+        begin(active,ready);CleanupCaptureTransition(active,ready,heard,100,110,true,110);
+        finish(active,ready);
+        // A candidate already retained for one generation remains usable.
+        const auto conflicts=RejectSharedCaptures(ready,heard);
+        assert((conflicts==std::vector<std::size_t>{0,0}) && ready.size()==1);
+        assert(SelectCapture(active,ready,heard[0],113).state==CaptureAssociation::Ready);
+        assert(SelectCapture(active,ready,heard[1],113).state==CaptureAssociation::Wait);
+    }
+    std::puts("PASS: late Ogg/FLAC completion, owned retention, repeat generations, skips, 30x, cross-listen ambiguity, integrity and expiry");
 }

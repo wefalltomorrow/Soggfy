@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace history {
 constexpr double capture_completion_wait=10;
@@ -69,6 +70,24 @@ void PruneRetainedCaptures(Active& active,Ready& ready,const HeardList& heard,do
     ready.erase(std::remove_if(ready.begin(),ready.end(),expired),ready.end());
 }
 enum class CaptureAssociation { Wait,Ready,Ambiguous,Missing };
+// Evaluate the whole completed-listen batch before consuming either list.
+// A timing-only candidate shared by two listens cannot be assigned by iteration
+// order. Discard it so erasing the first listen cannot make it look unique later.
+// Retention already binds a candidate to one completed generation when known.
+template<class Ready,class HeardList>
+std::vector<std::size_t> RejectSharedCaptures(Ready& ready,const HeardList& heard) {
+    std::vector<std::size_t> conflicts(heard.size(),0);
+    if(heard.size()<2)return conflicts;
+    ready.erase(std::remove_if(ready.begin(),ready.end(),[&](const auto& capture) {
+        std::size_t matches=0;
+        for(const auto& h:heard)if(CaptureMatches(*capture,h))++matches;
+        if(matches<2)return false;
+        for(std::size_t i=0;i<heard.size();++i)
+            if(CaptureMatches(*capture,heard[i]))++conflicts[i];
+        return true;
+    }),ready.end());
+    return conflicts;
+}
 struct CaptureSelection {
     CaptureAssociation state=CaptureAssociation::Wait;
     std::size_t index=0,matches=0,pending=0;

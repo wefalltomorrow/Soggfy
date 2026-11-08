@@ -784,8 +784,14 @@ static DWORD WINAPI Worker(LPVOID) {
             // Apply concurrent menu changes before considering publication.
             if(GetSettings().generation!=generation||InterlockedCompareExchange(&dropped,0,0)!=overflow||
                client_boundary!=client_playback.Token()||(client_boundary&1)) {WaitForSingleObject(event,50);continue;}
-            for(auto h=heard.begin();h!=heard.end();) {
-                const auto selection=SelectCapture(active,ready,*h,now);
+            const auto shared_captures=RejectSharedCaptures(ready,heard);
+            size_t heard_index=0;
+            for(auto h=heard.begin();h!=heard.end();++heard_index) {
+                auto selection=SelectCapture(active,ready,*h,now);
+                if(shared_captures[heard_index]) {
+                    selection.state=CaptureAssociation::Ambiguous;
+                    selection.matches+=shared_captures[heard_index];
+                }
                 const auto match=selection.index,matches=selection.matches;
                 if(selection.state==CaptureAssociation::Ready) {
                     SaveJob job;job.reserved=ready[match]->data.capacity();job.epoch=epoch;
@@ -808,9 +814,9 @@ static DWORD WINAPI Worker(LPVOID) {
                         candidates+=item;
                     }
                     char line[1400];snprintf(line,sizeof(line),
-                        "%s - %s (stream association failed matches=%zu ready=%zu retained_active=%zu media_duration=%.3f listen_start=%.3f listen_finish=%.3f wait=%.3f candidates=[%s])",
+                        "%s - %s (stream association failed matches=%zu ready=%zu retained_active=%zu shared_listen_matches=%zu media_duration=%.3f listen_start=%.3f listen_finish=%.3f wait=%.3f candidates=[%s])",
                         Utf8(h->media.artist).c_str(),Utf8(h->media.title).c_str(),matches,ready.size(),
-                        selection.pending,h->media.duration,h->start,h->finish,now-h->finish,candidates.c_str());
+                        selection.pending,shared_captures[heard_index],h->media.duration,h->start,h->finish,now-h->finish,candidates.c_str());
                     LogActivity("failed",line);QueueDiagnostic(line);
                     h=heard.erase(h);
                 } else ++h;

@@ -1,4 +1,19 @@
-# Soggfy v3.0.0-rc.83 - explicit connectivity workaround
+# Soggfy v3.0.0-rc.84 - reject shared capture ownership
+
+Completed captures that match two queued listens are now rejected before either
+listen can consume them. Previously, processing order could label a timing-only
+candidate with the first matching listen. The check covers both formats together,
+removes disputed candidates so they cannot be reused after a listen is removed,
+and preserves unrelated candidates and existing completed-generation retention.
+Diagnostics include the number of shared candidates for each affected listen.
+
+Local regression fixtures pass for Ogg, FLAC, mixed-format conflicts, reversed
+queue orders and retained ownership. These cases also run in both sanitizer
+jobs. Full RC84 CI/package verification is pending at source commit. This is a
+conservative ambiguity rejection, not verified native playback identity; future
+listens, preloading and exact decoder lifetime remain separate requirements.
+
+## RC83 background - explicit connectivity workaround
 
 **Upgrade behavior:** the legacy Windows connectivity override is now off unless
 SpotifyHistory.ini contains exactly NetworkPatch=1 under [To Disk]. Earlier Soggfy
