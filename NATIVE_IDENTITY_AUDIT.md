@@ -91,3 +91,15 @@ Local evidence: outputs/Soggfy-native-parent-path-20261108.json. No client code
 was executed and no identity reader or hook was enabled. Next evidence needed:
 the external state's concrete layout, later mutations, ID encoding, lifecycle,
 reuse and preloading/interstitial transitions.
+
+A further caller trace finds two direct callers of 0xe42aec in PE unwind
+ranges: 0x53bcc0 and 0xc46264. Both pass copies made by 0x539e00, which copies
+the +0x3b8 pointer without changing it (0x53a154–0x53a15b). In 0xc46264,
+that member comes from an external stack argument: [rbp+0xc80] is entry
+stack +0x38, copied into the temporary configuration at [rbp+0x7e8]
+(configuration base [rbp+0x430], hence +0x3b8). Direct caller 0xc47bcc
+dereferences its corresponding incoming pointer and forwards the result.
+0xc47bcc itself occurs in a pointer table at 0x1a29440, and 0x53bcc0 at
+0x19a4a28. Thus these additional edges preserve external provenance; they
+still do not identify the concrete state type or establish non-nullability.
+The reproducible probe includes these instruction windows as well.

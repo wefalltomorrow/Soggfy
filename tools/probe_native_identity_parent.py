@@ -94,6 +94,24 @@ def main():
         0xe41eb0: 'mov qword ptr [rbp - 0x68], rax',
         0xe4207b: 'mov rax, qword ptr [rbp - 0x68]',
         0xe4207f: 'mov qword ptr [rsp + 0xd8], rax',
+        0x53a154: 'mov rax, qword ptr [rbx + 0x3b8]',
+        0x53a15b: 'mov qword ptr [rdi + 0x3b8], rax',
+        0x53bd04: 'call 0x539e00',
+        0x53bd0c: 'mov rdx, rax',
+        0x53bd12: 'call 0xe42aec',
+        0xc46277: 'lea rbp, [rax - 0xc48]',
+        0xc462cd: 'mov rax, qword ptr [rbp + 0xc80]',
+        0xc462d4: 'mov qword ptr [rsp + 0x78], rax',
+        0xc46a8c: 'mov rax, qword ptr [rsp + 0x78]',
+        0xc46a91: 'mov qword ptr [rbp + 0x7e8], rax',
+        0xc46ae0: 'lea rdx, [rbp + 0x430]',
+        0xc46aeb: 'call 0x539e00',
+        0xc46af3: 'mov rdx, rax',
+        0xc46afe: 'call 0xe42aec',
+        0xc47bdf: 'mov rax, qword ptr [rsp + 0x90]',
+        0xc47be7: 'mov r10, qword ptr [rax]',
+        0xc47bea: 'mov qword ptr [r11 - 0x28], r10',
+        0xc47c0a: 'call 0xc46264',
     }
     windows = []
     for address, expected_instruction in checks.items():
@@ -111,11 +129,16 @@ def main():
              for i in range(3)]
     if table[0] != 0xe422f8 or table[2] != 0xe423cc:
         raise ValueError('Unexpected functor table')
+    caller_entries = {0x1a29440: 0xc47bcc, 0x19a4a28: 0x53bcc0}
+    for entry, target in caller_entries.items():
+        if struct.unpack_from('<Q', data, entry)[0] - base != target:
+            raise ValueError(f'Unexpected caller table entry at {entry:x}')
     report = dict(artifact_sha256=expected,
         mapped_sha256=hashlib.sha256(data).hexdigest(),
         method='Python/Capstone static disassembly; no client execution or REA provider evidence',
         verified_instruction_count=len(checks),
         functor_table_rva='0x1a52c00', table_entries=[hex(v) for v in table],
+        caller_table_entries={hex(k): hex(v) for k, v in caller_entries.items()},
         windows=windows,
         conditional_inference=dict(source='parent + 0x20',
             state_pointer_member=hex(0x20 + 0x1e8),
