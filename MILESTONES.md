@@ -82,8 +82,15 @@ Local diagnostic tests pass 6,912 selector declarations across all MPEG
 versions, granules/channels, long/switched blocks, CRC and fixed-block input.
 The real corpus passes 420 reserved-selector mutations while accepting all
 36 original encodings and 18 protected PCM-equivalent streams. The existing
-scalefactor, Xing, CRC and reservoir checks also pass. Full CI and independent
-package verification for this follow-up are pending.
+scalefactor, Xing, CRC and reservoir checks also pass. All four jobs in CI
+42488084676 passed at source 85513d6f3ce650a44172d74910745f534810bcc1.
+Each job passed all 6,912 declarations and 420 real-stream selector mutations.
+Independent MinGW package verification passed source/merge tree equality,
+ZIP/manifest hashes, embedded Classic scripts, codec licenses, helper binding
+and PE dependencies. Package SHA-256:
+e0b5d47887c0268b381115eacd877cfd1858d1d32cc48e3e137ef098851e05b9.
+DLL, launcher and helper are byte-identical to CI201. Evidence and full logs:
+outputs/Soggfy-run202-regression-evidence.json and outputs/CI-run202/.
 
 ## MP3 protected-frame follow-up
 
