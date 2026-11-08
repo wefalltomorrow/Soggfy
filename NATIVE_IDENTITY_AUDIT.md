@@ -137,6 +137,46 @@ pointer bytes. It does not establish which path actual playback takes, rule
 out later object/member replacement, identify the correct ID field, or prove
 any lifetime or transition behavior. The null fallback and this non-null
 case are separate conditional findings, not universal incompatibility claims.
-The probe now verifies 120 selected instructions plus table entries against
+The parent-path portion verifies 120 selected instructions plus table entries against
 the pinned DLL and records both inferences with their conditions. Production
 identity integration remains disabled pending a verified field and lifecycle.
+
+## Playback-ID consumer, encoding and producer edge
+
+The same pinned artifact provides semantic evidence for a different field;
+this remains a static candidate, not a replacement production offset. In
+0xc88514, r13 is the variant payload and rsi is payload +0x28. At 0xc88b2e,
+the address nested +0x188 (payload +0x1b0) is passed to 0xc803ec, which forwards
+it to the 0xc8fc60 session constructor. That constructor copies 16 bytes and
+stores them in the session's first string. Consumer 0xc8fe98 passes that
+string through 0xc900e4 for the log message
+`Failed to commit pending BoomboxPlaybackSession (playback_id: %s), error: %s`.
+
+Formatter 0xc900e4 requires string length 16 and calls leaf 0x17ea5d0. The
+leaf uses the literal `0123456789abcdef`, emitting the high nibble then low
+nibble for each byte in order. The resulting ID is 32 lowercase hex
+characters. The leaf has no unwind entry: the probe decodes from the checked
+direct-call target through its return, rather than inventing an unwind range.
+
+For the previously traced variant-1 object, this field is object +0x968,
+equivalent to state +0x960 only while state equals object +8. These are
+conditional arithmetic relationships, not a supported pointer chain. A
+producer edge in 0xc9190c copies object +0x110 into temporary payload +0x1b0
+(stack offsets +0x4e0 minus +0x330), then transfers that payload through
+0xc80988 and 0xc894b8. The nested copy at 0xc81b8e/0xc81b97 preserves the
+16 bytes. Another caller, 0xc92690, has the same source and relative layout.
+
+The object constructor invokes callable object +0xe0, slot +0x10, with
+object +0x110 as its output. Routine 0xc84bf4 invokes that callable again,
+writes the returned 16-byte result to object +0x110 and subsequently clears the
+payload variant at +0x7b8 (tag at +0xae8), destroying variant 1 through
+0xc821b8 where applicable. Thus the object address alone cannot establish
+an immutable playback identity. The callable implementation, event causing
+that mutation, synchronization, delayed decoder callbacks, preload and
+ad/DJ transitions remain unresolved. The payload's ID and object +0x110
+must not be assumed interchangeable across transitions.
+
+The extended probe verifies 184 instructions, callable tables and two
+identity literals. Its JSON records the semantic inference separately from
+the instruction observations. No Spotify execution, runtime hooks or
+production reader changes were made.

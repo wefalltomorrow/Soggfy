@@ -39,6 +39,10 @@ def main():
     # Decode from unwind starts, never from an arbitrary byte in an instruction.
     cache = {}
     def instructions(address):
+        # Leaf formatter has no unwind entry. Its entry is independently
+        # checked as a direct CALL target below; decode through its RET only.
+        if 0x17ea5d0 <= address < 0x17ea60c:
+            return list(dis.disasm(data[0x17ea5d0:0x17ea60c], 0x17ea5d0))
         index = bisect.bisect_right(starts, address) - 1
         begin, end = functions[index]
         if not begin <= address < end:
@@ -168,6 +172,70 @@ def main():
         0x50724: 'mov r8, qword ptr [rdx + 8]',
         0x5073e: 'mov qword ptr [rcx + 8], r8',
         0x5074a: 'lock xadd dword ptr [rbx + 8], eax',
+        0xc88544: 'mov r13, rdx',
+        0xc88a67: 'lea rsi, [r13 + 0x28]',
+        0xc88b2e: 'lea rdx, [rsi + 0x188]',
+        0xc88b4d: 'call 0xc803ec',
+        0xc80409: 'mov rbp, rdx',
+        0xc80485: 'mov rdx, rbp',
+        0xc80488: 'call 0xc8fc60',
+        0xc8fc86: 'mov r15, rcx',
+        0xc8fca1: 'lea edi, [rax + 0x10]',
+        0xc8fca4: 'mov r8d, edi',
+        0xc8fca7: 'lea rcx, [rbp - 0x28]',
+        0xc8fcab: 'call 0x185d440',
+        0xc8fcc3: 'mov r8d, edi',
+        0xc8fcc6: 'lea rdx, [rbp - 0x28]',
+        0xc8fcca: 'mov rcx, r15',
+        0xc8fccd: 'call 0x4cf70',
+        0xc8febd: 'mov rbx, rcx',
+        0xc8ff59: 'mov rdx, rbx',
+        0xc8ff60: 'call 0xc900e4',
+        0xc8ff74: 'mov qword ptr [rsp + 0x20], rax',
+        0xc8ff79: 'lea r9, [rip + 0xd9d140]',
+        0xc9011e: 'cmp qword ptr [rdx + 0x18], 0xf',
+        0xc90125: 'mov rcx, qword ptr [rdx]',
+        0xc9012a: 'lea r8d, [rax + 0x10]',
+        0xc9012e: 'cmp qword ptr [rdx + 0x10], r8',
+        0xc90132: 'cmove rax, rcx',
+        0xc9014b: 'mov rdx, rax',
+        0xc90152: 'call 0x17ea5d0',
+        0xc90167: 'mov r8d, 0x20',
+        0x17ea5db: 'lea r11, [rip + 0x4f889e]',
+        0x17ea5e2: 'movzx r8d, byte ptr [rdx + r9]',
+        0x17ea5ea: 'and r8d, 0xf',
+        0x17ea5ee: 'shr rax, 4',
+        0x17ea5f2: 'mov al, byte ptr [rax + r11]',
+        0x17ea5f6: 'mov byte ptr [rcx + r9*2], al',
+        0x17ea5fa: 'mov al, byte ptr [r8 + r11]',
+        0x17ea5fe: 'mov byte ptr [rcx + r9*2 + 1], al',
+        0x17ea609: 'jb 0x17ea5e2',
+        0x17ea60b: 'ret ',
+        0xc91941: 'mov rdi, rcx',
+        0xc91acd: 'movups xmm0, xmmword ptr [rdi + 0x110]',
+        0xc91ad4: 'movdqu xmmword ptr [rbp + 0x4e0], xmm0',
+        0xc91c26: 'lea rdx, [rbp + 0x330]',
+        0xc91c2d: 'lea rcx, [rbp - 0x60]',
+        0xc91c31: 'call 0xc80988',
+        0xc91c8a: 'lea rdx, [rbp - 0x60]',
+        0xc91c8e: 'mov rcx, rdi',
+        0xc91c91: 'call 0xc894b8',
+        0xc81b8e: 'movups xmm0, xmmword ptr [rbx + 0x188]',
+        0xc81b97: 'movdqu xmmword ptr [rdi + 0x188], xmm0',
+        0xc81667: 'mov rsi, rcx',
+        0xc81702: 'lea rbx, [rsi + 0xa8]',
+        0xc81758: 'lea rdx, [rsi + 0x110]',
+        0xc8175f: 'mov rcx, qword ptr [rbx + 0x38]',
+        0xc8176f: 'call qword ptr [rax + 0x10]',
+        0xc84c1d: 'mov rcx, qword ptr [rax + 0xe0]',
+        0xc84c2c: 'lea rdx, [rsp + 0x20]',
+        0xc84c31: 'call qword ptr [rax + 0x10]',
+        0xc84c34: 'movups xmm0, xmmword ptr [rsp + 0x20]',
+        0xc84c3c: 'movdqu xmmword ptr [rax + 0x110], xmm0',
+        0xc84c51: 'movsx rax, byte ptr [rbx + 0xae8]',
+        0xc84c69: 'lea rcx, [rbx + 0x7b8]',
+        0xc84c7d: 'call 0xc821b8',
+        0xc84c82: 'mov byte ptr [rbx + 0xae8], 0',
     }
     windows = []
     for address, expected_instruction in checks.items():
@@ -189,6 +257,13 @@ def main():
     for entry, target in caller_entries.items():
         if struct.unpack_from('<Q', data, entry)[0] - base != target:
             raise ValueError(f'Unexpected caller table entry at {entry:x}')
+    literals = {
+        0x1a2d0c0: b'Failed to commit pending BoomboxPlaybackSession (playback_id: %s), error: %s\0',
+        0x1ce2e80: b'0123456789abcdef\0',
+    }
+    for address, literal in literals.items():
+        if data[address:address + len(literal)] != literal:
+            raise ValueError(f'Unexpected identity literal at {address:x}')
     report = dict(artifact_sha256=expected,
         mapped_sha256=hashlib.sha256(data).hexdigest(),
         method='Python/Capstone static disassembly; no client execution or REA provider evidence',
@@ -196,6 +271,19 @@ def main():
         functor_table_rva='0x1a52c00', table_entries=[hex(v) for v in table],
         caller_table_entries={hex(k): hex(v) for k, v in caller_entries.items()},
         windows=windows,
+        verified_literals={hex(k): v.rstrip(b'\0').decode('ascii')
+                           for k, v in literals.items()},
+        semantic_candidate=dict(
+            condition='Same variant-1 object path established above, with session-construction branch reached',
+            nested_field='payload +0x28 +0x188 = payload +0x1b0',
+            object_field='object +0x7b8 +0x1b0 = object +0x968',
+            relative_to_external_state='state +0x960, conditional on state = object +8',
+            consumer='c803ec forwards field to c8fc60, which stores 16 bytes in the session first string',
+            log='c8fe98 formats the session first string via c900e4 for playback_id %s',
+            encoding='16 bytes formatted in byte order as 32 lowercase hexadecimal characters',
+            producer_edge='c9190c copies object +0x110 into temporary payload +0x1b0, then c80988/c894b8 transfer that variant',
+            mutation_edge='Constructor and c84bf4 invoke callable at object +0xe0, slot +0x10, to populate object +0x110; c84bf4 subsequently clears the payload variant',
+            status='Semantic candidate only; not an enabled pointer path or lifecycle proof'),
         conditional_inference=dict(source='parent + 0x20',
             state_pointer_member=hex(0x20 + 0x1e8),
             constructor_null_argument_state='parent + 0x200',
@@ -218,7 +306,7 @@ def main():
         limitations=[
             'Assertions verify selected instructions; dataflow interpretation still requires review',
             'Actual runtime argument, dynamic dispatch and later member mutation not established',
-            'Non-null external state type, ID encoding, ownership and lifetime unresolved',
+            'Candidate has consumer/hex-encoding evidence; producer, ownership, lifetime, reuse and preload behavior unresolved',
             'No observed out-of-bounds runtime read or universal incompatibility claim',
             'Constructor linear decoding is not complete control-flow recovery; jump at e4ca06 leaves the inspected range',
             'Readable memory alone does not establish object ownership or an instance identity'])
