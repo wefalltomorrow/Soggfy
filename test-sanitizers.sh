@@ -11,6 +11,9 @@ sources=(native/ogg_history_core.cpp native/ogg_tags.cpp native/flac_history_cor
   tests/capture_mutation_test.cpp "${sources[@]}" build/sanitizers/ogg.o -o build/sanitizers/mutations
 export ASAN_OPTIONS=detect_leaks=1:allocator_may_return_null=1
 export UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
+CC="$CC" SGF_SANITIZE=1 python3 tools/build_png_validation_test.py build/sanitizers/png-validation
+build/sanitizers/png-validation/png-validation-test.exe
+python3 tests/png_validation_decode_test.py build/sanitizers/png-validation/png-validation-test.exe
 build/sanitizers/mutations "${1:-20000}" "${2:-4043931417}"
 # Exercise exact regression scenarios under the same instrumentation.
 for test in log_queue history_core recording_identity vorbis_comments picture_envelope metadata_refresh_plan metadata_refresh_container listen_metadata decoder_context client_playback compressed_buffer mp3_layout spotify_hook_discovery flac_history ogg_tags capture_association; do

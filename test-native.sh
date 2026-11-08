@@ -4,6 +4,9 @@ cd -- "$(dirname -- "$0")"
 mkdir -p build
 python3 tests/validation_worker_digest_test.py
 python3 tests/validation_worker_imports_test.py
+python3 tools/build_png_validation_test.py build/png-validation
+build/png-validation/png-validation-test.exe
+python3 tests/png_validation_decode_test.py build/png-validation/png-validation-test.exe
 g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/mp3_layout_test.cpp native/compressed_buffer.cpp -o build/mp3-layout-test
 build/mp3-layout-test
 python3 tests/mp3_layout_decode_test.py build/mp3-layout-test

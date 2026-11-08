@@ -1,0 +1,5 @@
+# Pinned dependency manifests hash the exact upstream source bytes on all hosts.
+native/vendor/libpng/** text eol=lf
+native/vendor/zlib/** text eol=lf
+# Preserve the upstream file exactly, including its intentional final blank line.
+native/vendor/zlib/trees.h whitespace=-blank-at-eof

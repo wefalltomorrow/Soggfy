@@ -4,6 +4,53 @@ This is unfinished engineering work, separate from RC79 playback snapshots.
 The current publication path skips equal/higher-quality native recordings before
 constructing tags. It can retry conversion but does not refresh the saved tags.
 
+Current status (November 8, 2026): the isolated decoder helper has shipped in
+verified MinGW packages since RC82. Inspection, planning, retag verification
+and preparation have passed CI, but the saved-file refresh coordinator remains
+disabled. Filesystem metadata preservation under concurrent mutation and full
+artwork replacement policy remain open. See MILESTONES.md for current package
+checkpoints; the sections below retain the implementation and failure evidence.
+
+CI194 additionally verifies clean FFmpeg diagnostics and exact preservation of
+the generated 1x1 red artwork pixel in all twelve real Ogg/FLAC fixtures. The
+original real fixtures accidentally reused an opaque synthetic picture comment;
+FFmpeg reported an error despite matching decoded audio. Synthetic opaque-art
+preservation tests remain separate. This strengthens test evidence without
+changing production artwork policy or enabling saved-file refresh.
+
+A local Windows PNG decoder probe on November 8, 2026 shows why full pixel
+decoding alone is insufficient. The explicit WIC PNG decoder successfully
+returned pixels for bad IHDR/IDAT/IEND CRCs, missing IEND, duplicate IHDR,
+unknown critical chunks, noncontiguous IDAT, extra or short scanlines, an invalid
+filter, trailing compressed data and a bad zlib Adler checksum. It also accepted
+27 of the 69 truncated prefixes of a generated 69-byte PNG; some returned
+incorrect black pixels without failure. These are observations of this local
+decoder, not promises about other Windows versions. Do not use successful WIC
+CopyPixels as proof of complete, valid artwork. The fixture hashes, exit codes
+and pixel outputs are preserved in outputs/Soggfy-WIC-PNG-probe.json; the local
+diagnostic source and generator are work/wic_png_probe.cpp and
+work/probe_wic_png.py. No local diagnostic executable ships.
+
+The resulting offline PNG validator uses pinned libpng 1.6.59 and zlib 1.3.2
+sources, with unmodified upstream files, licenses and SHA-256 manifests under
+native/vendor. It first checks bounded chunk framing, every CRC, static-image
+ordering and exact IEND termination; it then decodes every row/pass with strict
+libpng CRC/error/warning handling, palette-index checks and exact input use.
+APNG is unsupported. Limits are 4 MiB input, 8192 per dimension, 16 Mi pixels,
+4096 chunks and 32 MiB of tracked decoder allocations, including allocation
+headers. No full decoded image is retained. Rejected input clears the output.
+
+Local diagnostic tests pass 90 generated layouts spanning legal PNG color/bit
+depth combinations and Adam7/noninterlaced images, independently decoded by
+FFmpeg to expected pixels. They also cover all five filters, ancillary chunks,
+split IDAT, chunk-count boundaries, and 100 malformed inputs (including every
+truncated prefix, excess/short pixel data, CRC/Adler damage, invalid palette
+indexes and compressed metadata expansion). These tests are registered in all
+four CI jobs; CI is pending. Full static PNG decoding is a foundation only:
+JPEG, supervised artwork worker integration, image-source provenance and
+replacement eligibility remain open. This code has no production caller and
+the release binaries do not link the new dependencies.
+
 ## Verified foundation
 
 `vorbis_comments.h` supplies one bounded reader/writer for native Ogg/FLAC
@@ -34,8 +81,8 @@ Local strict diagnostic policy and Ogg/FLAC round-trip tests pass. The latter
 exercise the production taggers and check retained vendor/custom/repeated tags,
 artwork, provenance, stream headers and audio bytes. Their synthetic payloads
 test container preservation, not audio decoding. These regressions are now
-registered in native, Windows and sanitizer scripts; this development change
-has not yet run in CI or been connected to saved-file publication.
+registered in native, Windows and sanitizer scripts and passed the CI checks
+recorded below. Saved-file publication is still not connected.
 
 `metadata_refresh_inspection.h` now reads complete native-container metadata.
 It checks strict quality headers, every Ogg page CRC, exact serial/sequence,
@@ -52,9 +99,9 @@ serial changes, CRC errors, trailing data and conflicting provenance. The new
 real-audio regression generates twelve FFmpeg fixtures (Ogg/FLAC, short and
 longer durations, stereo/mono, tones/silence/noise, 22.05/44.1/48/96 kHz).
 Original, initially tagged and refreshed files decode to byte-identical PCM
-within each of the twelve local cases. This test is required by native, Windows
-and sanitizer CI scripts but has not yet run in CI. Local Zig builds remain
-diagnostic; RC80 is still the latest verified MinGW package.
+within each of the twelve cases. This test is required by native, Windows
+and sanitizer CI scripts and passed the CI checks recorded below. Local Zig
+builds remain diagnostic; only verified MinGW CI binaries ship.
 
 The real Ogg fixtures exposed a coverage-validation issue with FFmpeg's
 demux/decode path: the short 44.1 kHz fixtures decode to 128 fewer samples than
@@ -75,10 +122,10 @@ or inflated final granules are rejected, alongside truncation/gaps/cancellation.
 The reference codec is pinned to Xiph commit
 c2aa86b05e981c96bf381fc6aa11cdd03eccc2fb, copied unchanged with license and
 per-file SHA256 hashes; libogg 1.3.5 bitwise.c supports it. This dependency and
-validator are linked into tests only. Before shipping, run the decoder in an
-isolated helper with memory/time/cancellation limits; bounded compressed input
-alone does not bound codec allocation or CPU. Stable-source supervision and
-publication integration remain required.
+validator were first linked into tests, then into the isolated helper deployed
+in RC82. The helper enforces memory/time/cancellation limits; bounded compressed
+input alone does not bound codec allocation or CPU. Production coordination
+of stable-source supervision and publication remains unfinished.
 
 `flac_validation.cpp` now prototypes full payload decoding with libFLAC 1.5.0,
 pinned to Xiph commit 1507800de4b70e21be71f38caa0d9079d0bc6e45. It rejects every
@@ -112,8 +159,8 @@ reply with nonempty coverage is required. Local tests cover real Ogg/FLAC files,
 bad/short/extra replies, failed exits, hangs, memory exhaustion, excluded handles,
 source position/locking and cancellation. This is resource isolation, not a
 security sandbox. The caller must use a trusted same-build worker and retain the
-source lock through a separately guarded transaction. Neither the helper nor
-the supervision API is packaged or called from production yet.
+source lock through a separately guarded transaction. RC82 packages the helper
+and binds its digest to the DLL; the saved-file refresh caller is still disabled.
 
 The standalone transaction prototype opens the original with read/delete access
 and read-only sharing, locks each resolved local ancestor against rename, then
@@ -372,8 +419,8 @@ staging, rechecking cancellation before publication. Twelve real Ogg/FLAC cases
 pass locally, each exercising staging cleanup, fixture publication, no-op,
 conflicting identity, missing helper, plausible-but-wrong decoded coverage,
 immediate cancellation and throwing cancellation. All four jobs in CI
-42450663860 passed, including the MinGW preparation path. It is not
-production-connected or packaged.
+42450663860 passed, including the MinGW preparation path. The preparation
+coordinator is not production-connected; RC82 subsequently deployed the helper.
 
 The helper trust prototype now checks SHA-256 against a caller-supplied trusted
 build digest, retains a read-shared executable handle and locks resolved local

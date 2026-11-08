@@ -22,6 +22,9 @@ for source in buffer hook trampoline hde/hde64; do
         "native/vendor/minhook/src/$source.c" -o "build/windows-tests/minhook-${source//\//-}.o"
 done
 common=(-std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static)
+CC="$CC" python3 tools/build_png_validation_test.py build/windows-tests/png-validation
+build/windows-tests/png-validation/png-validation-test.exe
+python3 tests/png_validation_decode_test.py build/windows-tests/png-validation/png-validation-test.exe
 mkdir -p "$floggfy_test_root/network-patch"
 "$CXX" "${common[@]}" tests/windows_network_patch_test.cpp native/pe_imports.cpp -lole32 -luuid -lshell32 -liphlpapi -lws2_32 -o "$floggfy_test_root/network-patch/network-patch-test.exe"
 "$floggfy_test_root/network-patch/network-patch-test.exe"

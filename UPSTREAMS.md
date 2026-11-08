@@ -19,6 +19,14 @@ identity/ad isolation, native podcast MP3 capture and live validation remain ope
 
 # Upstream sources
 
+The offline static-PNG validation tests additionally use libpng 1.6.59,
+commit cd952f49f95bb27154ae77dbb103032d95f6e580 (pnggroup/libpng), and zlib
+1.3.2, commit da607da739fa6047df13e66a2af6b8bec7c2a498 (madler/zlib).
+Selected source files are unmodified, with their upstream licenses and exact
+SHA-256 manifests in native/vendor/libpng and native/vendor/zlib. These libraries
+are not linked into the release DLL or packaged worker yet. Source versions are
+pinned for reproducible tests; this is not a claim of universal PNG compatibility.
+
 The active x64 implementation started from:
 
 - Mainkill1/Floggfy tag `v1.1.0`

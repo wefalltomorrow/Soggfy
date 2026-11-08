@@ -176,6 +176,14 @@ decoded to the expected RGB pixel before and after refresh. Malformed artwork
 preservation remains covered by synthetic container tests. All 12 real Ogg/FLAC
 cases pass locally through isolated validation and preparation, with identical
 PCM, preserved artwork pixels and clean FFmpeg diagnostics. The complete MP3
-corpus also passes the stronger harness. CI verification of this correction is
-pending. These are fixture/evidence corrections; runtime validation and the
-disabled metadata refresh coordinator have not changed.
+corpus also passes the stronger harness. CI run 42479107718 passed native,
+Windows and both sanitizer jobs. Source 4bd96eccaf1dd3840cf602e1b068062c410fccec
+and CI merge e8e0e63a209a9a144f40dcf14823ab76c1082277 share tree
+1bc28a14d7f0e18cc7a9dae15ed7da1209322609. Independent package verification
+passed for SHA256
+74c1bee5a5640646e0558e4ddef8dea7f342db5fb79b2e6790a57bbf821030ec.
+DLL, launcher and helper are byte-identical to CI190. These are fixture/evidence
+corrections; runtime validation and the disabled metadata refresh coordinator
+have not changed. CI193 exposed a harness mistake: requiring clean stderr from
+native debug programs rejected normal libFLAC rewind messages. CI194 fixes that
+by applying the clean-diagnostic requirement to every FFmpeg operation only.
