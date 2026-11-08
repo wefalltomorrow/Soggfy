@@ -371,3 +371,54 @@ paths, runtime selection, outstanding consumers and synchronization remain open.
 The pinned probe passes 752 unique instruction checks plus tables and literals;
 report: outputs/Soggfy-native-config-move-20261108.json. No production reader
 or runtime hook is enabled.
+
+## Conditional streaming receiver and retained callback
+
+The next static trace identifies a concrete candidate behind service-table
+entry zero. Registry builder 0x3df310 appends two setup objects through
+0x3d9ec4 and 0x3decc4. Their tables are 0x19543c0 and 0x1954500; slot +8
+returns service IDs zero and 0xb8 respectively. Their name accessors return
+`AdaptiveMediaStreamerSetupImpl` and `TimelineConductorSetupImpl`. The latter
+table's slot +0x20 is the already traced factory 0xc40e4c, which requests
+dependency zero before reading the first service pointer. This narrows the
+candidate; it does not by itself prove registry population, uniqueness of
+registration, or runtime resolution of that dependency.
+
+On the service-zero candidate path, factory 0x82b530 calls constructor
+0x82c788 and returns its object. The constructor installs table 0x19ed418,
+whose slot +0x20 is 0x82d664: it returns object +0x150. Constructor helper
+0x82c1b4 allocates a 0x100-byte callable with table 0x19ed4c0. The constructor
+uses 0x8f794 to swap it into the receiver at object +0x150; on this heap
+pointer branch the callable pointer ends up at object +0x188. Its invoke
+entry, slot +0x10, is 0x82d3b8. These conclusions assume the registered
+factory is selected and neither provider nor callable is subsequently replaced.
+
+Receiver 0x82d3b8 moves the configuration through 0x82c538 into a local,
+then moves it again before calling 0x82d7fc. The established manager-operation-1
+semantics transfer the same guarded wrapper at configuration +0xa0 and clear
+the old manager. Downstream 0x82d7fc allocates a 0x5a0-byte reference-counted
+block, initializes its counts, and constructs the object at block +0x10 via
+0x82bac0. It passes the candidate ID at configuration +0x60 in caller stack
++0x40 and the callback wrapper at +0xa0 in caller stack +0x58.
+
+The 0x82bac0 frame base is entry rsp -0x2a8, making those arguments rbp
++0x2f0 and +0x308. It moves the wrapper into a temporary using manager
+operation 1, clears the source manager, and forwards the ID and wrapper
+at the same caller stack offsets to 0x8310d4. That constructor's frame base
+is entry rsp -0x1098, so the arguments are rbp +0x10e0 and +0x10f8. It
+copies the 16-byte ID into object +0x350 and moves the wrapper into object
++0x3a8, again clearing the source manager. The returned pair from 0x82d7fc
+contains block +0x10 and the control block. Configuration cleanup therefore
+does not destroy the transferred wrapper on this normal path.
+
+The object table is 0x19ed718. Its destruction entry 0x836aa4 calls 0x834064,
+which invokes the wrapper's manager with operation zero when present and
+clears it. This establishes retained callback ownership and conditional cleanup,
+not callback completion or synchronization with destruction. The existing
+token guard still cannot stop a callback that has already passed its check.
+Scheduling, all consumers, exception paths, decoder association, and actual
+service resolution remain open. No production reader or hook is enabled.
+
+The expanded pinned probe passes 981 unique instruction checks plus table
+and literal checks. Evidence: outputs/Soggfy-native-stream-receiver-20261108.json.
+This is Python/Capstone static evidence, not REA-provider or live-client evidence.
