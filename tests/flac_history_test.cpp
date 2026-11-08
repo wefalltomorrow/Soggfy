@@ -13,6 +13,12 @@ static std::vector<uint8_t> source() {
 }
 int main(int argc,char**argv) {
     auto b=source(); FlacInfo info; size_t audio=0;
+    {
+        Tags excessive;excessive.fields.resize(100001,{"X",""});
+        std::vector<uint8_t> rejected;std::string why;
+        check(!TagFlac(b,excessive,rejected,why)&&rejected.empty(),
+              "writer rejects field counts that the reader cannot accept");
+    }
     check(ParseFlacMetadata(b,info,audio)==FlacParse::Valid && audio==42 && info.rate==44100 && info.channels==2 && info.bits==16 && info.total_samples==8192,"STREAMINFO layout and metadata end");
     auto partial=b; partial.resize(30); check(ParseFlacMetadata(partial,info,audio)==FlacParse::NeedMore,"partial metadata stays in RAM");
     auto bad=b; bad[7]=33; check(ParseFlacMetadata(bad,info,audio)==FlacParse::Invalid,"invalid STREAMINFO rejected");

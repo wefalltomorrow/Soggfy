@@ -1,3 +1,21 @@
+# Soggfy v3.0.0-rc.80 - bounded native metadata comments (test build)
+
+Ogg/FLAC taggers now use the same bounded comment reader as native recording
+identity checks. Their writers reject oversized comment bodies and counts
+above 100,000 instead of producing metadata their readers cannot accept.
+Tests cover framing, every truncated prefix, stale failure output, raw custom
+fields, Unicode, duplicate artists and writer/reader limit agreement.
+
+This supplies a common metadata representation for future saved-recording
+refresh. It does not yet update tags in existing files; complete owned-file
+inspection, artwork policy and guarded replacement remain unfinished. See
+METADATA_REFRESH_DESIGN.md for the implementation requirements.
+
+RC79 passed all four jobs in CI run 42443510851 and independent package
+verification, including source/merge tree agreement and preservation of earlier
+packages. RC80 has passed local diagnostic tests; CI/package verification is
+pending. Live installation, launch, merge and release remain separate gates.
+
 # Soggfy v3.0.0-rc.79 - same-instance metadata refresh (test build)
 
 When a listen completes by pausing at its natural end, its final corroborated

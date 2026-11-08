@@ -24,6 +24,8 @@ done
 common=(-std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static)
 fp_runtime="$("$CXX" -print-file-name=CRT_fp10.o)"
 test -f "$fp_runtime"
+"$CXX" "${common[@]}" tests/vorbis_comments_test.cpp -o "$floggfy_test_root/vorbis-comments-test.exe"
+"$floggfy_test_root/vorbis-comments-test.exe"
 "$CXX" "${common[@]}" tests/listen_metadata_test.cpp native/ogg_history_core.cpp -o "$floggfy_test_root/listen-metadata-test.exe"
 "$floggfy_test_root/listen-metadata-test.exe"
 "$CXX" "${common[@]}" tests/windows_decoder_hook_test.cpp tests/decoder_context_probe.cpp native/playback_speed_compat.cpp build/windows-tests/minhook-*.o -o "$floggfy_test_root/windows-decoder-hook-test.exe"

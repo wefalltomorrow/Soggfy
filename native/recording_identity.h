@@ -2,6 +2,7 @@
 #include "ogg_history_core.h"
 #include "existing_quality_core.h"
 #include "spotify_identity.h"
+#include "vorbis_comments.h"
 #include <cstring>
 #include <vector>
 #include <algorithm>
@@ -9,7 +10,6 @@ namespace history {
 enum class IdentityState { Unknown, Untagged, Tagged };
 struct RecordingIdentity { IdentityState state=IdentityState::Unknown; std::string uri; };
 namespace identity_detail {
-inline uint32_t LE(const unsigned char* p) {return uint32_t(p[0])|(uint32_t(p[1])<<8)|(uint32_t(p[2])<<16)|(uint32_t(p[3])<<24);}
 inline bool Field(RecordingIdentity& out,std::string key,const std::string& value) {
     for(char& c:key)if(c>='a'&&c<='z')c=char(c-'a'+'A');
     if(key!="SPOTIFY_URI")return true;
@@ -19,20 +19,12 @@ inline bool Field(RecordingIdentity& out,std::string key,const std::string& valu
 }
 inline RecordingIdentity Comments(const unsigned char* b,size_t n,bool vorbis) {
     RecordingIdentity out{IdentityState::Untagged,{}};
-    if(n<8)return {};
-    size_t at=4,vendor=LE(b);
-    if(vendor>n-at)return {};
-    at+=vendor;if(n-at<4)return {};
-    uint32_t count=LE(b+at);at+=4;
-    if(count>(n-at)/4)return {};
-    for(uint32_t i=0;i<count;++i) {
-        if(n-at<4)return {};
-        size_t len=LE(b+at);at+=4;if(len>n-at)return {};
-        const std::string field(reinterpret_cast<const char*>(b+at),len);at+=len;
+    VorbisComments parsed;
+    if(!ParseVorbisComments(b,n,vorbis,parsed))return {};
+    for(const auto& field:parsed.fields) {
         const auto eq=field.find('=');
         if(eq!=std::string::npos&&!Field(out,field.substr(0,eq),field.substr(eq+1)))return {};
     }
-    if(vorbis?(n-at!=1||b[at]!=1):at!=n)return {};
     return out;
 }
 }

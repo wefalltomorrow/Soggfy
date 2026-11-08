@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.0-rc.80
+
+- Share bounded Vorbis-comment parsing across Ogg/FLAC tags and native recording identity.
+- Reject oversized output and comment counts that the readers cannot accept.
+- Preserve raw vendor/field data in the shared representation; add round-trip and boundary tests.
+- Separate completed in-memory metadata work from the unfinished saved-recording refresh milestone.
+
 ## 3.0.0-rc.79
 
 - Include final corroborated metadata at same-instance completion and refresh pending candidates.

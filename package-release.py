@@ -54,6 +54,7 @@ files = [
     ("UPSTREAMS.md", root / "UPSTREAMS.md"),
     ("MILESTONES.md", root / "MILESTONES.md"),
     ("NATIVE_IDENTITY_AUDIT.md", root / "NATIVE_IDENTITY_AUDIT.md"),
+    ("METADATA_REFRESH_DESIGN.md", root / "METADATA_REFRESH_DESIGN.md"),
     ("LICENSE", root / "LICENSE"),
     ("SpotifyHistory.ini", root / "SpotifyHistory.ini"),
     ("Scripts/Install.ps1", root / "Scripts" / "Install.ps1"),

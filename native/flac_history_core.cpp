@@ -1,4 +1,5 @@
 #include "flac_history_core.h"
+#include "vorbis_comments.h"
 #include <cstring>
 namespace history {
 static bool StreamInfo(const uint8_t* b,FlacInfo& info) {
@@ -48,22 +49,18 @@ bool FlacCoverage::Frame(const FlacInfo& info,unsigned block,unsigned rate,unsig
     if(position!=samples || !info.total_samples || samples>info.total_samples || block>info.total_samples-samples) return false;
     samples+=block; ++frames; return true;
 }
-static uint32_t Little(const uint8_t* p) { return uint32_t(p[0])|(uint32_t(p[1])<<8)|(uint32_t(p[2])<<16)|(uint32_t(p[3])<<24); }
-static void Number(std::vector<uint8_t>& out,uint32_t n) { for(unsigned i=0;i<4;i++) out.push_back(uint8_t(n>>(8*i))); }
 static std::string Upper(std::string s) { for(char& c:s) if(c>='a' && c<='z') c=char(c-'a'+'A'); return s; }
 static bool Fields(const uint8_t* b,size_t n,const Tags& tags,bool replace_picture,std::string& vendor,std::vector<std::string>& fields) {
-    size_t p=0;
-    auto read=[&](std::string& s) { if(n-p<4) return false; size_t len=Little(b+p); p+=4; if(len>n-p) return false; s.assign(reinterpret_cast<const char*>(b+p),len); p+=len; return true; };
-    if(!read(vendor) || n-p<4) return false;
-    uint32_t count=Little(b+p); p+=4;
-    if(count>100000 || count>(n-p)/4) return false;
-    for(uint32_t i=0;i<count;i++) {
-        std::string s; if(!read(s)) return false; auto key=Upper(s.substr(0,s.find('=')));
+    VorbisComments parsed;
+    if(!ParseVorbisComments(b,n,false,parsed))return false;
+    vendor=std::move(parsed.vendor);
+    for(auto& s:parsed.fields) {
+        auto key=Upper(s.substr(0,s.find('=')));
         bool replace=key=="METADATA_BLOCK_PICTURE" && replace_picture;
         for(const auto& tag:tags.fields) if(key==Upper(tag.first)) replace=true;
         if(!replace) fields.push_back(std::move(s));
     }
-    return p==n;
+    return true;
 }
 bool TagFlac(const std::vector<uint8_t>& source,const Tags& tags,std::vector<uint8_t>& output,std::string& error) {
     output.clear(); error.clear();
@@ -85,9 +82,8 @@ bool TagFlac(const std::vector<uint8_t>& source,const Tags& tags,std::vector<uin
         p+=n;
     }
     for(const auto& tag:tags.fields) fields.push_back(tag.first+'='+tag.second);
-    std::vector<uint8_t> comments; Number(comments,uint32_t(vendor.size())); comments.insert(comments.end(),vendor.begin(),vendor.end());
-    Number(comments,uint32_t(fields.size()));
-    for(const auto& field:fields) { Number(comments,uint32_t(field.size())); comments.insert(comments.end(),field.begin(),field.end()); }
+    std::vector<uint8_t> comments;
+    if(!BuildVorbisComments(vendor,fields,false,comments))return fail("FLAC comments exceed metadata limits");
     blocks.push_back({4,std::move(comments)});
     if(replace_picture) blocks.push_back({6,std::move(picture)});
     output.reserve(source.size()+tags.cover.size()+65536); output={'f','L','a','C'};
