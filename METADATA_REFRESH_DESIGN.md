@@ -100,6 +100,20 @@ bit-by-bit oracle. Windows exposed a GCC array-bounds warning in a test fixture;
 the fixture now allocates its final buffer size directly. The full Windows job
 must pass before this development checkpoint is accepted.
 
+The Windows validation-process prototype accepts a caller-held, locked source
+handle and maps it read-only without moving its file position. Only the mapping
+and result pipe are inherited. The child starts suspended and joins a job with
+a 768 MiB committed-memory limit, one-process limit and kill-on-close before
+running any decoder code. Input is limited to 256 MiB and wall time to 60 seconds;
+larger files are conservatively ineligible for this prototype. Cancellation and
+timeout terminate the job. A successful exit plus an exact 40-byte versioned
+reply with nonempty coverage is required. Local tests cover real Ogg/FLAC files,
+bad/short/extra replies, failed exits, hangs, memory exhaustion, excluded handles,
+source position/locking and cancellation. This is resource isolation, not a
+security sandbox. The caller must use a trusted same-build worker and retain the
+source lock through a separately guarded transaction. Neither the helper nor
+the supervision API is packaged or called from production yet.
+
 Reference sources inspected:
 - https://xiph.org/vorbis/doc/Vorbis_I_spec.html (appendix A)
 - https://github.com/xiph/vorbis/blob/c2aa86b05e981c96bf381fc6aa11cdd03eccc2fb/lib/block.c
