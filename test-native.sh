@@ -53,7 +53,8 @@ g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -I native/vendor/libogg/includ
     tests/metadata_refresh_container_test.cpp native/rich_metadata.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/metadata-refresh-container-test
 build/metadata-refresh-container-test
 bash tools/build_vorbis_validation_test.sh build/vorbis-validation
-python3 tests/metadata_refresh_decode_test.py build/metadata-refresh-container-test ffmpeg build/vorbis-validation/vorbis-validation-test.exe
+python3 tools/build_flac_validation_test.py build/flac-validation
+python3 tests/metadata_refresh_decode_test.py build/metadata-refresh-container-test ffmpeg build/vorbis-validation/vorbis-validation-test.exe build/flac-validation/flac-validation-test.exe
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -I native/vendor/libogg/include \
     tests/ogg_tags_test.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/ogg-framing-test.o -o build/ogg-tags-test
 build/ogg-tags-test

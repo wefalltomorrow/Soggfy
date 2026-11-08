@@ -77,8 +77,28 @@ c2aa86b05e981c96bf381fc6aa11cdd03eccc2fb, copied unchanged with license and
 per-file SHA256 hashes; libogg 1.3.5 bitwise.c supports it. This dependency and
 validator are linked into tests only. Before shipping, run the decoder in an
 isolated helper with memory/time/cancellation limits; bounded compressed input
-alone does not bound codec allocation or CPU. Add strict FLAC payload decoding,
-stable-source supervision and publication integration as the next steps.
+alone does not bound codec allocation or CPU. Stable-source supervision and
+publication integration remain required.
+
+`flac_validation.cpp` now prototypes full payload decoding with libFLAC 1.5.0,
+pinned to Xiph commit 1507800de4b70e21be71f38caa0d9079d0bc6e45. It rejects every
+decoder error, frame CRC failure, noncontiguous or mismatched sample coverage,
+out-of-range PCM, trailing bytes and known MD5 mismatches. Zero MD5 is permitted
+by the format; full frame CRC and coverage validation still apply. Tests cover
+truncation, distributed byte mutations, declared coverage, CRC/MD5, appended
+audio, cancellation and stale-output clearing. All twelve local real-audio
+fixtures pass for original, tagged and refreshed files with identical PCM.
+The codec C units use defined signed wrapping (`-fwrapv`) because corrupted
+predictor residuals can overflow before CRC validation; our C++ code retains
+ordinary signed-overflow checks. No sanitizer check is suppressed. Full CI
+validation of this new prototype is pending; local diagnostic builds are not
+shipping artifacts or a substitute for CI ASan/UBSan.
+
+The preceding Vorbis CI run passed native tests and both sanitizer seeds after
+fixing signed byte shifts in libogg's bit reader, verified by an independent
+bit-by-bit oracle. Windows exposed a GCC array-bounds warning in a test fixture;
+the fixture now allocates its final buffer size directly. The full Windows job
+must pass before this development checkpoint is accepted.
 
 Reference sources inspected:
 - https://xiph.org/vorbis/doc/Vorbis_I_spec.html (appendix A)

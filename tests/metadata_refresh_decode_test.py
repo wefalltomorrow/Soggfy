@@ -31,6 +31,7 @@ def run(*args):
 test = str(pathlib.Path(sys.argv[1]).resolve())
 ffmpeg = sys.argv[2] if len(sys.argv) > 2 else "ffmpeg"
 validator = str(pathlib.Path(sys.argv[3]).resolve()) if len(sys.argv) > 3 else None
+flac_validator = str(pathlib.Path(sys.argv[4]).resolve()) if len(sys.argv) > 4 else None
 with tempfile.TemporaryDirectory(prefix="soggfy-metadata-") as directory:
     root = pathlib.Path(directory)
     cases = itertools.product((("ogg", "libvorbis"), ("flac", "flac")),
@@ -53,6 +54,9 @@ with tempfile.TemporaryDirectory(prefix="soggfy-metadata-") as directory:
         if validator and extension == "ogg":
             for path in (source, before, after):
                 run(validator, path)
+        if flac_validator and extension == "flac":
+            for path in (source, before, after):
+                run(flac_validator, path)
         decoded = []
         for path in (source, before, after):
             decoded.append(run(ffmpeg, "-hide_banner", "-loglevel", "error",

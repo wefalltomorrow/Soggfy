@@ -50,7 +50,7 @@ static std::vector<Packet> ReadOgg(const Bytes& bytes) {
 static Bytes Ogg(const VorbisComments& comments) {
     Bytes comment;assert(BuildVorbisComments(comments.vendor,comments.fields,true,comment));
     comment.insert(comment.begin(),{3,'v','o','r','b','i','s'});
-    Bytes id={1,'v','o','r','b','i','s'};id.resize(30);id[11]=2;id[12]=0x44;id[13]=0xac;
+    Bytes id(30);id[0]=1;std::memcpy(id.data()+1,"vorbis",6);id[11]=2;id[12]=0x44;id[13]=0xac;
     id[28]=0xb8;id[29]=1;
     std::vector<Bytes> packets={id,comment,{5,'v','o','r','b','i','s'},{0,1,2,3,4,5}};
     ogg_stream_state stream;assert(!ogg_stream_init(&stream,42));Bytes bytes;ogg_page page;

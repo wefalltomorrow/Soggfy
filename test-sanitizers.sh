@@ -29,4 +29,5 @@ for test in log_queue history_core recording_identity vorbis_comments metadata_r
   "build/sanitizers/$test"
 done
 CC="$CC" CXX="$CXX" SGF_SANITIZE=1 bash tools/build_vorbis_validation_test.sh build/sanitizers/vorbis-validation
-python3 tests/metadata_refresh_decode_test.py build/sanitizers/metadata_refresh_container ffmpeg build/sanitizers/vorbis-validation/vorbis-validation-test.exe
+CC="$CC" CXX="$CXX" SGF_SANITIZE=1 python3 tools/build_flac_validation_test.py build/sanitizers/flac-validation
+python3 tests/metadata_refresh_decode_test.py build/sanitizers/metadata_refresh_container ffmpeg build/sanitizers/vorbis-validation/vorbis-validation-test.exe build/sanitizers/flac-validation/flac-validation-test.exe

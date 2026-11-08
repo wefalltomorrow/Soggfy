@@ -44,7 +44,8 @@ test -f "$fp_runtime"
 "$CXX" "${common[@]}" -I native/vendor/libogg/include tests/metadata_refresh_container_test.cpp native/rich_metadata.cpp native/flac_history_core.cpp native/compressed_buffer.cpp native/ogg_tags.cpp native/ogg_history_core.cpp build/windows-tests/metadata-ogg.o -o "$floggfy_test_root/metadata-refresh-container-test.exe"
 "$floggfy_test_root/metadata-refresh-container-test.exe"
 CC="$CC" CXX="$CXX" bash tools/build_vorbis_validation_test.sh "$floggfy_test_root/vorbis-validation"
-python3 tests/metadata_refresh_decode_test.py "$floggfy_test_root/metadata-refresh-container-test.exe" ffmpeg "$floggfy_test_root/vorbis-validation/vorbis-validation-test.exe"
+CC="$CC" CXX="$CXX" python3 tools/build_flac_validation_test.py build/windows-tests/flac-validation
+python3 tests/metadata_refresh_decode_test.py "$floggfy_test_root/metadata-refresh-container-test.exe" ffmpeg "$floggfy_test_root/vorbis-validation/vorbis-validation-test.exe" build/windows-tests/flac-validation/flac-validation-test.exe
 "$CXX" "${common[@]}" tests/windows_metadata_identity_test.cpp -I native/vendor/libogg/include \
  native/rich_metadata.cpp native/cached_metadata.cpp native/cached_metadata_windows.cpp native/history_settings.cpp native/async_log.cpp \
  native/classic_ui_backend.cpp native/classic_status_backend.cpp native/classic_path_match.cpp native/library_layout.cpp native/existing_quality.cpp native/file_publication.cpp \
