@@ -29,6 +29,10 @@ legacy_pwsh="$(cygpath -u "${WINDIR:-C:\Windows}")/System32/WindowsPowerShell/v1
 "$legacy_pwsh" -NoProfile -File tests/manual_post_process_test.ps1 -ConverterPath build/post-process-test.exe
 "$maintenance_pwsh" -NoProfile -File tests/uninstall_ownership_test.ps1
 "$legacy_pwsh" -NoProfile -File tests/uninstall_ownership_test.ps1
+"$maintenance_pwsh" -NoProfile -File tests/install_transaction_test.ps1
+"$legacy_pwsh" -NoProfile -File tests/install_transaction_test.ps1
+"$maintenance_pwsh" -NoProfile -File tests/conversion_watch_queue_test.ps1
+"$legacy_pwsh" -NoProfile -File tests/conversion_watch_queue_test.ps1
 if [[ -n "${SGF_PYTHON_PATH:-}" ]]; then
     "$(cygpath -u "$SGF_PYTHON_PATH")" tests/manual_watch_test.py
     "$(cygpath -u "$SGF_PYTHON_PATH")" tests/manual_process_test.py

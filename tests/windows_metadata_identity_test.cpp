@@ -46,6 +46,24 @@ history::Browser* ReceiveSyncClient(const void*,history::Client* client,const hi
 void* ReceiveViewClient(history::Client* client,const history::String*,const void*,void*,void*,void*){received_client=client;return &browser.api;}
 }
 int main(){
+    // Native acknowledgements retain their request IDs and remain bounded.
+    history::QueueClassicM3UResponse("saved-1",history::ClassicM3UResult::Saved);
+    history::QueueClassicM3UResponse("cancel-2",history::ClassicM3UResult::Canceled);
+    history::QueueClassicM3UResponse("failed-3",history::ClassicM3UResult::Failed);
+    assert(history::ui_m3u_responses.size()==3);
+    assert(history::ui_m3u_responses[0]==std::string("saved-1")+char(29)+"saved");
+    assert(history::ui_m3u_responses[1]==std::string("cancel-2")+char(29)+"canceled");
+    for(int i=0;i<20;++i)history::QueueClassicM3UResponse(std::to_string(i),history::ClassicM3UResult::Failed);
+    assert(history::ui_m3u_responses.size()==8);
+    history::ui_m3u_responses.clear();
+    const std::string header=std::string("test.m3u8")+char(31)+"Playlist"+char(30);
+    const std::string row=std::string("10")+char(31)+"Artist"+char(31)+"Title"+char(31)+"C:/Music/song.flac";
+    std::wstring suggested;std::string playlist;std::vector<history::ClassicM3UEntry> entries;
+    assert(history::ParseClassicM3U(header+row,suggested,playlist,entries)&&entries.size()==1);
+    entries.clear();
+    assert(!history::ParseClassicM3U(header+row+char(30)+"malformed",suggested,playlist,entries));
+    entries.clear();
+    assert(!history::ParseClassicM3U(header+row+"\nforged",suggested,playlist,entries));
     // Current playback bypasses slow metadata enrichment and SMTC entirely.
     wchar_t current_message[]=L"FLOGGFY_PLAYBACK_V1:v=1&title=Next&artist=Artist&album=Album&uri=spotify:track:0000000000000000000001&duration=200&playback_quality=lossless";
     history::String current{current_message,wcslen(current_message),nullptr};

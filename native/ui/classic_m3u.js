@@ -7,6 +7,27 @@ sgf.__m3uLoaded=true;
 const clean=value=>String(value??'').replace(/[\x1e\x1f\r\n]/g,' ').trim();
 const MAX_TRACKS=10000;
 let exporting=false;
+let pendingSave=null,saveSequence=0;
+const saveSession=Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
+window.__soggfyM3UResult=message=>{
+  const [id,result]=String(message).split('\x1d');
+  if(!pendingSave||pendingSave.id!==id||!['saved','canceled','failed'].includes(result))return;
+  const pending=pendingSave;pendingSave=null;
+  clearTimeout(pending.timer);pending.resolve(result);
+};
+function savePlaylist(payload){
+  return new Promise((resolve,reject)=>{
+    const id=saveSession+'-'+(++saveSequence);
+    const timer=setTimeout(()=>{
+      if(pendingSave?.id!==id)return;
+      pendingSave=null;
+      reject(Error('Save result not received. Check the save dialog and destination before retrying.'));
+    },600000);
+    pendingSave={id,resolve,timer};
+    try{sgf.send('save_m3u',id+'\x1d'+payload);}
+    catch(error){clearTimeout(timer);pendingSave=null;reject(error);}
+  });
+}
 async function bounded(call){
   let timer;
   try{return await Promise.race([Promise.resolve().then(call),new Promise((_,reject)=>{
@@ -124,8 +145,11 @@ sgf.generateM3U=async()=>{
   );
   const payload=[header,...records].join(sgf.RS);
   if(encodeURIComponent(payload).length>1000000)throw Error('Playlist paths are too large for one export');
-  sgf.send('save_m3u',payload);
-  sgf.notify('Exporting '+downloaded.length+' downloaded track'+(downloaded.length===1?'':'s')+
+  sgf.notify('Choose where to save the playlist…');
+  const result=await savePlaylist(payload);
+  if(result==='failed')throw Error('Playlist could not be saved. Check the destination and retry.');
+  if(result==='canceled')sgf.notify('Playlist save canceled');
+  else sgf.notify('Saved '+downloaded.length+' downloaded track'+(downloaded.length===1?'':'s')+
     (visibleOnly?' from visible rows only':''));
   }catch(e){sgf.notify(String(e.message||e),sgf.Icons.Warning);}
   finally{exporting=false;}

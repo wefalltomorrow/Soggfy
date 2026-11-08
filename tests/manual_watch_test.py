@@ -88,6 +88,12 @@ with tempfile.TemporaryDirectory(prefix="soggfy-watch-test-") as folder:
                 quote(fixture) + ");$s.Write($b,0,$b.Length);$s.Flush();Start-Sleep -Seconds 5}finally{$s.Dispose()}", encoding="utf-8")
             subprocess.run([pwsh, "-NoProfile", "-File", str(writer)], check=True, timeout=15)
             wait_for(lambda: locked.with_suffix(".mp3").exists())
+            # A populated directory rename may emit no per-file notifications.
+            incoming = base / "incoming"
+            incoming.mkdir()
+            (incoming / "nested.flac").write_bytes(good)
+            incoming.rename(watch / "renamed")
+            wait_for(lambda: (watch / "renamed/nested.mp3").exists())
             assert process.poll() is None, logpath.read_text(errors="replace")
             assert (watch / "permanent.flac").read_bytes() == broken
             assert not (watch / "permanent.mp3").exists()

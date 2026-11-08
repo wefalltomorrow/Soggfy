@@ -156,3 +156,10 @@ The direct decoder/playback identity, ad isolation, native podcast MP3, metadata
 refresh/instance-bound skip, diagnostic lanes and sanitizer campaigns listed above
 remain open. Classic 1x–30x and the pinned client are retained. RC72 is a candidate
 milestone, not upstream feature parity or proof of a live-stall fix.
+
+## RC75 maintenance checkpoint
+
+Installation-directory rollback, bounded watch events and correlated playlist
+save results have local regression coverage; CI/package verification is pending.
+See MILESTONES.md for outstanding work and NATIVE_IDENTITY_AUDIT.md for the
+correction to RC74 native compatibility findings.

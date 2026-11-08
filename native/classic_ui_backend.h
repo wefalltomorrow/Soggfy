@@ -37,8 +37,10 @@ struct ClassicM3UEntry {
     std::string artist,title;
     std::wstring path;
 };
+enum class ClassicM3UResult { Saved, Canceled, Failed };
 bool SaveClassicM3U(const std::wstring& suggested_filename,const std::string& playlist_name,
-                    const std::vector<ClassicM3UEntry>& entries);
+                    const std::vector<ClassicM3UEntry>& entries,
+                    std::function<void(ClassicM3UResult)> completion = {});
 bool QueueClassicCanvasDownload(const std::wstring& url,const std::wstring& title,
                                 const std::wstring& artist,const std::wstring& album,
                                 unsigned track);

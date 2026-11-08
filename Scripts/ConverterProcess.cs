@@ -6,6 +6,52 @@ using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace Soggfy {
+    // Event callbacks run on CLR threads, never on a PowerShell runspace.
+    // Bounded coalescing survives events arriving while FFmpeg is busy.
+    public sealed class ConversionWatch : IDisposable {
+        private readonly object gate = new object();
+        private readonly System.Collections.Generic.HashSet<string> paths =
+            new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly FileSystemWatcher watcher;
+        private bool rescan = true, disposed;
+        public ConversionWatch(string root) {
+            watcher = new FileSystemWatcher(root);
+            try {
+            watcher.IncludeSubdirectories = true;
+            watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName |
+                NotifyFilters.LastWrite | NotifyFilters.Size;
+            watcher.Created += Changed; watcher.Changed += Changed; watcher.Deleted += Changed;
+            watcher.Renamed += Renamed; watcher.Error += Failed;
+            watcher.EnableRaisingEvents = true;
+            } catch { watcher.Dispose(); throw; }
+        }
+        private void Changed(object sender, FileSystemEventArgs e) { Record(e.FullPath); }
+        private void Renamed(object sender, RenamedEventArgs e) { Record(e.OldFullPath); Record(e.FullPath); }
+        private void Failed(object sender, ErrorEventArgs e) { lock (gate) { if (!disposed) rescan = true; } }
+        private void Record(string path) {
+            lock (gate) {
+                if (disposed) return;
+                // Renaming a populated directory need not emit child events.
+                if (Directory.Exists(path)) { rescan = true; return; }
+                string extension = Path.GetExtension(path);
+                if (!String.Equals(extension, ".ogg", StringComparison.OrdinalIgnoreCase) &&
+                    !String.Equals(extension, ".flac", StringComparison.OrdinalIgnoreCase)) return;
+                if (paths.Count >= 4096 && !paths.Contains(path)) { rescan = true; return; }
+                paths.Add(path);
+            }
+        }
+        public string[] Drain() {
+            lock (gate) {
+                var result = new string[paths.Count]; paths.CopyTo(result); paths.Clear(); return result;
+            }
+        }
+        public bool TakeRescan() { lock (gate) { bool result = rescan; rescan = false; return result; } }
+        public void Dispose() {
+            lock (gate) { if (disposed) return; disposed = true; paths.Clear(); }
+            watcher.Dispose();
+        }
+    }
+
     public sealed class ConversionSource : IDisposable {
         private FileStream stream;
         private readonly string path;

@@ -1,3 +1,24 @@
+# Soggfy v3.0.0-rc.75 - maintenance reliability (test build)
+
+RC75 snapshots and hashes the selected installation directory before xpui repair,
+SpotX or Soggfy publication. Failure restores originals and removes new files.
+Failed rollback retains recovery files and a manifest. Reparse points are rejected.
+The transaction covers installation files, not external changes or crash recovery.
+
+Manual watch conversion coalesces up to 4,096 paths while encoding, reconciles
+on startup/overflow/directory changes, and scans every 60 seconds as a fallback.
+Classic Generate M3U waits for a correlated native saved/canceled/failed result;
+only successful publication reports Saved. Malformed rows reject the whole export.
+
+Local validation includes PowerShell 5.1/7 fault injection and queue tests, real
+FFmpeg watch/rename recovery, JavaScript acknowledgements and a Windows native
+metadata fixture. MinGW CI and independent package verification remain required.
+
+The RC74 compatibility check searched the wrong module. Upstream discovery works
+in the pinned Spotify.dll; playback-ID layout and lifetime remain unverified.
+See NATIVE_IDENTITY_AUDIT.md and MILESTONES.md. Live installation, merge and
+official release remain separately gated.
+
 # Soggfy v3.0.0-rc.74 — client playback boundaries (test build)
 
 RC74 adds cached client playback IDs, position, pause/buffering and active-device
@@ -19,10 +40,12 @@ polling can miss brief interstitials; preloads, pointer reuse and unscoped callb
 remain gaps. Missing/inconsistent timeline fields may discard valid recordings.
 No claim is made that all ads are isolated or historical pauses/stalls are fixed.
 
-The upstream v1.3-RC6 private hook cannot be directly ported to the pinned Spotify
-1.3.1.234 executable: neither its dispatcher nor playback-pump instruction anchor
-occurs there. No guessed offsets or new private-memory reads were added. Further
-native analysis and live validation remain required.
+Correction (November 8, 2026): the original compatibility check searched
+Spotify.exe, but the decoder implementation is in Spotify.dll. Both upstream
+anchors occur uniquely in the pinned DLL, and the upstream dispatcher and
+Ogg/FLAC ownership discovery succeeds on a relocated static image. The earlier
+incompatibility conclusion was incorrect. RC74 itself adds no private-memory
+reads; playback-ID layout, lifetime and live integration still require validation.
 
 Includes RC63–RC73, Classic UI, file-based status, Unicode/custom/legacy/podcast
 paths, strict Ogg/FLAC validation, MP3 320 kbps and 1x–30x. Downloads off stays

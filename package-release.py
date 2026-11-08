@@ -52,6 +52,8 @@ files = [
     ("CHANGELOG.md", root / "CHANGELOG.md"),
     ("RELEASE_NOTES.md", root / "RELEASE_NOTES.md"),
     ("UPSTREAMS.md", root / "UPSTREAMS.md"),
+    ("MILESTONES.md", root / "MILESTONES.md"),
+    ("NATIVE_IDENTITY_AUDIT.md", root / "NATIVE_IDENTITY_AUDIT.md"),
     ("LICENSE", root / "LICENSE"),
     ("SpotifyHistory.ini", root / "SpotifyHistory.ini"),
     ("Scripts/Install.ps1", root / "Scripts" / "Install.ps1"),

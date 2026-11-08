@@ -128,6 +128,27 @@ function Convert-One([string]$Path) {
 }
 
 $retry = @{}
+function Convert-WatchFile([string]$Path) {
+    $item = Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue
+    if (-not $item -or $item.PSIsContainer) { $retry.Remove($Path); return }
+    if ($item.Extension -notin '.ogg','.flac') { return }
+    $stamp = "$($item.Length):$($item.LastWriteTimeUtc.Ticks)"
+    $previous = $retry[$Path]
+    if ($previous -and $previous.Stamp -eq $stamp -and [DateTime]::UtcNow -lt $previous.Next) { return }
+    try {
+        Convert-One $Path
+        $retry.Remove($Path)
+    } catch {
+        $delay = if ($previous -and $previous.Stamp -eq $stamp) { [Math]::Min(60, $previous.Delay * 2) } else { 2 }
+        if ($retry.Count -ge 4096 -and -not $retry.ContainsKey($Path)) {
+            $oldest = $retry.Keys | Sort-Object { $retry[$_].Next } | Select-Object -First 1
+            $retry.Remove($oldest)
+        }
+        $retry[$Path] = @{ Stamp = $stamp; Delay = $delay; Next = [DateTime]::UtcNow.AddSeconds($delay) }
+        Write-Warning "Conversion deferred for '$Path': $($_.Exception.Message)"
+    }
+}
+
 function Convert-Tree {
     param([string]$Root)
     if (Test-Path -LiteralPath $Root -PathType Leaf) {
@@ -136,46 +157,31 @@ function Convert-Tree {
         Get-ChildItem -LiteralPath $Root -File -Recurse -ErrorAction Continue |
             Where-Object { $_.Extension -in '.ogg','.flac' } |
             ForEach-Object {
-                if (-not $Watch) { Convert-One $_.FullName; return }
-                $path = $_.FullName
-                $stamp = "$($_.Length):$($_.LastWriteTimeUtc.Ticks)"
-                $previous = $retry[$path]
-                if ($previous -and $previous.Stamp -eq $stamp -and [DateTime]::UtcNow -lt $previous.Next) { return }
-                try {
-                    Convert-One $path
-                    $retry.Remove($path)
-                } catch {
-                    # A stable file size does not mean its writer has closed.
-                    # Retry individual failures without stopping other conversions.
-                    $delay = if ($previous -and $previous.Stamp -eq $stamp) { [Math]::Min(60, $previous.Delay * 2) } else { 2 }
-                    if ($retry.Count -ge 4096 -and -not $retry.ContainsKey($path)) {
-                        $oldest = $retry.Keys | Sort-Object { $retry[$_].Next } | Select-Object -First 1
-                        $retry.Remove($oldest)
-                    }
-                    $retry[$path] = @{ Stamp = $stamp; Delay = $delay; Next = [DateTime]::UtcNow.AddSeconds($delay) }
-                    Write-Warning "Conversion deferred for '$path': $($_.Exception.Message)"
-                }
+                if ($Watch) { Convert-WatchFile $_.FullName }
+                else { Convert-One $_.FullName }
             }
     }
 }
 
 if ($Watch) {
-    $watcher = [IO.FileSystemWatcher]::new($InputPath)
-    $watcher.IncludeSubdirectories = $true
-    $watcher.Filter = '*.*'
-    $watcher.EnableRaisingEvents = $true
-
+    $watcher = [Soggfy.ConversionWatch]::new($InputPath)
+    $reconcileClock = [Diagnostics.Stopwatch]::StartNew()
     Write-Host "Watching $InputPath for completed Ogg/FLAC captures. Press Ctrl+C to stop."
     try {
         while ($true) {
-            # Reconciliation is authoritative. Events only shorten the idle wait:
-            # events during encoding, overflow, startup and renamed directories
-            # are all recovered on the next pass, without an unbounded event queue.
-            Convert-Tree $InputPath
-            foreach ($path in @($retry.Keys)) {
-                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { $retry.Remove($path) }
+            # Startup, overflow and directory changes reconcile the full tree.
+            # A periodic pass recovers lost events without a recursive scan every
+            # two seconds. Events continue to queue while conversion is running.
+            $rescan = $watcher.TakeRescan()
+            if ($rescan -or $reconcileClock.Elapsed.TotalSeconds -ge 60) {
+                Convert-Tree $InputPath
+                $reconcileClock.Restart()
             }
-            $null = $watcher.WaitForChanged([IO.WatcherChangeTypes]'Created, Renamed, Changed', 2000)
+            foreach ($path in $watcher.Drain()) { Convert-WatchFile $path }
+            foreach ($path in @($retry.Keys)) {
+                if ([DateTime]::UtcNow -ge $retry[$path].Next) { Convert-WatchFile $path }
+            }
+            Start-Sleep -Milliseconds 500
         }
     } finally {
         $watcher.Dispose()

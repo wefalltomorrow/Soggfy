@@ -260,6 +260,7 @@ struct Message { ULONGLONG time=0; char data[131073];size_t length=0;};
 static std::array<Message,4> messages;static size_t head=0,tail=0,count=0;static HANDLE message_event=nullptr;
 static SRWLOCK ui_status_lock=SRWLOCK_INIT;
 static std::string ui_status_request,ui_status_response;
+static std::vector<std::string> ui_m3u_responses;
 static std::atomic<uint64_t> ui_status_sequence{0};
 static HANDLE status_event=nullptr;
 static constexpr size_t kClassicStatusBatchLimit=128;
@@ -318,7 +319,24 @@ static void ProcessClassicStatusRequest() {
  AcquireSRWLockExclusive(&ui_status_lock);ui_status_response=std::move(result);ReleaseSRWLockExclusive(&ui_status_lock);
  SchedulePoll();
 }
+static void QueueClassicM3UResponse(const std::string& id,ClassicM3UResult result) {
+ const char* status=result==ClassicM3UResult::Saved?"saved":result==ClassicM3UResult::Canceled?"canceled":"failed";
+ AcquireSRWLockExclusive(&ui_status_lock);
+ try {
+  if(ui_m3u_responses.size()>=8)ui_m3u_responses.erase(ui_m3u_responses.begin());
+  ui_m3u_responses.push_back(id+char(0x1d)+status);
+ }catch(...) {ReleaseSRWLockExclusive(&ui_status_lock);throw;}
+ ReleaseSRWLockExclusive(&ui_status_lock);
+ SchedulePoll();
+}
 static void FlushClassicStatusResponse(Frame* frame) {
+ std::vector<std::string> saves;
+ AcquireSRWLockExclusive(&ui_status_lock);saves.swap(ui_m3u_responses);ReleaseSRWLockExclusive(&ui_status_lock);
+ for(const auto& save:saves) {
+  auto encoded=PercentEncode(save);
+  ExecuteFrameCode(frame,L"if(window.__soggfyM3UResult)window.__soggfyM3UResult(decodeURIComponent(\""+
+      std::wstring(encoded.begin(),encoded.end())+L"\"));",L"soggfy-m3u-result.js");
+ }
  std::string response;
  AcquireSRWLockExclusive(&ui_status_lock);response.swap(ui_status_response);ReleaseSRWLockExclusive(&ui_status_lock);
  const auto revision=ClassicStatusRevision();
@@ -413,7 +431,8 @@ static bool ParseClassicM3U(const std::string& payload,std::wstring& suggested,s
  playlist=header.substr(split+1);
  if(suggested.empty()||suggested.size()>240||playlist.size()>4096)return false;
  size_t start=first+1;
- while(start<payload.size()&&entries.size()<10000) {
+ while(start<payload.size()) {
+  if(entries.size()>=10000)return false;
   size_t end=payload.find(rs,start);if(end==std::string::npos)end=payload.size();
   auto record=payload.substr(start,end-start);
   std::array<std::string,4> fields;size_t at=0;bool valid=true;
@@ -421,12 +440,15 @@ static bool ParseClassicM3U(const std::string& payload,std::wstring& suggested,s
    size_t sep=record.find(fs,at);if(sep==std::string::npos){valid=false;break;}
    fields[i]=record.substr(at,sep-at);at=sep+1;
   }
-  if(valid) {
+  if(!valid)return false;
+  {
    fields[3]=record.substr(at);
    ClassicM3UEntry entry;
    try{entry.duration_seconds=std::max(0L,std::min(86400L,std::stol(fields[0])));}catch(...){entry.duration_seconds=0;}
    entry.artist=fields[1];entry.title=fields[2];entry.path=WideUtf8(fields[3]);
-   if(!entry.path.empty())entries.push_back(std::move(entry));
+   if(entry.path.empty()||entry.path.find_first_of(L"\r\n")!=std::wstring::npos||
+      entry.path.find(wchar_t(0))!=std::wstring::npos)return false;
+   entries.push_back(std::move(entry));
   }
   start=end+1;
  }
@@ -483,9 +505,17 @@ static bool ClassicUiMessage(const String* text) {
  }
  else if(key==L"open_folder"){RevealClassicTrack(WideUtf8(decoded));return true;}
  else if(key==L"save_m3u"){
-  std::wstring suggested;std::string playlist;std::vector<ClassicM3UEntry> entries;
-  if(ParseClassicM3U(decoded,suggested,playlist,entries))SaveClassicM3U(suggested,playlist,entries);
-  else HistoryLog("failed to parse classic M3U request");
+  const auto separator=decoded.find(char(0x1d));
+  if(separator==std::string::npos||separator==0||separator>96)return true;
+  const auto id=decoded.substr(0,separator);
+  if(id.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.")!=std::string::npos)return true;
+  bool started=false;
+  try {
+   std::wstring suggested;std::string playlist;std::vector<ClassicM3UEntry> entries;
+   if(ParseClassicM3U(decoded.substr(separator+1),suggested,playlist,entries))
+    started=SaveClassicM3U(suggested,playlist,entries,[id](ClassicM3UResult result){QueueClassicM3UResponse(id,result);});
+  }catch(...) {HistoryLog("failed to prepare classic M3U request");}
+  if(!started)QueueClassicM3UResponse(id,ClassicM3UResult::Failed);
   return true;
  }
  else if(key==L"canvas"){

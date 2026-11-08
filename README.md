@@ -24,6 +24,11 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
 
+RC75 adds installation-directory rollback, bounded event-driven manual watch
+conversion and native playlist save acknowledgements. Failed rollback retains
+recovery files; only confirmed publication reports Saved. See RELEASE_NOTES.md
+for scope and MILESTONES.md for remaining work.
+
 RC74 adds cached playback IDs, pause/buffering checks and capture fences around
 observed unsupported, remote or stale playback. The heartbeat runs with metadata
 enrichment off. Exact decoder-to-playback binding and live acceptance remain open;
