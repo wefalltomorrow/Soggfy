@@ -4,6 +4,7 @@
 #include "ogg_tags.h"
 #include "flac_history_core.h"
 #include "capture_association.h"
+#include "decoder_context.h"
 #include "history_settings.h"
 #include "hook_init_state.h"
 #include "hook_rollback.h"
@@ -51,7 +52,7 @@ FlacFrame original_flac_frame;
 FlacError original_flac_error;
 void* flac_targets[4]={};
 hooks::CallbackCounter audio_callbacks;
-struct Slot { uintptr_t context; unsigned length; double time; unsigned kind,epoch; uint64_t input_length;
+struct Slot { uintptr_t context,owner; unsigned length; double time; unsigned kind,epoch; LONG loss; uint64_t input_length;
     uint32_t format; bool matched,capture; unsigned char bytes[65307]; };
 constexpr unsigned capacity=128;
 Slot* queue;
@@ -62,6 +63,16 @@ volatile LONG dropped=0,calls=0,pages=0;
 std::atomic<bool> quality_enabled{false};
 std::wstring output;
 size_t memory_limit=500*1024*1024;
+struct CaptureEvent {unsigned epoch;LONG loss;uintptr_t owner;bool capture;};
+static CaptureEvent BeginEvent(bool flac) {
+    const auto policy=ReadCapturePolicy();
+    const auto scope=decoder_context;
+    return {scope.active?scope.epoch:policy.epoch,InterlockedCompareExchange(&dropped,0,0),scope.owner,
+        (flac?policy.flac:policy.ogg)&&(!scope.active||scope.epoch==policy.epoch)};
+}
+static bool EventCurrent(const CaptureEvent& e) {
+    return e.epoch==CaptureEpoch()&&e.loss==InterlockedCompareExchange(&dropped,0,0);
+}
 static double Now() { return double(GetTickCount64())/1000.0; }
 static void Log(const char* message) {
     HistoryLog(message);
@@ -98,19 +109,21 @@ static void* DiscoveredTarget(HMODULE module,const spotify::HookTargets& targets
 }
 static int32_t Hook(void* sync,OggPage* page) {
     auto callback=audio_callbacks.Enter();
+    const auto entry=BeginEvent(false);
     int32_t result=original(sync,page);
     InterlockedIncrement(&calls);
-    const bool capture=OggEnabled();
+    const bool capture=entry.capture;
     if(!capture && !quality_enabled.load(std::memory_order_relaxed)) return result;
     if(result<=0 || !page || page->header_length<27 || page->header_length>282 ||
        page->body_length<0 || page->body_length>65025 ||
        page->header_length+page->body_length!=result || result>65307) return result;
     InterlockedIncrement(&pages);
     AcquireSRWLockExclusive(&queue_lock);
+    if(!EventCurrent(entry)){ReleaseSRWLockExclusive(&queue_lock);return result;}
     if(count==capacity) InterlockedIncrement(&dropped);
     else {
         Slot& s=queue[tail]; s.context=reinterpret_cast<uintptr_t>(sync);
-        s.length=unsigned(result); s.time=Now(); s.kind=0; s.epoch=CaptureEpoch(); s.capture=capture;
+        s.length=unsigned(result); s.time=Now(); s.kind=0; s.epoch=entry.epoch; s.capture=capture;s.owner=entry.owner;s.loss=entry.loss;
         std::memcpy(s.bytes,page->header,page->header_length);
         if(page->body_length) std::memcpy(s.bytes+page->header_length,page->body,page->body_length);
         tail=(tail+1)%capacity; ++count;
@@ -140,17 +153,18 @@ static bool Pop(Slot& s) {
     if(ready) { s=queue[head]; head=(head+1)%capacity; --count; }
     ReleaseSRWLockExclusive(&queue_lock); return ready;
 }
-static void FlacEvent(void* context,unsigned kind,const void* bytes=nullptr,size_t n=0,unsigned status=0) {
-    const bool capture=FlacEnabled();
+static void FlacEvent(void* context,const CaptureEvent& entry,unsigned kind,const void* bytes=nullptr,size_t n=0,unsigned status=0) {
+    const bool capture=entry.capture;
     if(!capture && !quality_enabled.load(std::memory_order_relaxed)) return;
     AcquireSRWLockExclusive(&queue_lock);
+    if(!EventCurrent(entry)){ReleaseSRWLockExclusive(&queue_lock);return;}
     do {
         unsigned amount=unsigned(std::min(n,size_t(65307)));
         if(count==capacity) { InterlockedIncrement(&dropped); break; }
         Slot& s=queue[tail]; s.context=reinterpret_cast<uintptr_t>(context); s.kind=kind;
         s.capture=capture; s.input_length=amount;
         s.length=(!capture && kind==3) ? std::min(amount,42u) : amount;
-        s.time=Now(); s.format=status; s.epoch=CaptureEpoch();
+        s.time=Now(); s.format=status; s.epoch=entry.epoch;s.owner=entry.owner;s.loss=entry.loss;
         if(s.length) memcpy(s.bytes,bytes,s.length);
         tail=(tail+1)%capacity; ++count;
         n-=amount;
@@ -160,31 +174,35 @@ static void FlacEvent(void* context,unsigned kind,const void* bytes=nullptr,size
 }
 static void* FlacInitHook(void* context,void* result) {
     auto callback=audio_callbacks.Enter();
-    FlacEvent(context,2);
+    FlacEvent(context,BeginEvent(true),2);
     return original_flac_init(context,result);
 }
 static int FlacReadHook(void* context,unsigned char* buffer,size_t* length) {
     auto callback=audio_callbacks.Enter();
+    const auto entry=BeginEvent(true);
     size_t requested=*length;
     int status=original_flac_read(context,buffer,length);
-    if(status==0 && *length && *length<=requested) FlacEvent(context,3,buffer,*length);
-    else if(status==1 && !*length) FlacEvent(context,6);
-    else if(status!=0 || *length>requested) FlacEvent(context,5,nullptr,0,unsigned(status));
+    if(status==0 && *length && *length<=requested) FlacEvent(context,entry,3,buffer,*length);
+    else if(status==1 && !*length) FlacEvent(context,entry,6);
+    else if(status!=0 || *length>requested) FlacEvent(context,entry,5,nullptr,0,unsigned(status));
     return status;
 }
 static int FlacFrameHook(void* context,const void* frame,const void* pcm) {
     auto callback=audio_callbacks.Enter();
+    const auto entry=BeginEvent(true);
     int status=original_flac_frame(context,frame,pcm);
-    if(status==0) FlacEvent(context,4,frame,32);
-    else FlacEvent(context,5,nullptr,0,unsigned(status));
+    if(status==0) FlacEvent(context,entry,4,frame,32);
+    else FlacEvent(context,entry,5,nullptr,0,unsigned(status));
     return status;
 }
 static void FlacErrorHook(void* context,unsigned error) {
     auto callback=audio_callbacks.Enter();
+    const auto entry=BeginEvent(true);
     original_flac_error(context,error);
-    FlacEvent(context,5,nullptr,0,error);
+    FlacEvent(context,entry,5,nullptr,0,error);
 }
 struct Capture {
+    CaptureOwner owner;
     Stream stream;
     bool lossless=false,metadata=false;
     FlacInfo flac;
@@ -418,7 +436,8 @@ static DWORD WINAPI SaveWorker(LPVOID) {
 }
 static DWORD WINAPI Worker(LPVOID) {
     LONG overflow=0;
-    std::map<uintptr_t,std::unique_ptr<Capture>> active;
+    // Ogg sync and FLAC decoder pointers occupy distinct namespaces.
+    std::map<std::pair<unsigned,uintptr_t>,std::unique_ptr<Capture>> active;
     std::vector<std::unique_ptr<Capture>> ready;
     std::vector<Heard> heard;
     Listen listen; MediaSnapshotReader reader; Media current; PlaybackQualityTracker quality; std::string client_quality;
@@ -472,8 +491,10 @@ static DWORD WINAPI Worker(LPVOID) {
                 Slot discard; while(Pop(discard)) {}
                 WaitForSingleObject(event,200); continue;
             }
-            if(dropped!=overflow) {
-                overflow=dropped;
+            if(InterlockedCompareExchange(&dropped,0,0)!=overflow) {
+                AcquireSRWLockExclusive(&queue_lock);
+                overflow=InterlockedCompareExchange(&dropped,0,0);head=tail;count=0;
+                ReleaseSRWLockExclusive(&queue_lock);
                 if(!current.title.empty())SetClassicTrackStatus(current,"ERROR","Canceled: capture queue overflow");
                 active.clear(); ready.clear(); heard.clear(); listen.Invalidate(); quality.ClearStreams();
                 Log("capture queue overflow; streams and listening coverage invalidated");
@@ -485,6 +506,8 @@ static DWORD WINAPI Worker(LPVOID) {
                     char line[180]; snprintf(line,sizeof(line),"FORMAT kind=%u matched=%d input_bytes=%llu prefix=%s",
                       s.format,s.matched,static_cast<unsigned long long>(s.input_length),prefix); Log(line); continue;
                 }
+                if(s.epoch!=epoch||s.loss!=overflow)continue;
+                const auto key=std::make_pair(s.kind>=2?1u:0u,s.context);
                 if(quality_enabled.load(std::memory_order_relaxed)) {
                     switch(s.kind) {
                         case 0: quality.Ogg(s.context,s.bytes,s.length,s.time); break;
@@ -497,13 +520,15 @@ static DWORD WINAPI Worker(LPVOID) {
                 }
                 if(!enabled || !s.capture || s.epoch!=epoch) continue;
                 if(s.kind>=2) {
-                    auto found=active.find(s.context);
+                    auto found=active.find(key);
                     if(s.kind==2) {
                         auto c=std::make_unique<Capture>(); c->lossless=true; c->born=s.time;
-                        active[s.context]=std::move(c); Log("FLAC decoder initialized; capture begins at compressed offset zero"); continue;
+                        c->owner.Accept(s.owner);
+                        active[key]=std::move(c); Log("FLAC decoder initialized; capture begins at compressed offset zero"); continue;
                     }
                     if(found==active.end() || !found->second->lossless) continue;
                     Capture& c=*found->second;
+                    if(!c.owner.Accept(s.owner)){active.erase(found);Log("FLAC decoder owner conflict; stream discarded");continue;}
                     if(s.kind==5) { active.erase(found); Log("FLAC decoder error; stream discarded"); continue; }
                     if(s.kind==3) {
                         size_t reserved=publishing_reserved.load(); for(const auto& item:active) reserved+=item.second->data.capacity();
@@ -533,10 +558,13 @@ static DWORD WINAPI Worker(LPVOID) {
                     ready.push_back(std::move(found->second)); active.erase(found); continue;
                 }
                 Page page; if(!ParsePage(s.bytes,s.length,page)) {
-                    active.erase(s.context); Log("invalid Ogg page rejected"); continue;
+                    active.erase(key); Log("invalid Ogg page rejected"); continue;
                 }
 
-                auto found=active.find(s.context);
+                auto found=active.find(key);
+                if(found!=active.end()&&!found->second->owner.Accept(s.owner)) {
+                    active.erase(found);Log("Ogg decoder owner conflict; stream discarded");continue;
+                }
                 if(page.vorbis_start) {
                     // A decoder may replay its identification/BOS page after
                     // buffering. Preserve an in-progress capture when this is
@@ -549,8 +577,9 @@ static DWORD WINAPI Worker(LPVOID) {
                         continue;
                     }
                     auto c=std::make_unique<Capture>(); c->born=s.time;
-                    active[s.context]=std::move(c);
-                    found=active.find(s.context);
+                    c->owner.Accept(s.owner);
+                    active[key]=std::move(c);
+                    found=active.find(key);
                     char line[512]; snprintf(line,sizeof(line),
                         "ogg_bos ctx=%llx seq=%u serial=%u rate=%u channels=%u media=%s pos=%.3f raw=%.3f duration=%.3f rate_effective=%.3f",
                         static_cast<unsigned long long>(s.context),page.sequence,page.serial,page.rate,page.channels,
@@ -708,7 +737,7 @@ static DWORD WINAPI Worker(LPVOID) {
             now=Now();
             PublishPlaybackQuality(quality.Snapshot(client_quality));
             // Apply concurrent menu changes before considering publication.
-            if(GetSettings().generation!=generation) continue;
+            if(GetSettings().generation!=generation||InterlockedCompareExchange(&dropped,0,0)!=overflow) continue;
             for(auto h=heard.begin();h!=heard.end();) {
                 const auto selection=SelectCapture(active,ready,*h,now);
                 const auto match=selection.index,matches=selection.matches;

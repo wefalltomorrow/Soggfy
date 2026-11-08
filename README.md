@@ -24,6 +24,10 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
 
+RC73 isolates decoder events across settings changes and queue loss, carries
+scoped decoder ownership through nested calls, and rejects known owner conflicts.
+It does not yet establish Spotify playback-instance or advertisement identity.
+
 RC72 adds track-identity duplicate routing and album URI tags. A verified different
 track at the configured path routes to Duplicates with escalating ID suffixes;
 legacy files keep their established paths. Classic recognizes tagged duplicates,

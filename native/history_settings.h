@@ -56,6 +56,8 @@ bool SetSaveLocation(const std::wstring& root);
 bool OggEnabled();
 bool FlacEnabled();
 unsigned CaptureEpoch();
+struct CapturePolicy {unsigned epoch;bool ogg,flac;};
+CapturePolicy ReadCapturePolicy();
 bool EnsureDirectory(const std::wstring& path);
 std::wstring WindowsPath(const std::wstring& path);
 void PickSaveLocation(HWND owner);

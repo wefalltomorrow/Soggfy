@@ -24,6 +24,8 @@ done
 common=(-std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -static)
 fp_runtime="$("$CXX" -print-file-name=CRT_fp10.o)"
 test -f "$fp_runtime"
+"$CXX" "${common[@]}" tests/windows_decoder_hook_test.cpp tests/decoder_context_probe.cpp native/playback_speed_compat.cpp build/windows-tests/minhook-*.o -o "$floggfy_test_root/windows-decoder-hook-test.exe"
+"$floggfy_test_root/windows-decoder-hook-test.exe"
 "$CXX" "${common[@]}" tests/windows_history_test.cpp \
  native/existing_quality.cpp native/file_publication.cpp native/history_settings.cpp \
  native/async_log.cpp native/library_layout.cpp native/ogg_history_core.cpp \
@@ -56,7 +58,7 @@ quality_sources=(native/playback_quality.cpp native/flac_history_core.cpp native
 
 "$CXX" "${common[@]}" -I native/vendor/libogg/include tests/windows_quality_observer_test.cpp \
  native/playback_quality_windows.cpp "${quality_sources[@]}" native/media_session.cpp native/library_layout.cpp \
- native/existing_quality.cpp native/file_publication.cpp native/spotify_hook_discovery.cpp native/history_settings.cpp \
+ native/existing_quality.cpp native/file_publication.cpp native/spotify_hook_discovery.cpp \
  native/async_log.cpp native/classic_ui_backend.cpp native/classic_status_backend.cpp native/classic_path_match.cpp \
  native/post_process.cpp build/windows-tests/minhook-*.o "$fp_runtime" -lole32 -luuid -lshell32 -lruntimeobject -lwinhttp \
  -o "$floggfy_test_root/windows-quality-observer-test.exe"

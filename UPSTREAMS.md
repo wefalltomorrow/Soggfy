@@ -1,3 +1,13 @@
+## RC73 decoder-event isolation — November 8, 2026
+
+Continues the source review of Floggfy v1.3-RC6
+(7b825e3b942596c3e912fbbf7a0487abd7578e47). RC73 uses Soggfy's existing
+decoder hook to carry dynamic call context without adding private object offsets.
+It fixes event-entry epoch races, rejects known decoder-owner conflicts, separates
+codec context keys and fences queue loss. It does not port the upstream private
+playback identity bridge or establish full upstream feature parity. Direct playback
+identity/ad isolation, native podcast MP3 capture and live validation remain open.
+
 # Upstream sources
 
 The active x64 implementation started from:

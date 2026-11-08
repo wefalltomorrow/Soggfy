@@ -242,6 +242,12 @@ bool DebugLoggingEnabled() { return debug_enabled!=0; }
 bool OggEnabled() { return downloads_enabled && ogg_enabled; }
 bool FlacEnabled() { return downloads_enabled && flac_enabled; }
 unsigned CaptureEpoch() { return unsigned(InterlockedCompareExchange(&capture_epoch,0,0)); }
+CapturePolicy ReadCapturePolicy() {
+    AcquireSRWLockShared(&lock);
+    const CapturePolicy policy{settings.capture_epoch,settings.downloads&&settings.ogg,settings.downloads&&settings.flac};
+    ReleaseSRWLockShared(&lock);
+    return policy;
+}
 static bool SetBool(bool value,bool& field,volatile LONG* fast,bool affects_capture) {
     AcquireSRWLockExclusive(&lock);
     bool ok=settings_signal!=nullptr;

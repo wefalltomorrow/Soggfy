@@ -1,3 +1,25 @@
+# Soggfy v3.0.0-rc.73 — decoder-event isolation (test build)
+
+RC73 rejects Ogg/FLAC callback events whose capture settings changed while the
+original decoder call was running. A locked policy snapshot pairs codec enablement
+with its epoch. A thread-local scope carries decoder pointer and entry epoch through
+nested calls and restores the outer scope on return. Known conflicting owners
+discard the active capture. Ogg and FLAC use separate capture namespaces.
+Queue-loss generations reject stale callbacks and clear queued backlog after overflow.
+
+This is decoder-event isolation, not a Spotify playback-instance identity bridge.
+Unscoped callbacks retain legacy association; pointer reuse, advertisement attribution
+and completed-capture/listen association still require separate work and live evidence.
+The shared policy lock does no disk I/O, but live decoder latency remains unmeasured.
+Historical stalls are not claimed fixed.
+
+Includes RC63–RC72, Classic UI, Unicode/custom/legacy/podcast paths, file-based
+status, cached PlayerAPI metadata, per-entry UIDs, strict Ogg/FLAC validation,
+MP3 320 kbps and 1x–30x controls. Downloads off remains effective 1x without
+changing the selected speed. Full portable and Windows CI/package verification
+are required. Spotify 1.3.1.234.g59d6bf59 live validation is separate; this candidate
+does not authorize installation, merge or official release.
+
 # Soggfy v3.0.0-rc.72 — track identity and album provenance (test build)
 
 RC72 completes a selective duplicate-routing and album-tagging milestone against

@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.0.0-rc.73 — decoder-event isolation (test build)
+
+RC73 rejects Ogg/FLAC callback events whose capture settings changed while the
+original decoder call was running. A locked policy snapshot pairs codec enablement
+with its epoch. A thread-local scope carries decoder pointer and entry epoch through
+nested calls and restores the outer scope on return. Known conflicting owners
+discard the active capture. Ogg and FLAC use separate capture namespaces.
+Queue-loss generations reject stale callbacks and clear queued backlog after overflow.
+
+This is decoder-event isolation, not a Spotify playback-instance identity bridge.
+Unscoped callbacks retain legacy association; pointer reuse, advertisement attribution
+and completed-capture/listen association still require separate work and live evidence.
+The shared policy lock does no disk I/O, but live decoder latency remains unmeasured.
+Historical stalls are not claimed fixed.
+
+
 ## 3.0.0-rc.72 — track identity and album provenance (test build)
 
 - Carry validated album URI through cached/live metadata to native tags; reject

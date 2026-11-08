@@ -1,3 +1,18 @@
+## RC73 candidate scope
+
+Portable tests exercise cross-translation-unit decoder context, nested and exception
+restoration, thread isolation and owner conflicts. Windows tests call the production
+decoder hook at 1x, 2x, 10x and 30x with downloads enabled/disabled, checking original
+returns and PCM sample counts. Real Ogg and FLAC hooks exercise settings changes
+during original callbacks, FLAC initialization/errors, immutable scope epochs,
+queue-loss rejection and a partial multi-chunk enqueue that overflows the real ring.
+Downloads-off prefix bounds and byte accounting remain covered.
+
+Full existing portable and Windows suites and MinGW packaging remain gates.
+Local Zig tests are diagnostic only and are never packaged. Preserve RC63–RC72
+packages and the historical extraction. Live scope coverage, pointer reuse,
+advertisement identity, latency and historical stalls remain unvalidated.
+
 ## RC72 candidate scope
 
 Portable regressions cover album identity agreement, cached release conflicts,

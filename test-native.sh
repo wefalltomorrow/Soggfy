@@ -2,6 +2,8 @@
 set -euo pipefail
 cd -- "$(dirname -- "$0")"
 mkdir -p build
+g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -pthread tests/decoder_context_test.cpp tests/decoder_context_probe.cpp -o build/decoder-context-test
+build/decoder-context-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/hook_init_state_test.cpp -o build/hook-init-state-test
 build/hook-init-state-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/hook_installation_test.cpp -o build/hook-installation-test

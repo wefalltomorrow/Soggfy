@@ -6,6 +6,7 @@
 #include "playback_speed_pcm_core.h"
 #include "playback_speed_policy.h"
 #include "playback_speed_probe.h"
+#include "decoder_context.h"
 #include "history_settings.h"
 #include "hook_init_state.h"
 #include "vendor/minhook/include/MinHook.h"
@@ -165,6 +166,7 @@ static DecodeResult* DecodeAudioHook(void* self,DecodeResult* output,
         probe.enters.fetch_add(1,std::memory_order_relaxed);
     }
 
+    DecoderScope decoder_scope(reinterpret_cast<std::uintptr_t>(self),CaptureEpoch());
     DecodeResult* result=original_decode(
         self,output,pcm,sample_count,encoded,encoded_count,flags);
 
