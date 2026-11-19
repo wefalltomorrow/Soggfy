@@ -460,3 +460,52 @@ The pinned probe now checks 1,142 unique instructions plus tables and literals.
 Evidence: outputs/Soggfy-native-cleanup-completion-20261108.json. Leaf decoding
 ends at the trampoline's terminal jump; it does not treat the following
 function as part of that leaf. Evidence remains Python/Capstone static analysis.
+
+## Retained callback notification task
+
+The previously unresolved invocation at 0x8369b0 has an incoming leaf
+trampoline: 0x8381b4 loads the heap-state pointer and tail-jumps to it.
+An earlier search restricted to unwind ranges missed that edge. The
+trampoline address is installed by 0x839818 as a task's invoke function.
+Both instructions are now checked from the independently referenced leaf
+entry, stopping before the unrelated function at 0x8381bc.
+
+Routine 0x839108 maps selected input states to notification codes and calls
+0x839818 on the same streaming object. The latter builds a 0x20-byte heap
+closure: raw object pointer at zero, code at +8, and a 16-byte snapshot at
++0x10. The snapshot comes from 0x840bb0 on object +0x20; its copy source
+is input +0x80, or object +0xa0. It is not the candidate ID at object +0x350.
+The inspected closure construction does not acquire shared ownership of the
+streaming object.
+
+When invoked, 0x8369b0 calls 0x13e1ba0 to construct a code paired with the
+already identified audio-category object at 0x25aeb50. It calls the retained
+wrapper at object +0x3a8 through its invoke pointer at +0x3c0, supplying that
+code and the snapshot with a byte set to one. This establishes a notification
+route to the guarded wrapper; it does not establish delivery of audio samples.
+
+Submission uses 0x17d2698 on the task member at object +0x538. Constructor
+0x8310d4 initializes that member and +0x548 through 0x17d24dc using object
++8. That scheduler pointer was copied from the first pointer in the
+constructor's second argument. The initializer stores it in the task member
+and calls its virtual slot +0x60 to populate task-member +8.
+
+Submission helper 0x17d2698 invokes task-member +8 virtual slot +0x30 with
+the closure as its fifth argument, then calls the first task-member pointer's
+virtual slot +0x68 with the returned pair. Destructor 0x834064 cleans up
++0x548 and then +0x538 through 0x17d25b8 before destroying the wrapper.
+When task-member +8 is non-null, that helper calls its slot +0x10, passes
+the result to the first pointer's slot +0x70 with r8 zero, and subsequently
+destroys the object in task-member +8.
+
+These are established submission/cleanup edges. The concrete scheduler and
+the meaning of slot +0x70 remain unresolved: cancellation of queued work must
+not be equated with waiting for already-running work. The component cleanup
+counter wait from the prior section does not answer this separate question.
+All producers, exception paths, actual service selection and decoder association
+remain open. No runtime hook or production identity reader is enabled.
+
+Pinned validation passes 1,299 unique instruction checks plus tables/literals.
+Evidence: outputs/Soggfy-native-notification-task-20261108.json. The exploratory
+reference report is outputs/Soggfy-native-stream-trampoline-references-20261108.json;
+its search coverage is limited, and the probe records the established edges.
