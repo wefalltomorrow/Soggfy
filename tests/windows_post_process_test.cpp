@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 namespace fs=std::filesystem;
@@ -24,14 +25,36 @@ static void hang(const std::wstring& exe) {
     write(fs::path(env(L"SGF_TEST_PID")),std::to_string(pi.dwProcessId));CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
     Sleep(60000);
 }
-// Identification header for the controlled converter, not a playable fixture.
-// Real codec fixtures are generated and fully decoded in the FFmpeg section.
+// Structurally tagged test inputs for the controlled converter, not playable
+// fixtures. Real codec fixtures are generated and fully decoded below.
+static std::string recoveryIdentity() {
+    return "spotify:track:"+std::string(22,'0');
+}
+static void appendLe32(std::string& bytes,uint32_t value) {
+    for(unsigned i=0;i<4;++i)bytes.push_back(char(value>>(8*i)));
+}
 static std::string identifiedFlac() {
-    std::string b(42,'\0');b.replace(0,4,"fLaC");b[4]=char(128);b[7]=34;
+    std::string b(42,'\0');b.replace(0,4,"fLaC");b[4]=0;b[7]=34;
     b[8]=b[10]=16;
     const uint64_t packed=(uint64_t(44100)<<44)|(uint64_t(1)<<41)|(uint64_t(15)<<36)|44100;
     for(unsigned i=0;i<8;++i)b[18+i]=char(packed>>(56-8*i));
-    return b+"controlled-valid-audio";
+    const auto field="SPOTIFY_URI="+recoveryIdentity();
+    std::string comments;appendLe32(comments,0);appendLe32(comments,1);
+    appendLe32(comments,uint32_t(field.size()));comments+=field;
+    b.push_back(char(0x84)); // final metadata block: Vorbis comments
+    b.push_back(char(comments.size()>>16));b.push_back(char(comments.size()>>8));
+    b.push_back(char(comments.size()));
+    return b+comments+"controlled-valid-audio";
+}
+static std::string identifiedMp3() {
+    std::string payload(1,'\0');payload+="SPOTIFY_URI";payload.push_back('\0');
+    payload+=recoveryIdentity();
+    std::string frame="TXXX";
+    for(int shift=24;shift>=0;shift-=8)frame.push_back(char(payload.size()>>shift));
+    frame.append("\0\0",2);frame+=payload;
+    std::string b="ID3\3\0\0";
+    for(int shift=21;shift>=0;shift-=7)b.push_back(char((frame.size()>>shift)&127));
+    return b+frame+"valid-audio";
 }
 static void wav(const fs::path& p) {
     std::string b(44+44100*2,'\0');
@@ -50,7 +73,8 @@ int main() {
         if(env(L"SGF_TEST_MODE")==L"validation-flood")reportError(true);
         auto input=std::find(args.begin(),args.end(),L"-i");assert(input!=args.end());
         const auto bytes=read(fs::path(*++input));
-        return bytes=="valid-audio"||bytes==identifiedFlac()?0:2;
+        return bytes=="valid-audio"||bytes==identifiedFlac()||
+            (env(L"SGF_TEST_MODE")==L"identity-recovery"&&bytes==identifiedMp3())?0:2;
     }
     if(argc>1&&args[1]==L"-y") {
         assert(std::find(args.begin(),args.end(),L"-xerror")!=args.end());
@@ -75,7 +99,8 @@ int main() {
             for(const auto& arg:args){joined+=std::string(arg.begin(),arg.end());joined+='\n';}
             write(fs::path(log),joined);
         }
-        write(fs::path(args.back()),mode==L"empty"?"":mode==L"corrupt"?"not-audio":"valid-audio");
+        if(mode==L"identity-recovery")write(fs::path(args.back()),identifiedMp3());
+        else write(fs::path(args.back()),mode==L"empty"?"":mode==L"corrupt"?"not-audio":"valid-audio");
         if(mode==L"encode-error")reportError(false);
         if(mode==L"encode-flood")reportError(true);
         return 0;
@@ -124,15 +149,19 @@ int main() {
     assert(run(L"ok").state==PostProcessResult::State::Failed);
     CloseHandle(locked);assert(read(native)=="native-original"&&!fs::exists(final));
     reset();write(native,identifiedFlac());
+    assert(ReadRecordingIdentity(native.wstring()).uri==recoveryIdentity());
     locked=CreateFileW(native.c_str(),GENERIC_READ,FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr);
     assert(locked!=INVALID_HANDLE_VALUE);
-    const std::string recovery_identity="spotify:track:0000000000000000000001";
+    const std::string recovery_identity=recoveryIdentity();
+    SetEnvironmentVariableW(L"SGF_TEST_MODE",L"identity-recovery");
     const auto busy=RetryPostProcessExistingFile(native.wstring(),s,{},recovery_identity);
     assert(busy.state==PostProcessResult::State::Failed&&busy.retryable&&fs::exists(native));
     CloseHandle(locked);
     const auto recovered=RetryPostProcessExistingFile(native.wstring(),s,{},recovery_identity);
     assert(recovered.state==PostProcessResult::State::Converted&&!recovered.retryable&&
-           fs::exists(native)&&fs::exists(final));
+           fs::exists(native)&&fs::exists(final)&&
+           ReadRecordingIdentity(native.wstring()).uri==recovery_identity&&
+           ReadRecordingIdentity(final.wstring()).uri==recovery_identity);
     reset();assert(run(L"source-lock").state==PostProcessResult::State::Converted);assert(!fs::exists(native));
     for(unsigned existing=0;existing<5;++existing) {
         reset();HANDLE locked=INVALID_HANDLE_VALUE;
