@@ -52,7 +52,7 @@ static std::string identifiedMp3() {
     std::string frame="TXXX";
     for(int shift=24;shift>=0;shift-=8)frame.push_back(char(payload.size()>>shift));
     frame.append("\0\0",2);frame+=payload;
-    std::string b="ID3\3\0\0";
+    std::string b("ID3\3\0\0",6);
     for(int shift=21;shift>=0;shift-=7)b.push_back(char((frame.size()>>shift)&127));
     return b+frame+"valid-audio";
 }
@@ -150,6 +150,9 @@ int main() {
     CloseHandle(locked);assert(read(native)=="native-original"&&!fs::exists(final));
     reset();write(native,identifiedFlac());
     assert(ReadRecordingIdentity(native.wstring()).uri==recoveryIdentity());
+    const auto mp3_fixture=identifiedMp3();
+    assert(ParseRecordingIdentity(reinterpret_cast<const unsigned char*>(mp3_fixture.data()),
+                                  mp3_fixture.size()).uri==recoveryIdentity());
     locked=CreateFileW(native.c_str(),GENERIC_READ,FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr);
     assert(locked!=INVALID_HANDLE_VALUE);
     const std::string recovery_identity=recoveryIdentity();
