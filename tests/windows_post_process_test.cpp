@@ -158,10 +158,27 @@ int main() {
     assert(busy.state==PostProcessResult::State::Failed&&busy.retryable&&fs::exists(native));
     CloseHandle(locked);
     const auto recovered=RetryPostProcessExistingFile(native.wstring(),s,{},recovery_identity);
-    assert(recovered.state==PostProcessResult::State::Converted&&!recovered.retryable&&
-           fs::exists(native)&&fs::exists(final)&&
-           ReadRecordingIdentity(native.wstring()).uri==recovery_identity&&
-           ReadRecordingIdentity(final.wstring()).uri==recovery_identity);
+    const auto recovered_source_identity=ReadRecordingIdentity(native.wstring());
+    const auto recovered_output_identity=ReadRecordingIdentity(final.wstring());
+    if(recovered.state!=PostProcessResult::State::Converted||recovered.retryable||
+       !fs::exists(native)||!fs::exists(final)||
+       recovered_source_identity.uri!=recovery_identity||
+       recovered_output_identity.uri!=recovery_identity) {
+        std::fprintf(stderr,
+            "identity recovery diagnostic: state=%d retryable=%d source_exists=%d output_exists=%d "
+            "source_identity_state=%d source_uri=\"%s\" output_identity_state=%d output_uri=\"%s\" error=\"%s\"\n",
+            static_cast<int>(recovered.state),recovered.retryable?1:0,
+            fs::exists(native)?1:0,fs::exists(final)?1:0,
+            static_cast<int>(recovered_source_identity.state),recovered_source_identity.uri.c_str(),
+            static_cast<int>(recovered_output_identity.state),recovered_output_identity.uri.c_str(),
+            recovered.error.c_str());
+    }
+    assert(recovered.state==PostProcessResult::State::Converted);
+    assert(!recovered.retryable);
+    assert(fs::exists(native));
+    assert(fs::exists(final));
+    assert(recovered_source_identity.uri==recovery_identity);
+    assert(recovered_output_identity.uri==recovery_identity);
     reset();assert(run(L"source-lock").state==PostProcessResult::State::Converted);assert(!fs::exists(native));
     for(unsigned existing=0;existing<5;++existing) {
         reset();HANDLE locked=INVALID_HANDLE_VALUE;
