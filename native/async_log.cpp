@@ -176,7 +176,7 @@ static void CopyToken(char* output,size_t capacity,const char* value) {
  if(!capacity)return;
  size_t n=0;
  if(value)for(;n+1<capacity&&value[n];++n){const char c=value[n];output[n]=((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_')?c:'_';}
- output[n]=0;if(!n){std::strncpy(output,"unknown",capacity-1);output[capacity-1]=0;}
+ output[n]=0;if(!n){constexpr char fallback[]="unknown";size_t i=0;for(;i+1<capacity&&fallback[i];++i)output[i]=fallback[i];output[i]=0;}
 }
 void QueueStreamDump(uint64_t stream_id,uint32_t epoch,bool flac,const char* event,const char* state,
                      unsigned status,const void* bytes,size_t length,uint64_t input_length) {
