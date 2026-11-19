@@ -85,3 +85,10 @@ settings-change race. Full MinGW CI/package and live acceptance remain separate.
 This review changes no runtime defaults, installed files or staged live-acceptance
 package. The cancellation correction is a source change requiring its own CI
 checkpoint; earlier package evidence does not validate the new source.
+
+Follow-up: source fed216eb6f04db77590cbf7a1fd74bea5be4f1f3 passed all four
+jobs in CI 206 (44504382147) and independent MinGW package verification.
+The cancellation correction is now CI/package verified; a live settings-change
+race remains untested. See MILESTONES.md for hashes, the dependency-download
+timeout/rerun and GCC fixture compatibility fixes. No automatic busy-file
+retry, native MP3 capture or newer-client pointer chain was enabled.

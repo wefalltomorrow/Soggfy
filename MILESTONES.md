@@ -6,7 +6,31 @@ retention/retries, stream-dump replay, unmatched recordings and expanded
 telemetry are not implied complete by earlier selective ports. It also records
 a canceled-conversion/DONE status defect, corrected in source with an explicit
 canceled result. Local object compilation and Classic status regressions pass;
-full CI/package verification of the change remains pending.
+full CI/package verification passed in CI run 206 as recorded below.
+
+## November 19 cancellation and compiler compatibility checkpoint
+
+Source `fed216eb6f04db77590cbf7a1fd74bea5be4f1f3` passed all four jobs in
+CI run 206 (`44504382147`), including both deterministic sanitizer seeds and
+Windows integration/build checks. The first attempt timed out downloading
+Ubuntu dependencies for one sanitizer job; rerunning the affected jobs passed.
+Earlier runs 203-205 exposed GCC 15 diagnostics in test fixtures: the ID3
+mutation now uses bounds-checked access, and hook/playback-speed discovery
+fixtures use fixed storage for their optional duplicate entries. Strict
+warnings remain enabled, and both duplicate-target ambiguity tests remain.
+
+Independent MinGW package verification passed against merge commit
+`0b644df75ff701f935c4d7fe9375adadf5a5ca0a`; its tree equals the source tree
+`0c39a1c6f3b2f6b9641e6f6588c409013ce98c96`. The preserved RC87 package is
+separate from earlier RC87 artifacts. Package SHA-256:
+`c1cd57e43fe50474b9f11674f08d5c0dbef410ab2d588f72469232baac1f6bfe`.
+Artifact SHA-256:
+`1de3ab05b24ab739b935b7b6a56968a42a50178b386e35e8b6ea20ad196676b5`.
+ZIP integrity, manifest, source scripts/docs/configuration, embedded Classic
+scripts, AMD64 PE imports, codec licenses and DLL-bound validation helper
+were checked independently. This is not a live cancellation-race test or
+completion of the open milestones. The staged RC86 live-acceptance package
+has not been replaced or installed.
 
 Updated November 8, 2026. RC86 passed all four jobs in CI 42475271762 and
 independent artifact verification at source 2d5e9f0cc9f90d47acdb7f7f1a8ff618324535ca.
