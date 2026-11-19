@@ -179,7 +179,8 @@ static void FlacEvent(void* context,const CaptureEvent& entry,unsigned kind,cons
 }
 static void* FlacInitHook(void* context,void* result) {
     auto callback=audio_callbacks.Enter();
-    FlacEvent(context,BeginEvent(true),2);
+    const auto entry=BeginEvent(true);
+    FlacEvent(context,entry,2);
     return original_flac_init(context,result);
 }
 static int FlacReadHook(void* context,unsigned char* buffer,size_t* length) {
@@ -209,6 +210,8 @@ static void FlacErrorHook(void* context,unsigned error) {
 struct Capture {
     CaptureOwner owner;
     Stream stream;
+    uint64_t dump_stream_id=0;
+    uint32_t epoch=0;
     bool lossless=false,metadata=false;
     FlacInfo flac;
     FlacCoverage coverage;
@@ -597,6 +600,14 @@ static DWORD WINAPI Worker(LPVOID) {
     // Ogg sync and FLAC decoder pointers occupy distinct namespaces.
     std::map<std::pair<unsigned,uintptr_t>,std::unique_ptr<Capture>> active;
     std::vector<std::unique_ptr<Capture>> ready;
+    uint64_t next_dump_stream_id=0;
+    auto abort_active=[&](const char* event_name) {
+        for(const auto& item:active) {
+            const Capture& capture=*item.second;
+            QueueStreamDump(capture.dump_stream_id,capture.epoch,capture.lossless,event_name,
+                "incomplete",1,nullptr,0,0);
+        }
+    };
     std::vector<Heard> heard;
     Listen listen; MediaSnapshotReader reader; Media current; PlaybackQualityTracker quality; std::string client_quality;
     double last_media=Now(),next_log=0,next_probe=0;
@@ -612,6 +623,7 @@ static DWORD WINAPI Worker(LPVOID) {
             if(client.boundary!=client_boundary) {
                 client_boundary=client.boundary;boundary_time=now;
                 if(!current.title.empty())SetClassicTrackStatus(current,"ERROR","Canceled: client playback boundary");
+                abort_active("stream_aborted");
                 active.clear();ready.clear();heard.clear();listen={};current={};quality.ClearStreams();
                 Log("client playback boundary; pending captures and listening coverage invalidated");
             }
@@ -624,6 +636,7 @@ static DWORD WINAPI Worker(LPVOID) {
                 output=preferences.root; memory_limit=size_t(preferences.max_buffered_mib)*1024*1024;
                 bool capture=preferences.downloads && (preferences.ogg || preferences.flac);
                 if(capture!=enabled || initial || preferences.capture_epoch!=epoch) {
+                    abort_active("stream_aborted");
                     active.clear(); ready.clear(); heard.clear(); listen={}; current={};
                     last_media=now;media_unavailable=false;
                     if(!enabled && capture) saved_count=0;
@@ -658,8 +671,13 @@ static DWORD WINAPI Worker(LPVOID) {
                 WaitForSingleObject(event,200); continue;
             }
             if(InterlockedCompareExchange(&dropped,0,0)!=overflow) {
+                const LONG observed_loss=InterlockedCompareExchange(&dropped,0,0);
+                const uint32_t lost=uint32_t(observed_loss)-uint32_t(overflow);
+                QueueStreamDump(0,epoch==~0u?0:epoch,false,"capture_queue_loss","incomplete",
+                    lost,nullptr,0,lost);
+                abort_active("stream_aborted");
                 AcquireSRWLockExclusive(&queue_lock);
-                overflow=InterlockedCompareExchange(&dropped,0,0);head=tail;count=0;
+                overflow=observed_loss;head=tail;count=0;
                 ReleaseSRWLockExclusive(&queue_lock);
                 if(!current.title.empty())SetClassicTrackStatus(current,"ERROR","Canceled: capture queue overflow");
                 active.clear(); ready.clear(); heard.clear(); listen.Invalidate(); quality.ClearStreams();
@@ -688,23 +706,45 @@ static DWORD WINAPI Worker(LPVOID) {
                 if(s.kind>=2) {
                     auto found=active.find(key);
                     if(s.kind==2) {
+                        if(found!=active.end()) {
+                            const Capture& prior=*found->second;
+                            QueueStreamDump(prior.dump_stream_id,prior.epoch,true,"flac_restarted",
+                                "incomplete",1,nullptr,0,0);
+                        }
                         auto c=std::make_unique<Capture>(); c->lossless=true; c->born=s.time;
+                        c->epoch=s.epoch;c->dump_stream_id=++next_dump_stream_id;
                         c->owner.Accept(s.owner);
+                        QueueStreamDump(c->dump_stream_id,c->epoch,true,"flac_init","observed",
+                            s.format,nullptr,0,0);
                         active[key]=std::move(c); Log("FLAC decoder initialized; capture begins at compressed offset zero"); continue;
                     }
                     if(found==active.end() || !found->second->lossless) continue;
                     Capture& c=*found->second;
-                    if(!c.owner.Accept(s.owner)){active.erase(found);Log("FLAC decoder owner conflict; stream discarded");continue;}
-                    if(s.kind==5) { active.erase(found); Log("FLAC decoder error; stream discarded"); continue; }
+                    if(!c.owner.Accept(s.owner)){
+                        QueueStreamDump(c.dump_stream_id,c.epoch,true,"flac_rejected","rejected",1,nullptr,0,0);
+                        active.erase(found);Log("FLAC decoder owner conflict; stream discarded");continue;
+                    }
+                    if(s.kind==5) {
+                        QueueStreamDump(c.dump_stream_id,c.epoch,true,"flac_error","error",s.format,nullptr,0,0);
+                        active.erase(found); Log("FLAC decoder error; stream discarded"); continue;
+                    }
                     if(s.kind==3) {
+                        QueueStreamDump(c.dump_stream_id,c.epoch,true,"flac_read","read",0,
+                            s.bytes,s.length,s.input_length);
                         size_t reserved=publishing_reserved.load(); for(const auto& item:active) reserved+=item.second->data.capacity();
                         for(const auto& item:ready) reserved+=item->data.capacity();
                         size_t available=reserved<memory_limit ? memory_limit-reserved : 0;
-                        if(!c.data.Append(s.bytes,s.length,available)) { active.erase(found); Log("FLAC capture memory limit; stream discarded"); continue; }
+                        if(!c.data.Append(s.bytes,s.length,available)) {
+                            QueueStreamDump(c.dump_stream_id,c.epoch,true,"flac_rejected","rejected",2,nullptr,0,0);
+                            active.erase(found); Log("FLAC capture memory limit; stream discarded"); continue;
+                        }
                         c.bytes+=s.length;
                         if(!c.metadata) {
                             size_t audio=0; auto parsed=ParseFlacMetadata(c.data,c.flac,audio);
-                            if(parsed==FlacParse::Invalid) { active.erase(found); Log("FLAC metadata invalid; stream discarded"); continue; }
+                            if(parsed==FlacParse::Invalid) {
+                                QueueStreamDump(c.dump_stream_id,c.epoch,true,"flac_rejected","rejected",3,nullptr,0,0);
+                                active.erase(found); Log("FLAC metadata invalid; stream discarded"); continue;
+                            }
                             if(parsed==FlacParse::Valid) {
                                 c.metadata=true; char line[180]; snprintf(line,sizeof(line),"FLAC STREAMINFO rate=%u channels=%u bits=%u total=%llu metadata_bytes=%zu",c.flac.rate,c.flac.channels,c.flac.bits,static_cast<unsigned long long>(c.flac.total_samples),audio); Log(line);
                             }
@@ -712,23 +752,41 @@ static DWORD WINAPI Worker(LPVOID) {
                         continue;
                     }
                     if(s.kind==4) {
+                        QueueStreamDump(c.dump_stream_id,c.epoch,true,"flac_frame","observed",s.format,nullptr,0,0);
                         uint32_t frame[6]; uint64_t number; memcpy(frame,s.bytes,24); memcpy(&number,s.bytes+24,8);
                         if(frame[5]==0) number=uint32_t(number);
                         if(!c.metadata || !c.coverage.Frame(c.flac,frame[0],frame[1],frame[2],frame[4],frame[5],number)) {
+                            QueueStreamDump(c.dump_stream_id,c.epoch,true,"flac_rejected","rejected",4,nullptr,0,0);
                             active.erase(found); Log("FLAC decoded-frame gap or format mismatch; stream discarded"); continue;
                         }
                         if(!c.coverage.Complete(c.flac)) continue;
-                    } else if(s.kind!=6 || !c.coverage.Complete(c.flac)) { active.erase(found); Log("FLAC truncated before total samples; discarded"); continue; }
+                        QueueStreamDump(c.dump_stream_id,c.epoch,true,"flac_complete","complete",
+                            c.coverage.frames,nullptr,0,c.bytes);
+                    } else if(s.kind!=6 || !c.coverage.Complete(c.flac)) {
+                        if(s.kind==6)QueueStreamDump(c.dump_stream_id,c.epoch,true,"flac_eof","truncated",0,nullptr,0,c.bytes);
+                        else QueueStreamDump(c.dump_stream_id,c.epoch,true,"flac_rejected","rejected",5,nullptr,0,0);
+                        active.erase(found); Log("FLAC truncated before total samples; discarded"); continue;
+                    }
+                    if(s.kind==6)QueueStreamDump(c.dump_stream_id,c.epoch,true,"flac_eof","complete",0,nullptr,0,c.bytes);
                     c.finished=s.time;
                     char line[180]; snprintf(line,sizeof(line),"FLAC COMPLETE frames=%u samples=%llu bytes=%llu duration=%.6f",c.coverage.frames,static_cast<unsigned long long>(c.coverage.samples),static_cast<unsigned long long>(c.bytes),c.Duration()); Log(line);
                     ready.push_back(std::move(found->second)); active.erase(found); continue;
                 }
-                Page page; if(!ParsePage(s.bytes,s.length,page)) {
+                Page page;
+                auto found=active.find(key);
+                if(!ParsePage(s.bytes,s.length,page)) {
+                    if(found!=active.end()) {
+                        const Capture& capture=*found->second;
+                        QueueStreamDump(capture.dump_stream_id,capture.epoch,false,"ogg_page","rejected",
+                            0xffffffffu,s.bytes,s.length,s.length);
+                    }
                     active.erase(key); Log("invalid Ogg page rejected"); continue;
                 }
 
-                auto found=active.find(key);
                 if(found!=active.end()&&!found->second->owner.Accept(s.owner)) {
+                    const Capture& capture=*found->second;
+                    QueueStreamDump(capture.dump_stream_id,capture.epoch,false,"ogg_page","rejected",
+                        0xfffffffeu,s.bytes,s.length,s.length);
                     active.erase(found);Log("Ogg decoder owner conflict; stream discarded");continue;
                 }
                 if(page.vorbis_start) {
@@ -739,10 +797,19 @@ static DWORD WINAPI Worker(LPVOID) {
                        found->second->stream.active &&
                        page.serial==found->second->stream.serial &&
                        page.sequence<found->second->stream.next) {
+                        const Capture& capture=*found->second;
+                        QueueStreamDump(capture.dump_stream_id,capture.epoch,false,"ogg_page","replayed",
+                            static_cast<unsigned>(Result::Replay),s.bytes,s.length,s.length);
                         if(DebugLoggingEnabled())Log("Ogg replayed BOS page ignored");
                         continue;
                     }
+                    if(found!=active.end()) {
+                        const Capture& prior=*found->second;
+                        QueueStreamDump(prior.dump_stream_id,prior.epoch,false,"ogg_restarted",
+                            "incomplete",1,nullptr,0,0);
+                    }
                     auto c=std::make_unique<Capture>(); c->born=s.time;
+                    c->epoch=s.epoch;c->dump_stream_id=++next_dump_stream_id;
                     c->owner.Accept(s.owner);
                     active[key]=std::move(c);
                     found=active.find(key);
@@ -760,6 +827,8 @@ static DWORD WINAPI Worker(LPVOID) {
                 const auto prior_pages=c.stream.pages;
                 Result result=c.stream.Push(s.bytes,s.length);
                 if(result==Result::Replay) {
+                    QueueStreamDump(c.dump_stream_id,c.epoch,false,"ogg_page","replayed",
+                        static_cast<unsigned>(result),s.bytes,s.length,s.length);
                     if(DebugLoggingEnabled()) {
                         char line[512];snprintf(line,sizeof(line),
                             "ogg_replay ctx=%llx seq=%u expected=%u serial=%u flags=0x%02x granule=%lld pages=%u bytes=%llu",
@@ -770,6 +839,8 @@ static DWORD WINAPI Worker(LPVOID) {
                     continue;
                 }
                 if(result==Result::Invalid || result==Result::Ignore) {
+                    QueueStreamDump(c.dump_stream_id,c.epoch,false,"ogg_page","rejected",
+                        static_cast<unsigned>(result),s.bytes,s.length,s.length);
                     char line[1024];snprintf(line,sizeof(line),
                         "ogg_rejected result=%s ctx=%llx seq=%u expected_seq=%u serial=%u expected_serial=%u flags=0x%02x granule=%lld prior_samples=%lld pages=%u bytes=%llu media=%s pos=%.3f raw=%.3f duration=%.3f rate=%.3f",
                         result==Result::Invalid?"invalid":"ignore",
@@ -780,11 +851,14 @@ static DWORD WINAPI Worker(LPVOID) {
                     LogActivity("failed",line);QueueDiagnostic(line);
                     active.erase(found); continue;
                 }
+                QueueStreamDump(c.dump_stream_id,c.epoch,false,"ogg_page","accepted",
+                    static_cast<unsigned>(result),s.bytes,s.length,s.length);
                 size_t reserved=publishing_reserved.load();
                 for(const auto& item:active) reserved+=item.second->data.capacity();
                 for(const auto& item:ready) reserved+=item->data.capacity();
                 size_t available=reserved<memory_limit ? memory_limit-reserved : 0;
                 if(!c.data.Append(s.bytes,s.length,available)) {
+                    QueueStreamDump(c.dump_stream_id,c.epoch,false,"ogg_capture_rejected","rejected",2,nullptr,0,0);
                     active.erase(found);
                     Log("capture memory limit reached; track discarded without scratch files"); continue;
                 }

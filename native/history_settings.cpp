@@ -20,7 +20,7 @@ static bool IsMusic(std::wstring root) {
     return !music_path.empty() && (_wcsicmp(root.c_str(),music_path.c_str())==0 ||
         _wcsicmp(root.c_str(),(music_path+L"\\Spotify").c_str())==0);
 }
-static volatile LONG downloads_enabled=0,ogg_enabled=1,flac_enabled=1,capture_epoch=0,log_level_value=1;
+static volatile LONG downloads_enabled=0,ogg_enabled=1,flac_enabled=1,capture_epoch=0,log_level_value=1,stream_dump_enabled=0;
 static HANDLE settings_signal=nullptr,persist_done=nullptr;
 static SRWLOCK persistence_lock=SRWLOCK_INIT;
 static unsigned persisted_generation=0;
@@ -70,6 +70,8 @@ static constexpr char default_ini[]=
     "DebugLog=0\r\n"
     "; 0 off, 1 completions/warnings/failures, 2 activity, 4 diagnostics.\r\n"
     "LogLevel=1\r\n"
+    "; Default off. Diagnostic raw audio stream evidence, capped at 64 MiB per session.\r\n"
+    "StreamDump=0\r\n"
     "\r\n"
     "[History]\r\n"
     "; Maximum compressed audio held in RAM for one track.\r\n"
@@ -122,6 +124,7 @@ static DWORD WINAPI PersistSettings(LPVOID) {
         flag(L"To Disk",L"Metadata",snapshot.metadata);
         flag(L"To Disk",L"Log",snapshot.log);
         flag(L"To Disk",L"DebugLog",snapshot.debug_log);
+        flag(L"To Disk",L"StreamDump",snapshot.stream_dump);
         text(L"To Disk",L"LogLevel",std::to_wstring(snapshot.log_level));
         flag(L"To Disk",L"Normalize Artist Separators",snapshot.normalize_artist_separators);
         text(L"To Disk",L"Save Location",snapshot.save_location);
@@ -190,6 +193,7 @@ void InitSettings(HMODULE proxy) {
     settings.normalize_artist_separators=GetPrivateProfileIntW(L"To Disk",L"Normalize Artist Separators",1,ini.c_str())!=0;
     settings.log=GetPrivateProfileIntW(L"To Disk",L"Log",1,ini.c_str())!=0;
     settings.debug_log=GetPrivateProfileIntW(L"To Disk",L"DebugLog",0,ini.c_str())!=0;
+    settings.stream_dump=GetPrivateProfileIntW(L"To Disk",L"StreamDump",0,ini.c_str())!=0;
     wchar_t level_text[32];
     GetPrivateProfileStringW(L"To Disk",L"LogLevel",L"",level_text,32,ini.c_str());
     settings.log_level=ReadLogLevel(level_text,settings.log,settings.debug_log);
@@ -232,6 +236,7 @@ void InitSettings(HMODULE proxy) {
     settings.music_folder=IsMusic(settings.root);
     downloads_enabled=settings.downloads; ogg_enabled=settings.ogg; flac_enabled=settings.flac;
     InterlockedExchange(&log_level_value,LONG(settings.log_level));
+    InterlockedExchange(&stream_dump_enabled,settings.stream_dump?1:0);
     settings_signal=CreateEventW(nullptr,FALSE,FALSE,nullptr);
     persist_done=CreateEventW(nullptr,FALSE,FALSE,nullptr);
     HANDLE thread=settings_signal&&persist_done ? CreateThread(nullptr,0,PersistSettings,nullptr,0,nullptr) : nullptr;
@@ -260,6 +265,7 @@ MetadataPublicationGuard::~MetadataPublicationGuard() {
 unsigned LogLevel() {return unsigned(InterlockedCompareExchange(&log_level_value,0,0));}
 bool LoggingEnabled() { return LogLevel()!=0; }
 bool DebugLoggingEnabled() { return LogLevel()==4; }
+bool StreamDumpEnabled() { return InterlockedCompareExchange(&stream_dump_enabled,0,0)!=0; }
 bool OggEnabled() { return downloads_enabled && ogg_enabled; }
 bool FlacEnabled() { return downloads_enabled && flac_enabled; }
 unsigned CaptureEpoch() { return unsigned(InterlockedCompareExchange(&capture_epoch,0,0)); }

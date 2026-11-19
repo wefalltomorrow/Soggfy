@@ -21,8 +21,10 @@ int main() {
     check(GetFileAttributesW(ini.c_str())!=INVALID_FILE_ATTRIBUTES,"missing INI created beside DLL");
     auto defaults=GetSettings();
     check(!defaults.downloads && !defaults.menu && defaults.classic_ui && defaults.ogg && defaults.flac &&
-          defaults.metadata && defaults.log && !defaults.debug_log,
+          defaults.metadata && defaults.log && !defaults.debug_log && !defaults.stream_dump,
           "generated INI loads complete default switches");
+    check(GetPrivateProfileIntW(L"To Disk",L"StreamDump",UINT(-1),ini.c_str())==0,
+          "generated INI keeps raw stream dumps disabled");
     check(defaults.save_location.empty() && defaults.max_buffered_mib==500,
           "generated INI uses default Music location and 500 MiB buffer");
     check(GetPrivateProfileIntW(L"History",L"StopAfter",UINT(-1),ini.c_str())==UINT(-1),"generated INI omits history limit");

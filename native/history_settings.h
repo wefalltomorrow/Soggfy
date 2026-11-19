@@ -4,7 +4,7 @@
 namespace history {
 struct Settings {
     bool downloads=false,ogg=true,flac=true,menu=false,classic_ui=true,music_folder=false;
-    bool metadata=true,log=true,debug_log=false,normalize_artist_separators=true;
+    bool metadata=true,log=true,debug_log=false,stream_dump=false,normalize_artist_separators=true;
     bool network_patch=false; // INI-only, fixed at startup; never persisted by UI saves.
 
     // Classic Soggfy behaviour/settings.
@@ -81,6 +81,7 @@ std::wstring WindowsPath(const std::wstring& path);
 void PickSaveLocation(HWND owner);
 bool LoggingEnabled();
 bool DebugLoggingEnabled();
+bool StreamDumpEnabled();
 bool FlushSettings(unsigned timeout_ms);
 void HistoryLog(const char* message);
 }

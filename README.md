@@ -205,6 +205,10 @@ per lane; a diagnostic burst cannot consume activity queue slots. Both lanes use
 one disk worker, so this does not isolate disk latency. Files reset at their cap.
 Scripts/Diagnose.ps1 includes the last 80 lines from each file.
 
+For a bounded raw-stream investigation, set `StreamDump=1` under `[To Disk]`
+in `SpotifyHistory.ini` and restart. The default is off. Session payloads and
+replay instructions are documented in [AUDIO-HISTORY.md](AUDIO-HISTORY.md).
+
 ## Safety / implementation notes
 
 The current UI does not restore the old localhost WebSocket server or old x86 decoder hook.

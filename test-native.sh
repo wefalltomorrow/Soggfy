@@ -92,6 +92,9 @@ g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/recording_identity_test.
 build/recording-identity-test
 g++ -std=c++17 -O2 -Wall -Wextra -Werror tests/bounded_queue_test.cpp -o build/bounded-queue-test
 build/bounded-queue-test
+g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -pthread tests/stream_dump_queue_test.cpp -o build/stream-dump-queue-test
+build/stream-dump-queue-test
+python3 tests/stream_dump_replay_test.py
 g++ -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror tests/retry_schedule_test.cpp -o build/retry-schedule-test
 build/retry-schedule-test
 for script in native/ui/classic_core.js native/ui/classic_settings.js native/ui/classic_status.js native/ui/classic_recovery.js native/ui/classic_canvas.js native/ui/classic_m3u.js native/ui/classic_context.js native/ui/classic_boot.js; do

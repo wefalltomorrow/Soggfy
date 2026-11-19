@@ -19,7 +19,7 @@ build/sanitizers/jpeg-validation/jpeg-validation-test.exe
 python3 tests/jpeg_validation_decode_test.py build/sanitizers/jpeg-validation/jpeg-validation-test.exe
 build/sanitizers/mutations "${1:-20000}" "${2:-4043931417}"
 # Exercise exact regression scenarios under the same instrumentation.
-for test in log_queue history_core recording_identity vorbis_comments picture_envelope metadata_refresh_plan metadata_refresh_container listen_metadata decoder_context client_playback compressed_buffer mp3_layout spotify_hook_discovery flac_history ogg_tags capture_association; do
+for test in log_queue history_core recording_identity vorbis_comments picture_envelope metadata_refresh_plan metadata_refresh_container listen_metadata decoder_context client_playback compressed_buffer mp3_layout spotify_hook_discovery flac_history ogg_tags capture_association stream_dump_queue; do
   extra=()
   case "$test" in
     metadata_refresh_plan) extra=(native/rich_metadata.cpp);;

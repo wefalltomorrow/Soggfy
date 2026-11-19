@@ -56,6 +56,13 @@ MaxBufferedMiB=500
 - **Metadata:** optional existing client state/cache enrichment; no endpoint requests; set 0 and restart to disable its hooks.
 - **Log:** default on; started/failed/finished activity in the save root, capped at 5 MiB.
 - **DebugLog:** default off; opt-in diagnostic detail in the same bounded log.
+- **StreamDump:** default off. Set `StreamDump=1` under `[To Disk]` and restart to
+  save bounded raw Ogg-page and FLAC-read evidence while capture is active. Each
+  process session is stored under Soggfy-stream-dump in the save root, with a
+  48 MiB payload cap and a 16 MiB JSONL index cap (64 MiB combined). The payload
+  contains source audio bytes. From a source checkout, validate and reconstruct
+  completed streams with `python tools/replay_stream_dump.py <session-folder>`;
+  incomplete evidence requires `--allow-incomplete` and reconstructs prefixes only.
 - **MaxBufferedMiB:** 8–512 MiB, default 500, limits compressed capture allocations.
   There is also an approximately 8 MiB event queue, artwork, and a temporary
   completed-file buffer during native tagging. Oversized tracks are discarded.

@@ -2,11 +2,30 @@
 
 November 19 upstream review: FLOGGFY_20261119_REVIEW.md pins stable v1.3 and
 prerelease v1.4-RC2, records gaps and updates implementation order. Busy-file
-retention/retries, stream-dump replay, unmatched recordings and expanded
-telemetry are not implied complete by earlier selective ports. It also records
-a canceled-conversion/DONE status defect, corrected in source with an explicit
-canceled result. Local object compilation and Classic status regressions pass;
-full CI/package verification passed in CI run 206 as recorded below.
+retention/retries, unmatched recordings and expanded telemetry are not implied
+complete by earlier selective ports. Bounded stream evidence and replay are now
+implemented in the current PR diff, with CI/package validation still pending.
+It also records a canceled-conversion/DONE status defect, corrected in source
+with an explicit canceled result. Local object compilation and Classic status
+regressions pass; full CI/package verification passed in CI run 206 as recorded
+below.
+
+## November 19 bounded stream evidence and replay
+
+The current PR diff adds opt-in Ogg-page and FLAC compressed-read evidence,
+unique per-process session folders, 48 MiB payload and 16 MiB index caps
+(64 MiB combined), explicit queue-loss and incomplete markers, and a replay
+validator that checks the JSONL schema, offsets, CRCs, file bounds and
+completion before reconstructing streams. Partial reconstruction requires
+`--allow-incomplete`. `StreamDump=0` remains the default; see AUDIO-HISTORY.md
+and FLOGGFY_20261119_REVIEW.md.
+
+Local verification passed for the replay corpus, concurrent bounded queue,
+Windows logger lane and history tests, and audio_history.cpp object compilation
+with Zig 0.13 targeting x86_64 Windows GNU. The object compile suppresses Zig/Clang's
+-Wmissing-field-initializers diagnostic for pre-existing Publication
+aggregate returns; other -Wall -Wextra -Werror checks remain enabled. Full
+MinGW CI/package verification and pinned-client live evidence remain pending.
 
 ## November 19 cancellation and compiler compatibility checkpoint
 

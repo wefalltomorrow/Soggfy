@@ -76,6 +76,9 @@ python3 tests/metadata_refresh_decode_test.py "$floggfy_test_root/metadata-refre
 "$CXX" "${common[@]}" tests/windows_settings_flush_test.cpp native/async_log.cpp  -lole32 -luuid -lshell32 -o "$floggfy_test_root/windows-settings-flush-test.exe"
 "$floggfy_test_root/windows-settings-flush-test.exe"
 "$floggfy_test_root/windows-log-test.exe"
+"$CXX" -std=c++17 -O2 -UNDEBUG -Wall -Wextra -Werror -pthread -static tests/stream_dump_queue_test.cpp -o "$floggfy_test_root/stream-dump-queue-test.exe"
+"$floggfy_test_root/stream-dump-queue-test.exe"
+python3 tests/stream_dump_replay_test.py
 "$floggfy_test_root/windows-metadata-identity-test.exe"
 
 "$CXX" "${common[@]}" tests/cached_metadata_test.cpp native/cached_metadata.cpp native/rich_metadata.cpp -o "$floggfy_test_root/cached-metadata-test.exe"
