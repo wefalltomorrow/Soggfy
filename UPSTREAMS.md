@@ -1,3 +1,14 @@
+## November 19, 2026 update review
+
+Reviewed stable Floggfy v1.3 (fa26418728074e2823384b097eecfde6fde69ddf)
+and prerelease v1.4-RC2 (660ba79409629b8d572b12c420ada71ad1e55dde).
+See FLOGGFY_20261119_REVIEW.md for pinned references, confirmed gaps, existing
+overlap and implementation order. Main alone excludes the RC2 telemetry work.
+This is source comparison, not a port or new runtime validation. An accompanying
+local fix separates canceled publication results from successful duplicate skips.
+In particular,
+the newer upstream client's tests do not resolve our pinned native identity audit.
+
 ## RC74 client playback boundaries — November 8, 2026
 
 Continues the pinned v1.3-RC6 (7b825e3b942596c3e912fbbf7a0487abd7578e47)

@@ -233,7 +233,7 @@ static Catalog CatalogFor(const Media& media) {
     if(_wcsicmp(c.artist.c_str(),L"Various Artists")==0) c.kind=MediaKind::VariousArtists;
     return c;
 }
-enum class Publication { Saved,Skipped,Failed };
+enum class Publication { Saved,Skipped,Canceled,Failed };
 struct PublicationResult {
     Publication state=Publication::Failed;
     std::wstring path;
@@ -254,7 +254,7 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
     swprintf(stamp,64,L"%04u-%02u-%02uT%02u:%02u:%02uZ",t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond);
     auto catalog=CatalogFor(heard.media);
     auto settings=GetSettings();
-    if(settings.capture_epoch!=expected_epoch || !settings.downloads || !(c.lossless ? settings.flac : settings.ogg)) return {Publication::Skipped,{},"settings changed"};
+    if(settings.capture_epoch!=expected_epoch || !settings.downloads || !(c.lossless ? settings.flac : settings.ogg)) return {Publication::Canceled,{},"settings changed"};
     const std::wstring& active_template=(catalog.kind==MediaKind::Podcast && !settings.podcast_template.empty())
         ?settings.podcast_template:settings.path_template;
     std::wstring destination=OutputPath(settings.root,catalog,c.lossless ? L".flac" : L".ogg",
@@ -281,7 +281,7 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
         control.canceled=[generation=settings.generation,epoch=settings.capture_epoch] {
             return !workers_running.load(std::memory_order_acquire)||CaptureEpoch()!=epoch||GetSettings().generation!=generation;
         };
-        if(control.canceled())return {Publication::Skipped,path,"settings changed"};
+        if(control.canceled())return {Publication::Canceled,path,"settings changed"};
         const auto post=RetryPostProcessExistingFile(path,settings,control);
         if(post.state==PostProcessResult::State::Failed) {
             LogActivity("conversion_retry_failed",post.error);
@@ -342,7 +342,7 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
     bool tagged_ok=c.lossless ? TagFlac(source,tags,tagged,error) : TagOgg(source,tags,tagged,error);
     if(!tagged_ok) { Log(("native tagging failed: "+error).c_str()); return {Publication::Failed,{},error}; }
     auto latest=GetSettings();
-    if(latest.generation!=settings.generation || !latest.downloads || !(c.lossless ? latest.flac : latest.ogg)) return {Publication::Skipped,{},"settings changed"};
+    if(latest.generation!=settings.generation || !latest.downloads || !(c.lossless ? latest.flac : latest.ogg)) return {Publication::Canceled,{},"settings changed"};
     if(!Directories(destination.substr(0,destination.find_last_of(L'\\')))) return {Publication::Failed,{},"output directory could not be created"};
     // Publish the complete tagged native capture before optional sidecars and
     // conversion. Conflicts preserve the existing file and may retry conversion.
@@ -431,7 +431,7 @@ static DWORD WINAPI SaveWorker(LPVOID) {
                 SetClassicTrackStatus(job.heard.media,"ERROR",result.message.empty()?"Publication failed":result.message,result.path);
                 LogActivity("failed",identity+" ("+(result.message.empty()?std::string("publication failed"):result.message)+")");
             } else {
-                SetClassicTrackStatus(job.heard.media,"ERROR","Canceled: settings changed");
+                SetClassicTrackStatus(job.heard.media,"ERROR","Canceled: settings changed",result.path);
                 LogActivity("failed",identity+" (settings changed)");
             }
         } catch(...) {

@@ -1,5 +1,13 @@
 # Engineering milestones
 
+November 19 upstream review: FLOGGFY_20261119_REVIEW.md pins stable v1.3 and
+prerelease v1.4-RC2, records gaps and updates implementation order. Busy-file
+retention/retries, stream-dump replay, unmatched recordings and expanded
+telemetry are not implied complete by earlier selective ports. It also records
+a canceled-conversion/DONE status defect, corrected in source with an explicit
+canceled result. Local object compilation and Classic status regressions pass;
+full CI/package verification of the change remains pending.
+
 Updated November 8, 2026. RC86 passed all four jobs in CI 42475271762 and
 independent artifact verification at source 2d5e9f0cc9f90d47acdb7f7f1a8ff618324535ca.
 It is a checkpoint, not completion of all work. RC87 adds supervised artwork
