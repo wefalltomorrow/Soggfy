@@ -123,6 +123,16 @@ int main() {
     assert(locked!=INVALID_HANDLE_VALUE);
     assert(run(L"ok").state==PostProcessResult::State::Failed);
     CloseHandle(locked);assert(read(native)=="native-original"&&!fs::exists(final));
+    reset();write(native,identifiedFlac());
+    locked=CreateFileW(native.c_str(),GENERIC_READ,FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr);
+    assert(locked!=INVALID_HANDLE_VALUE);
+    const std::string recovery_identity="spotify:track:0000000000000000000001";
+    const auto busy=RetryPostProcessExistingFile(native.wstring(),s,{},recovery_identity);
+    assert(busy.state==PostProcessResult::State::Failed&&busy.retryable&&fs::exists(native));
+    CloseHandle(locked);
+    const auto recovered=RetryPostProcessExistingFile(native.wstring(),s,{},recovery_identity);
+    assert(recovered.state==PostProcessResult::State::Converted&&!recovered.retryable&&
+           fs::exists(native)&&fs::exists(final));
     reset();assert(run(L"source-lock").state==PostProcessResult::State::Converted);assert(!fs::exists(native));
     for(unsigned existing=0;existing<5;++existing) {
         reset();HANDLE locked=INVALID_HANDLE_VALUE;
@@ -140,6 +150,7 @@ int main() {
         if(std::wstring(mode)==L"cancel")control.canceled=[&]{return GetTickCount64()-started>700;};
         const auto result=run(mode,control);
         assert(result.state==PostProcessResult::State::Failed);assert(!result.error.empty());assert(read(native)=="native-original");
+        assert(!result.retryable); // Decode, process, cancellation and validation errors are terminal.
         if(std::wstring(mode).find(L"error")!=std::wstring::npos||std::wstring(mode).find(L"flood")!=std::wstring::npos)
             assert(result.error.find("timed out")==std::string::npos);
         assert(GetTickCount64()-started<6000);
@@ -214,13 +225,32 @@ int main() {
             assert(fixture.state==PostProcessResult::State::Converted);
             assert(ReadRecordingIdentity(fixture.path).uri==identity);
             const auto original=read(fixture.path);Quality quality;assert(ReadQuality(fixture.path,quality));
+            const std::string wrong_identity="spotify:episode:0000000000000000000003";
+            const auto rejected=RetryPostProcessExistingFile(fixture.path,s,{},wrong_identity);
+            assert(rejected.state==PostProcessResult::State::Failed&&
+                   rejected.error.find("identity")!=std::string::npos);
+            assert(read(fixture.path)==original&&!fs::exists(final));
+            auto rewritten=s;rewritten.output_preset=L"Custom";
+            rewritten.output_args=L"-c:a libmp3lame -b:a 320k -metadata SPOTIFY_URI=spotify:track:0000000000000000000004";
+            const auto bad_conversion=RetryPostProcessExistingFile(fixture.path,rewritten,{},identity);
+            assert(bad_conversion.state==PostProcessResult::State::Failed&&
+                   bad_conversion.error.find("output identity")!=std::string::npos);
+            assert(read(fixture.path)==original&&!fs::exists(final));
+            auto foreign_output=rewritten;foreign_output.keep_native_original=true;
+            const auto foreign=PostProcessPublishedFile(fixture.path,foreign_output,{},L"");
+            assert(foreign.state==PostProcessResult::State::Converted&&fs::exists(final));
+            const auto conflict=RetryPostProcessExistingFile(fixture.path,s,{},identity);
+            assert(conflict.state==PostProcessResult::State::Failed&&
+                   conflict.error.find("output identity")!=std::string::npos);
+            assert(read(fixture.path)==original&&ReadRecordingIdentity(final.wstring()).uri!=identity);
+            fs::remove(final);
             auto broken=s;broken.output_preset=L"Custom";broken.output_args=L"-c:a nonexistent_soggfy_codec";
             assert(RetryPostProcessExistingFile(fixture.path,broken).state==PostProcessResult::State::Failed);
             assert(read(fixture.path)==original&&!fs::exists(final));
-            assert(RetryPostProcessExistingFile(fixture.path,s).state==PostProcessResult::State::Converted);
+            assert(RetryPostProcessExistingFile(fixture.path,s,{},identity).state==PostProcessResult::State::Converted);
             assert(read(fixture.path)==original&&fs::file_size(final)>0);
             assert(ReadRecordingIdentity(final.wstring()).uri==identity);
-            assert(RetryPostProcessExistingFile(fixture.path,s).state==PostProcessResult::State::Skipped);
+            assert(RetryPostProcessExistingFile(fixture.path,s,{},identity).state==PostProcessResult::State::Skipped);
             fs::remove(final);
             if(std::wstring(codec)==L"flac") {
                 auto damaged=original;assert(damaged.size()>256);

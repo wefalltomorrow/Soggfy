@@ -78,6 +78,9 @@ bool ReadableAudioCandidate(const std::wstring& path,uint64_t* bytes=nullptr) {
     CloseHandle(file);return ok;
 }
 bool Canceled(const PostProcessControl& control) {return control.canceled&&control.canceled();}
+bool RetryableFileError(DWORD error) {
+    return error==ERROR_SHARING_VIOLATION||error==ERROR_LOCK_VIOLATION;
+}
 bool Run(const std::wstring& exe,const std::wstring& command,DWORD& exit_code,
          const PostProcessControl& control,ULONGLONG deadline,std::string& error) {
     if(Canceled(control)){error="Conversion canceled; native original retained";return false;}
@@ -143,7 +146,8 @@ bool ConversionRequested(const Settings& settings,const std::wstring& native_pat
 
 static PostProcessResult ProcessFile(const std::wstring& native_path,const Settings& settings,
                                            const std::vector<unsigned char>& cover,
-                                           const std::wstring& cover_extension,const PostProcessControl& control,bool existing) {
+                                           const std::wstring& cover_extension,const PostProcessControl& control,bool existing,
+                                           const std::string& expected_identity) {
     PostProcessResult result;result.path=native_path;
     if(!ConversionRequested(settings,native_path))return result;
 
@@ -167,7 +171,16 @@ static PostProcessResult ProcessFile(const std::wstring& native_path,const Setti
        (!ReadQuality(native_path,quality)||(quality.codec!=Codec::Flac&&quality.codec!=Codec::Vorbis)))) {
         result.state=PostProcessResult::State::Failed;
         result.error="Native source is busy, unreadable or unverified; original retained";
+        result.retryable=RetryableFileError(source.error);
         return result;
+    }
+    if(!expected_identity.empty()) {
+        const auto identity=ReadRecordingIdentityFromHandle(source.handle);
+        if(identity.state!=IdentityState::Tagged||identity.uri!=expected_identity) {
+            result.state=PostProcessResult::State::Failed;
+            result.error="Locked native source identity does not match the expected recording; original retained";
+            return result;
+        }
     }
     const uint64_t native_bytes=(uint64_t(source.original.nFileSizeHigh)<<32)|source.original.nFileSizeLow;
     // Five minutes plus one second per 64 KiB, capped at six hours for long media.
@@ -179,6 +192,12 @@ static PostProcessResult ProcessFile(const std::wstring& native_path,const Setti
         if(!ValidateAudio(ffmpeg,result.path,control,deadline,result.error)) {
             result.state=PostProcessResult::State::Failed;
             result.error="Existing output conflict: "+result.error+"; native original retained";
+        } else if(!expected_identity.empty()) {
+            const auto identity=ReadRecordingIdentity(result.path);
+            if(identity.state!=IdentityState::Tagged||identity.uri!=expected_identity) {
+                result.state=PostProcessResult::State::Failed;
+                result.error="Existing output identity does not match the expected recording; native original retained";
+            } else result.state=PostProcessResult::State::Skipped;
         } else result.state=PostProcessResult::State::Skipped;
         // Even decodable pre-existing audio is not proof of this capture's identity.
         // Retain the new native original; never overwrite the existing destination.
@@ -262,11 +281,22 @@ static PostProcessResult ProcessFile(const std::wstring& native_path,const Setti
             "Conversion timed out; native original retained":"Conversion canceled; native original retained";
         return result;
     }
+    if(!expected_identity.empty()) {
+        const auto identity=ReadRecordingIdentity(temp.wstring());
+        if(identity.state!=IdentityState::Tagged||identity.uri!=expected_identity) {
+            DeleteFileW(WindowsPath(temp.wstring()).c_str());
+            result.state=PostProcessResult::State::Failed;
+            result.error="Converted output identity does not match the expected recording; native original retained";
+            return result;
+        }
+    }
     if(!MoveFileExW(WindowsPath(temp.wstring()).c_str(),WindowsPath(result.path).c_str(),
                     MOVEFILE_WRITE_THROUGH)) {
+        const DWORD publish_error=GetLastError();
         DeleteFileW(WindowsPath(temp.wstring()).c_str());
         result.state=PostProcessResult::State::Failed;
         result.error="Converted file could not be published";
+        result.retryable=RetryableFileError(publish_error);
         return result;
     }
 
@@ -278,12 +308,14 @@ static PostProcessResult ProcessFile(const std::wstring& native_path,const Setti
     return result;
 }
 PostProcessResult PostProcessPublishedFile(const std::wstring& native_path,const Settings& settings,
-    const std::vector<unsigned char>& cover,const std::wstring& cover_extension,const PostProcessControl& control) {
-    return ProcessFile(native_path,settings,cover,cover_extension,control,false);
+    const std::vector<unsigned char>& cover,const std::wstring& cover_extension,const PostProcessControl& control,
+    const std::string& expected_identity) {
+    return ProcessFile(native_path,settings,cover,cover_extension,control,false,expected_identity);
 }
-PostProcessResult RetryPostProcessExistingFile(const std::wstring& native_path,const Settings& settings,const PostProcessControl& control) {
+PostProcessResult RetryPostProcessExistingFile(const std::wstring& native_path,const Settings& settings,
+    const PostProcessControl& control,const std::string& expected_identity) {
     if(!ConversionRequested(settings,native_path))return {PostProcessResult::State::Native,native_path,{}};
     auto retained=settings;retained.keep_native_original=true;
-    return ProcessFile(native_path,retained,{},L"",control,true);
+    return ProcessFile(native_path,retained,{},L"",control,true,expected_identity);
 }
 }

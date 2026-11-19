@@ -17,6 +17,7 @@
 #include "playback_speed_policy.h"
 #include "async_log.h"
 #include "bounded_queue.h"
+#include "retry_schedule.h"
 #include <atomic>
 #include "library_layout.h"
 #include "existing_quality.h"
@@ -238,6 +239,10 @@ struct PublicationResult {
     Publication state=Publication::Failed;
     std::wstring path;
     std::string message;
+    bool retryable=false;
+    std::wstring retry_path;
+    std::string retry_identity;
+    unsigned generation=0;
 };
 static bool WriteSidecar(const std::wstring& path,const void* data,size_t size) {
     if(path.empty()||!data||!size||size>MAXDWORD)return false;
@@ -253,6 +258,9 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
     SYSTEMTIME t; GetSystemTime(&t); wchar_t stamp[64];
     swprintf(stamp,64,L"%04u-%02u-%02uT%02u:%02u:%02uZ",t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond);
     auto catalog=CatalogFor(heard.media);
+    const std::string expected_identity=
+        ValidSpotifyUri(catalog.spotify_uri,"track")||ValidSpotifyUri(catalog.spotify_uri,"episode")
+            ?catalog.spotify_uri:std::string{};
     auto settings=GetSettings();
     if(settings.capture_epoch!=expected_epoch || !settings.downloads || !(c.lossless ? settings.flac : settings.ogg)) return {Publication::Canceled,{},"settings changed"};
     const std::wstring& active_template=(catalog.kind==MediaKind::Podcast && !settings.podcast_template.empty())
@@ -272,20 +280,16 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
     }
     Quality quality=c.Encoding(),lossless;
     const auto retry_existing=[&](const std::wstring& path)->PublicationResult {
-        const auto existing_identity=ReadRecordingIdentity(path);
-        if((ValidSpotifyUri(catalog.spotify_uri,"track")||ValidSpotifyUri(catalog.spotify_uri,"episode"))&&
-           (existing_identity.state==IdentityState::Unknown||
-            (existing_identity.state==IdentityState::Tagged&&existing_identity.uri!=catalog.spotify_uri)))
-            return {Publication::Failed,path,"Recording identity changed; existing file retained"};
         PostProcessControl control;
         control.canceled=[generation=settings.generation,epoch=settings.capture_epoch] {
             return !workers_running.load(std::memory_order_acquire)||CaptureEpoch()!=epoch||GetSettings().generation!=generation;
         };
         if(control.canceled())return {Publication::Canceled,path,"settings changed"};
-        const auto post=RetryPostProcessExistingFile(path,settings,control);
+        const auto post=RetryPostProcessExistingFile(path,settings,control,expected_identity);
         if(post.state==PostProcessResult::State::Failed) {
             LogActivity("conversion_retry_failed",post.error);
-            return {Publication::Failed,path,post.error};
+            return {Publication::Failed,path,post.error,post.retryable,
+                post.retryable?path:L"",expected_identity,settings.generation};
         }
         if(post.state==PostProcessResult::State::Converted) {
             LogActivity("conversion_retry_done",Utf8(post.path));
@@ -376,14 +380,17 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
     }
 
     PostProcessControl post_control;
-    post_control.canceled=[epoch=settings.capture_epoch] {
-        return !workers_running.load(std::memory_order_acquire)||CaptureEpoch()!=epoch;
+    post_control.canceled=[epoch=settings.capture_epoch,generation=settings.generation] {
+        return !workers_running.load(std::memory_order_acquire)||CaptureEpoch()!=epoch||
+            GetSettings().generation!=generation;
     };
-    auto post=PostProcessPublishedFile(destination,settings,heard.media.cover,heard.media.cover_extension,post_control);
+    auto post=PostProcessPublishedFile(destination,settings,heard.media.cover,heard.media.cover_extension,
+        post_control,expected_identity);
     if(post.state==PostProcessResult::State::Failed) {
         auto detail="post-processing failed: "+post.error+" native="+Utf8(destination)+" output="+Utf8(post.path);
         LogActivity("failed",detail);QueueDiagnostic(detail.c_str());
-        return {Publication::Failed,post.path,post.error};
+        return {Publication::Failed,post.path,post.error,post.retryable,
+            post.retryable?destination:L"",expected_identity,settings.generation};
     }
     if(!post.error.empty()) {
         auto detail="post-processing warning: "+post.error+" native="+Utf8(destination);
@@ -398,15 +405,142 @@ static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected
 
 }
 struct SaveJob {std::unique_ptr<Capture> capture;Heard heard;unsigned epoch=0;size_t reserved=0;};
+struct RetryJob {
+    std::wstring path,title,artist,album;
+    std::string identity;
+    unsigned epoch=0,generation=0,attempts=0;
+    uint64_t due=0;
+};
 static BoundedQueue<SaveJob,2> saves;
+using RetryQueue=RetrySchedule<RetryJob,32,1024*1024>;
 static HANDLE save_event=nullptr;
 static std::atomic<size_t> publishing_reserved{0};
 static std::atomic<unsigned> saved_count{0};
 static hooks::InitController audio_init;
+static size_t RetryMemory(const RetryJob& job) {
+    size_t bytes=sizeof(job);
+    const auto add=[&](size_t amount) {
+        if(amount>1024*1024-bytes)return false;
+        bytes+=amount;return true;
+    };
+    const auto wide=[&](size_t capacity) {
+        return capacity<=(1024*1024-bytes)/sizeof(wchar_t)&&add(capacity*sizeof(wchar_t));
+    };
+    if(!wide(job.path.capacity())||!wide(job.title.capacity())||!wide(job.artist.capacity())||
+       !wide(job.album.capacity())||!add(job.identity.capacity()))return 1024*1024+1;
+    return bytes;
+}
+static Media RetryStatusMedia(const RetryJob& job) {
+    Media media;media.title=job.title;media.artist=job.artist;media.album=job.album;return media;
+}
+static bool RetryPathEnabled(const Settings& settings,const std::wstring& path) {
+    if(path.size()>=5&&_wcsicmp(path.c_str()+path.size()-5,L".flac")==0)return settings.flac;
+    if(path.size()>=4&&_wcsicmp(path.c_str()+path.size()-4,L".ogg")==0)return settings.ogg;
+    return false;
+}
+static bool QueueTransientRetry(RetryQueue& retries,const PublicationResult& result,
+                                const SaveJob& source) {
+    const auto settings=GetSettings();
+    if(!result.retryable||result.retry_path.empty()||
+       (!ValidSpotifyUri(result.retry_identity,"track")&&!ValidSpotifyUri(result.retry_identity,"episode"))||
+       settings.generation!=result.generation||settings.capture_epoch!=source.epoch||
+       !settings.downloads||!RetryPathEnabled(settings,result.retry_path)||
+       !ConversionRequested(settings,result.retry_path))return false;
+    RetryJob retry;retry.path=result.retry_path;retry.identity=result.retry_identity;
+    retry.title=source.heard.media.title;retry.artist=source.heard.media.artist;
+    retry.album=source.heard.media.album;retry.epoch=source.epoch;retry.generation=result.generation;
+    retry.due=GetTickCount64()+transient_retry_delay_ms(0);
+    const auto bytes=RetryMemory(retry);
+    const auto due=retry.due;
+    if(bytes>1024*1024||!retries.Push(std::move(retry),bytes,due))return false;
+    return true;
+}
+static bool RetrySettingsCurrent(const RetryJob& retry,const Settings& settings) {
+    if(retry.generation!=settings.generation||retry.epoch!=settings.capture_epoch||!settings.downloads)return false;
+    return RetryPathEnabled(settings,retry.path)&&ConversionRequested(settings,retry.path);
+}
 static DWORD WINAPI SaveWorker(LPVOID) {
+    RetryQueue retries;
     while(workers_running.load(std::memory_order_acquire)) {
+        auto settings=GetSettings();
+        for(size_t i=0;i<retries.Size();) {
+            if(RetrySettingsCurrent(retries.At(i),settings)){++i;continue;}
+            auto canceled=retries.At(i);
+            SetClassicTrackStatus(RetryStatusMedia(canceled),"ERROR","Canceled: settings changed",canceled.path);
+            LogActivity("conversion_retry_canceled",Utf8(canceled.path));
+            retries.Discard(i);
+        }
+        RetryJob retry;
+        size_t retry_bytes=0;
+        if(retries.TakeDue(GetTickCount64(),retry,retry_bytes)) {
+            const auto media=RetryStatusMedia(retry);
+            bool retry_requeued=false;
+            try {
+                settings=GetSettings();
+                if(!RetrySettingsCurrent(retry,settings)) {
+                    SetClassicTrackStatus(media,"ERROR","Canceled: settings changed",retry.path);
+                    LogActivity("conversion_retry_canceled",Utf8(retry.path));
+                    retries.ReleaseInFlight(retry_bytes);continue;
+                }
+                const unsigned attempt=retry.attempts+1;
+                SetClassicTrackStatus(media,"CONVERTING",
+                    "Retrying conversion ("+std::to_string(attempt)+" of "+std::to_string(transient_retry_limit)+")",retry.path);
+                PostProcessControl control;
+                control.canceled=[epoch=retry.epoch,generation=retry.generation] {
+                    const auto current=GetSettings();
+                    return !workers_running.load(std::memory_order_acquire)||CaptureEpoch()!=epoch||
+                        current.generation!=generation||!current.downloads;
+                };
+                const auto result=RetryPostProcessExistingFile(retry.path,settings,control,retry.identity);
+                // ProcessFile verifies the locked source and any existing or
+                // newly converted output before returning success.
+                if(result.state==PostProcessResult::State::Converted||result.state==PostProcessResult::State::Skipped) {
+                    if(result.state==PostProcessResult::State::Converted&&CaptureEpoch()==retry.epoch)++saved_count;
+                    SetClassicTrackStatus(media,"DONE",{},result.path);
+                    LogActivity("conversion_retry_done",Utf8(result.path));
+                    retries.ReleaseInFlight(retry_bytes);continue;
+                }
+                const bool retry_again=result.state==PostProcessResult::State::Failed&&result.retryable&&
+                    retry.attempts+1<transient_retry_limit&&RetrySettingsCurrent(retry,GetSettings());
+                if(retry_again) {
+                    ++retry.attempts;
+                    retry.due=GetTickCount64()+transient_retry_delay_ms(retry.attempts);
+                    if(retries.Requeue(std::move(retry),retry_bytes,retry.due)) {
+                        retry_requeued=true;
+                        const auto& queued=retries.At(retries.Size()-1);
+                        SetClassicTrackStatus(media,"CONVERTING",
+                            "File is busy; retry scheduled ("+std::to_string(attempt+1)+" of "+
+                            std::to_string(transient_retry_limit)+")",queued.path);
+                        LogActivity("conversion_retry_queued",Utf8(queued.path));
+                        continue;
+                    }
+                }
+                const std::string message=result.state==PostProcessResult::State::Failed?
+                    (result.error.empty()?"Conversion retry failed":result.error):
+                    "Existing output identity cannot be verified; native original retained";
+                SetClassicTrackStatus(media,"ERROR",message,retry.path);
+                LogActivity("conversion_retry_failed",message+" native="+Utf8(retry.path)+
+                    " output="+Utf8(result.path));
+            } catch(...) {
+                if(retry_requeued) {
+                    try {LogActivity("conversion_retry_queued","status update failed after retry was retained");} catch(...) {}
+                    continue;
+                }
+                try {
+                    SetClassicTrackStatus(media,"ERROR","Conversion retry exception; native original retained",retry.path);
+                    LogActivity("conversion_retry_failed","exception path="+Utf8(retry.path));
+                } catch(...) {}
+            }
+            retries.ReleaseInFlight(retry_bytes);
+            continue;
+        }
         SaveJob job;
-        if(!saves.Pop(job)){WaitForSingleObject(save_event,200);continue;}
+        if(!saves.Pop(job)) {
+            const auto due=retries.NextDue();
+            const auto now=GetTickCount64();
+            const DWORD wait=due==UINT64_MAX?200u:DWORD(std::min<uint64_t>(200,due>now?due-now:0));
+            WaitForSingleObject(save_event,wait);continue;
+        }
         std::string identity=Utf8(job.heard.media.artist)+" - "+Utf8(job.heard.media.title);
         try {
             {
@@ -428,8 +562,16 @@ static DWORD WINAPI SaveWorker(LPVOID) {
                 SetClassicTrackStatus(job.heard.media,"DONE",result.message,result.path);
                 LogActivity("finished",identity+(result.state==Publication::Skipped?" (already downloaded)":""));
             } else if(result.state==Publication::Failed) {
-                SetClassicTrackStatus(job.heard.media,"ERROR",result.message.empty()?"Publication failed":result.message,result.path);
-                LogActivity("failed",identity+" ("+(result.message.empty()?std::string("publication failed"):result.message)+")");
+                if(QueueTransientRetry(retries,result,job)) {
+                    SetClassicTrackStatus(job.heard.media,"CONVERTING","File is busy; retry scheduled (1 of "+
+                        std::to_string(transient_retry_limit)+")",result.retry_path);
+                    LogActivity("conversion_retry_queued",identity+" path="+Utf8(result.retry_path));
+                } else {
+                    const auto message=result.message.empty()?std::string("Publication failed"):result.message;
+                    SetClassicTrackStatus(job.heard.media,"ERROR",message,
+                        result.retryable&&!result.retry_path.empty()?result.retry_path:result.path);
+                    LogActivity("failed",identity+" ("+message+")");
+                }
             } else {
                 SetClassicTrackStatus(job.heard.media,"ERROR","Canceled: settings changed",result.path);
                 LogActivity("failed",identity+" (settings changed)");
@@ -439,6 +581,14 @@ static DWORD WINAPI SaveWorker(LPVOID) {
             LogActivity("failed",identity+" (publication exception)");
         }
         job.capture.reset();publishing_reserved.fetch_sub(job.reserved);
+    }
+    while(retries.Size()) {
+        auto canceled=retries.At(0);
+        try {
+            SetClassicTrackStatus(RetryStatusMedia(canceled),"ERROR","Canceled: publisher stopped",canceled.path);
+            LogActivity("conversion_retry_canceled",Utf8(canceled.path));
+        } catch(...) {}
+        retries.Discard(0);
     }
     return 0;
 }

@@ -6,9 +6,11 @@ namespace history { namespace post_process_detail {
 struct SourceLock {
     HANDLE handle=INVALID_HANDLE_VALUE;
     BY_HANDLE_FILE_INFORMATION original{};
+    DWORD error=ERROR_SUCCESS;
     explicit SourceLock(const std::wstring& path) {
         handle=CreateFileW(WindowsPath(path).c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
-        if(handle!=INVALID_HANDLE_VALUE&&!GetFileInformationByHandle(handle,&original))Close();
+        if(handle==INVALID_HANDLE_VALUE){error=GetLastError();return;}
+        if(!GetFileInformationByHandle(handle,&original)){error=GetLastError();Close();}
     }
     SourceLock(const SourceLock&)=delete;
     SourceLock& operator=(const SourceLock&)=delete;

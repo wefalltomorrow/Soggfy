@@ -8,15 +8,24 @@ RecordingIdentity ReadRecordingIdentity(const std::wstring& path) {
     HANDLE file=CreateFileW(WindowsPath(path).c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_DELETE,
         nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
     if(file==INVALID_HANDLE_VALUE)return {};
+    auto result=ReadRecordingIdentityFromHandle(file);
+    CloseHandle(file);return result;
+}
+RecordingIdentity ReadRecordingIdentityFromHandle(HANDLE file) {
+    if(file==INVALID_HANDLE_VALUE)return {};
+    LARGE_INTEGER original{},zero{};
+    if(!SetFilePointerEx(file,zero,&original,FILE_CURRENT)||
+       !SetFilePointerEx(file,zero,nullptr,FILE_BEGIN))return {};
     std::vector<unsigned char> bytes(65536);DWORD read=0;
-    if(!ReadFile(file,bytes.data(),DWORD(bytes.size()),&read,nullptr)){CloseHandle(file);return {};}
-    auto result=ParseRecordingIdentity(bytes.data(),read);
-    if(result.state==IdentityState::Unknown&&read==bytes.size()) {
+    bool ok=ReadFile(file,bytes.data(),DWORD(bytes.size()),&read,nullptr)!=0;
+    auto result=ok?ParseRecordingIdentity(bytes.data(),read):RecordingIdentity{};
+    if(ok&&result.state==IdentityState::Unknown&&read==bytes.size()) {
         bytes.resize(2*1024*1024);DWORD tail=0;
         if(ReadFile(file,bytes.data()+read,DWORD(bytes.size()-read),&tail,nullptr))
             result=ParseRecordingIdentity(bytes.data(),read+tail);
     }
-    CloseHandle(file);return result;
+    SetFilePointerEx(file,original,nullptr,FILE_BEGIN);
+    return result;
 }
 bool RecordingIdentityCompatible(const std::wstring& path,const std::string& uri,bool allow_legacy) {
     const auto id=ReadRecordingIdentity(path);
