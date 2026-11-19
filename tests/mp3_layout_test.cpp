@@ -275,7 +275,7 @@ int main(int argc,char** argv) {
         auto tagged=tag;Append(tagged,bytes);
         Bytes tail(128);std::memcpy(tail.data(),"TAG",3);Append(tagged,tail);
         assert(InspectMp3Layout(tagged,info,error)&&info.audio_offset==13&&info.audio_size==1357);
-        for(unsigned index:{4u,5u,6u}) {auto bad=tagged;bad[index]=index==6?128:1;Reject(bad);}
+        for(unsigned index:{4u,5u,6u}) {auto bad=tagged;bad.at(index)=index==6?128:1;Reject(bad);}
         if(version==4) {
             tag[5]=16;auto footer=Bytes(tag.begin(),tag.begin()+10);footer[0]='3';footer[1]='D';footer[2]='I';
             auto good=tag;Append(good,footer);Append(good,bytes);
