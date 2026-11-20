@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 
 int main() {
     using history::RetrySchedule;
@@ -37,5 +38,16 @@ int main() {
     assert(schedule.Push(5,5,300));
     assert(schedule.Discard(0));
     assert(schedule.Size()==1&&schedule.ReservedBytes()==5&&schedule.NextDue()==300);
+
+    struct PendingCapture {std::unique_ptr<int> payload;unsigned attempts=0;};
+    RetrySchedule<PendingCapture,1,16> captures;
+    PendingCapture pending;pending.payload=std::make_unique<int>(42);
+    assert(captures.Push(std::move(pending),sizeof(int),400)&&!pending.payload);
+    PendingCapture retained;std::size_t retained_bytes=0;
+    assert(captures.TakeDue(400,retained,retained_bytes)&&retained.payload&&*retained.payload==42);
+    retained.attempts=1;
+    assert(captures.Requeue(std::move(retained),retained_bytes,500));
+    assert(captures.TakeDue(500,retained,retained_bytes)&&retained.attempts==1&&*retained.payload==42);
+    assert(captures.ReleaseInFlight(retained_bytes)&&captures.ReservedBytes()==0);
     std::cout<<"PASS: bounded retry deadlines, in-flight byte accounting, requeue and cancellation\n";
 }

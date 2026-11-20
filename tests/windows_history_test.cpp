@@ -45,8 +45,11 @@ int main() {
     check(PublishBytes(target,qhigh,foreign.data(),foreign.size())==FilePublication::Failed&&read(target)==tagged,"different track cannot replace or skip as same recording");
     HANDLE upgradeLock=CreateFileW(target.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
     check(upgradeLock!=INVALID_HANDLE_VALUE,"lock upgrade destination");
-    check(PublishBytes(target,qhigh,better.data(),better.size())==FilePublication::Failed&&read(target)==tagged,"locked destination preserves old recording");
+    check(PublishBytes(target,qhigh,foreign.data(),foreign.size())==FilePublication::Failed&&read(target)==tagged,"locked destination still rejects conflicting recording identity");
+    check(PublishBytes(target,qhigh,better.data(),better.size())==FilePublication::Busy&&read(target)==tagged,"locked same-identity upgrade is retryable and preserves old recording");
     CloseHandle(upgradeLock);
+    check(PublishBytes(target,qhigh,better.data(),better.size())==FilePublication::Upgraded&&read(target)==better,"same-identity retry succeeds after destination unlock");
+    check(DeleteFileW(target.c_str())!=0&&PublishBytes(target,qlow,tagged.data(),tagged.size())==FilePublication::Saved,"restore lower-quality fixture after retry test");
     const auto duplicates=DuplicatePaths(dir,target,b);
     check(duplicates.size()==3&&ResolveRecordingPath(dir,target,b,L"mp3")==duplicates[0],"explicit conflict routes to first duplicate suffix");
     std::filesystem::create_directories(std::filesystem::path(duplicates[0]).parent_path());

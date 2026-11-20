@@ -3,6 +3,9 @@
 #include "file_publication.h"
 #include "history_settings.h"
 namespace history {
+static bool IsBusyError(DWORD error) {
+    return error==ERROR_SHARING_VIOLATION||error==ERROR_LOCK_VIOLATION;
+}
 static bool WriteNew(const std::wstring& path,const void* bytes,size_t size,bool flush=false) {
     if(!size || size>MAXDWORD) return false;
     auto name=WindowsPath(path);
@@ -35,14 +38,21 @@ FilePublication PublishBytes(const std::wstring& path,const Quality& quality,con
     if(decision!=SaveDecision::NewFile&&!compatible())return FilePublication::Failed;
     if(decision==SaveDecision::Skip) return FilePublication::Skipped;
     if(decision==SaveDecision::NewFile) return WriteNew(path,bytes,size) ? FilePublication::Saved : FilePublication::Failed;
-    // Stage the completed file only; never write track fragments to disk.
-    static volatile LONG sequence=0;
-    auto staging=path+L".complete-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(InterlockedIncrement(&sequence));
-    if(!WriteNew(staging,bytes,size,true)) return FilePublication::Failed;
     // Hold the old identity against writes/deletes, then move it by handle.
     // Publish without replacement: a concurrent creator can never be overwritten.
     HANDLE old=CreateFileW(WindowsPath(path).c_str(),GENERIC_READ|DELETE,FILE_SHARE_READ,
         nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+    if(old==INVALID_HANDLE_VALUE)
+        return IsBusyError(GetLastError())?FilePublication::Busy:FilePublication::Failed;
+    if(!compatible()) {CloseHandle(old);return FilePublication::Failed;}
+    const auto locked_decision=DecideSave(path,quality);
+    if(locked_decision==SaveDecision::Skip) {CloseHandle(old);return FilePublication::Skipped;}
+    if(locked_decision!=SaveDecision::Upgrade) {CloseHandle(old);return FilePublication::Failed;}
+    // Stage only after acquiring the destination. A busy destination therefore
+    // leaves no full-size temporary recording behind.
+    static volatile LONG sequence=0;
+    auto staging=path+L".complete-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(InterlockedIncrement(&sequence));
+    if(!WriteNew(staging,bytes,size,true)) {CloseHandle(old);return FilePublication::Failed;}
     auto rename=[&](const std::wstring& target) {
         const auto name=WindowsPath(target);
         std::vector<unsigned char> storage(sizeof(FILE_RENAME_INFO)+name.size()*sizeof(wchar_t));
@@ -53,7 +63,7 @@ FilePublication PublishBytes(const std::wstring& path,const Quality& quality,con
         return SetFileInformationByHandle(old,FileRenameInfo,info,DWORD(storage.size()))!=0;
     };
     const auto backup=staging+L".previous";
-    bool moved=old!=INVALID_HANDLE_VALUE&&DecideSave(path,quality)==SaveDecision::Upgrade&&compatible()&&rename(backup);
+    bool moved=rename(backup);
     bool ok=moved&&MoveFileExW(WindowsPath(staging).c_str(),WindowsPath(path).c_str(),MOVEFILE_WRITE_THROUGH);
     if(moved) {
         if(ok){FILE_DISPOSITION_INFO disposition{TRUE};SetFileInformationByHandle(old,FileDispositionInfo,&disposition,sizeof(disposition));}
