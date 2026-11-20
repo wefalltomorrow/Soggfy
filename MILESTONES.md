@@ -1,5 +1,29 @@
 # Engineering milestones
 
+## November 20 CI run 218 and independent package verification
+
+Source commit b93d88d97c835a6c80f4b53b59aeb02a757be710 passed all four
+CI jobs in run 218 (44728484638): native tests, both 20,000-iteration
+seeded ASan/UBSan campaigns, and Windows release packaging. GitHub artifact
+14628095070 is bound to that source. Independent verification passed
+outer/inner ZIP integrity, all seven package-manifest hashes, safe archive
+paths and required files, validation-helper digest binding, AMD64 PE/import
+checks, and normalized exact-source comparison for all 27 packaged text/source
+files. The outer artifact is 3,310,185 bytes, SHA-256
+92a50db942c5b2c49de8c6d0f8e87dc45bbbc0d9e168631654de994b0d9b282e;
+the RC87 package is 3,312,111 bytes, SHA-256
+3afbbe07437043c6da6d95d09b4c4f24e3da15aa685a1e7ca1f6b255d0fa5d86.
+The reproducible verifier and report are in
+outputs/verify_run218.py and outputs/Soggfy-run218-mp3-evidence.json.
+
+This run includes bounded Layer III pair/count1 Huffman syntax traversal,
+linbits/sign handling, per-granule budgets and switched-block region selection.
+It does not reconstruct spectral coefficients or establish recording
+completeness, provenance, native lifetime or production capture readiness.
+Production MP3 capture remains disabled. At that checkpoint PR #64 was open
+and unmerged; live-client acceptance and official release remain separate
+gates.
+
 ## November 20 notification scheduler boundary
 
 Added a hash-pinned static probe for the notification scheduler handoff. Its
@@ -12,10 +36,9 @@ object. The concrete runtime scheduler and the meaning of its cleanup call
 remain unresolved; queued-work cancellation does not prove running-callback
 drain. Probe evidence: outputs/Soggfy-native-notification-scheduler-boundary-20261120.json.
 
-The pinned DLL is read statically and is not executed. PR #64 was checked on
-November 20 and remains open and unmerged at source commit
-b53a2e414397f0814afbe909c6abd012acb880c2; live-client acceptance and release
-remain separate gates.
+The pinned DLL is read statically and is not executed. At the CI 218 checkpoint,
+PR #64 was open and unmerged; live-client acceptance and release remain
+separate gates.
 
 ## November 20 native identity lazy-initialization path
 
@@ -152,7 +175,7 @@ verification passed. Live acceptance remains separate.
 | Native playlist save result | RC75 CI/package verified | Live save dialog |
 | Native playback/decoder identity | Static candidate traced through consumer, configured generator, recovery invocation and teardown | Null fallback places the upstream read outside its allocation; a traced non-null path spans separate byte fields and part of an ownership pointer. A separate candidate has playback-ID consumer, hex-encoding and configured 16-byte generator evidence. Audio-driver recovery has a conditional synchronous replacement-callback path; teardown replaces a shared byte flag and conditionally destroys the native object when its strong count reaches zero. One callback checks the token before using its stored pointers; its clone retains that guard and is built alongside a copy of the candidate ID. The dispatch-provider pointer is traced to its service-table entry. A registered service-zero candidate now traces configuration ownership into a streaming object: ID at +0x350, guarded wrapper at +0x3a8, and conditional destructor cleanup. Two component cleanup submissions have a completion-counter wait before wrapper destruction; 1,299 pinned instruction checks pass. The notification scheduler handoff now has a 35-instruction pinned probe and unique direct-call path; a provider returns the 32-byte context, while concrete runtime selection and whether cleanup drains running callbacks remain unresolved. This does not establish that those component destructors drain all audio callbacks. Registry resolution and runtime selection, scheduling, other consumers, callback completion, synchronized lifetime, decoder association, integration and transitions remain unverified; see NATIVE_IDENTITY_AUDIT.md |
 | Ad/DJ/interstitial isolation | Open | Trustworthy identity plus transition/live evidence |
-| Native podcast MP3 capture | Structural, CRC and reservoir-extent prototype | Bounded MPEG-1/2/2.5 layout, ID3 extents and reservoir bit-range accounting; 36 real mono/stereo CBR/VBR fixtures and missing-prefix rejection locally verified. All four jobs passed in CI 42469354367 after using the runner MSYS2 installation (the preceding run hit HTTP 504 during setup). Native and both sanitizer jobs exercised the 36 real fixtures; each sanitizer campaign completed 20,000 seeded iterations. The MinGW package was independently verified at source f34da7d7b94c43dea22463a3302db9babc3e4d09; its DLL and validation helper match the original RC85 binaries. Protected-frame CRC and selected side-information constraints now pass local independent-decoder checks (follow-up below). LAME-compatible delay/padding declarations match decoded PCM lengths across 36 fixtures (follow-up below); full compressed-payload semantics, completeness/provenance and lifecycle integration remain; no production capture enabled |
+| Native podcast MP3 capture | Offline inspector only; production capture disabled | Bounded MPEG-1/2/2.5 layout, CRC, reservoir, scalefactor and Layer III Huffman syntax checks cover 36 real mono/stereo CBR/VBR fixtures plus 420 reserved-selector mutations. Runs 217 and 218 passed full CI; run 218 also passed independent RC87 package verification at exact source b93d88d. Syntax traversal does not reconstruct spectral coefficients or establish completeness, provenance, decoder association or capture lifetime. Native capture remains disabled |
 | Concurrent capture/cross-format association | RC84 shared-ready rejection and RC85 retention-conflict fix CI/package verified | Late first retention now rejects candidates shared by queued listens, including competing ready captures. Native identity-aware lifecycle, future-listen/preload and live transition evidence remain |
 | Playback metadata refresh/instance-bound skip | Partial | RC78 queue fencing and RC79 exact-instance active/final/pending metadata refresh CI/packages verified; native current-track skip remains open |
 | Saved-recording metadata refresh/preservation | Offline preparation and RC82 helper deployment verified | Inspection, isolated Ogg/FLAC decoding, minimal text/lyrics policy, output verification and preparation passed CI. RC82 DLL-bound helper packaging and installation passed CI/artifact verification. Local probes demonstrate concurrent ADS, attribute and DACL mutation despite the source lock. Same-file stream swaps preserve tested metadata but expose an empty default stream; even a reader can block publication and rollback. That approach remains disabled. Artwork envelope inventory and RC87 supervised PNG/JPEG decoding are CI/package verified; filesystem metadata preservation, artwork source/replacement policy and production coordinator remain; see METADATA_REFRESH_DESIGN.md |
