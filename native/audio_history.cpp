@@ -32,6 +32,7 @@
 #include <cstring>
 #include <map>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -246,6 +247,13 @@ struct PublicationResult {
     std::wstring retry_path;
     std::string retry_identity;
     unsigned generation=0;
+    PublicationResult()=default;
+    PublicationResult(Publication result_state,std::wstring result_path,std::string result_message,
+                      bool can_retry=false,std::wstring retry_destination={},
+                      std::string retry_uri={},unsigned settings_generation=0)
+        :state(result_state),path(std::move(result_path)),message(std::move(result_message)),
+         retryable(can_retry),retry_path(std::move(retry_destination)),
+         retry_identity(std::move(retry_uri)),generation(settings_generation) {}
 };
 static bool WriteSidecar(const std::wstring& path,const void* data,size_t size) {
     if(path.empty()||!data||!size||size>MAXDWORD)return false;
