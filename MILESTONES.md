@@ -465,3 +465,20 @@ mutations, protected-frame PCM comparisons, and the existing reservoir, CRC,
 Xing/VBRI, side-information and scalefactor checks. `git diff --check` passed.
 AddressSanitizer and the repository's seeded sanitizer campaign were not rerun
 for this follow-up; no CI/package or live-client acceptance is claimed.
+
+CI and package verification follow-up for commit
+310bc7d18a2aaf39193db5b58149f3e237b2a154: all four jobs passed in run 217
+(44725198734), including native tests, both 20,000-iteration seeded ASan/UBSan
+campaigns, and Windows release packaging. GitHub associated artifact
+14625055959 with that exact commit. Independent verification passed outer and
+inner ZIP integrity, all seven manifest hashes, required-content and helper
+digest binding checks, AMD64 PE/import checks, and normalized source comparison
+for all 27 packaged text/source files. The outer artifact is 3,309,781 bytes,
+SHA-256 da8e88e574932dcad1e8458cd6a2b8b469cc2145f5c3e61d1a97620460829757; the
+inner RC87 package is 3,311,717 bytes, SHA-256
+4b31f1bedf69a42824540ca0b697f9c760f524b0c97f76bf735f8db465a416bb. The
+reproducible verifier and result are in outputs/verify_run217.py and
+outputs/Soggfy-run217-mp3-evidence.json. These checks establish CI/package
+provenance for the offline inspector changes; they do not establish spectral
+reconstruction, recording completeness, live-client acceptance, or production
+capture readiness. PR #64 remains open and unmerged.
