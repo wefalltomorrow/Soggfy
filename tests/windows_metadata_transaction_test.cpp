@@ -25,6 +25,11 @@ int main() {
     const Bytes old={'o','l','d'},updated={'n','e','w'},other={'o','t','h','e','r'};
     auto current=[](history::RefreshTransactionStage){return true;};
     Create(path,old);
+    const auto named_stream=path+L":soggfy-transaction-test";
+    Create(named_stream,other);
+    {history::MetadataRefreshTransaction transaction;assert(!transaction.Open(named_stream));}
+    assert(Read(path)==old&&Read(named_stream)==other);
+    assert(DeleteFileW(named_stream.c_str()));
     {
         // A mapped writer can outlive its original file handle. It must still
         // prevent the transaction from claiming a stable source snapshot.

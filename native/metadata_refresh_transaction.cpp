@@ -43,6 +43,10 @@ bool MetadataRefreshTransaction::Open(const std::wstring& path) {
     DWORD written=GetFinalPathNameByHandleW(source_,name.data(),DWORD(name.size()),FILE_NAME_NORMALIZED|VOLUME_NAME_DOS);
     if(!written||written>=name.size())return false;
     path_.assign(name.data(),written);
+    // This transaction protects an ordinary file's default stream only.
+    // Treating an alternate data stream as a file would stage/rename a different
+    // stream name and could not preserve the containing file's metadata.
+    if(path_.find(L':',6)!=std::wstring::npos)return false;
     // Network/redirected roots need a separately proven publication contract.
     if(path_.size()<8||path_.compare(0,4,L"\\\\?\\")||path_[5]!=L':'||path_[6]!=L'\\')return false;
     for(size_t pos=path_.find(L'\\',7);pos!=std::wstring::npos;pos=path_.find(L'\\',pos+1)) {
