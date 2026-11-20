@@ -1,5 +1,6 @@
 #include "ogg_tags.h"
 #include "ogg_history_core.h"
+#include "vorbis_comments.h"
 #include <ogg/ogg.h>
 #include <algorithm>
 #include <cstring>
@@ -7,9 +8,6 @@
 namespace history {
 static void Number(std::vector<uint8_t>& v,uint32_t n,bool big=false) {
     for(int i=0;i<4;i++) v.push_back(uint8_t(n>>(8*(big ? 3-i : i))));
-}
-static uint32_t Little(const uint8_t* p) {
-    return uint32_t(p[0])|(uint32_t(p[1])<<8)|(uint32_t(p[2])<<16)|(uint32_t(p[3])<<24);
 }
 static std::string Upper(std::string s) {
     for(char& c:s) if(c>='a' && c<='z') c=char(c-'a'+'A');
@@ -40,42 +38,28 @@ bool BuildPicture(const Tags& tags,std::vector<uint8_t>& picture) {
 }
 static bool Comments(const ogg_packet& packet,const Tags& tags,std::vector<uint8_t>& out) {
     if(packet.bytes<16 || std::memcmp(packet.packet,"\x03vorbis",7)) return false;
-    size_t offset=7,limit=size_t(packet.bytes);
-    auto read=[&](std::string& s) {
-        if(offset+4>limit) return false;
-        uint32_t n=Little(packet.packet+offset); offset+=4;
-        if(n>limit-offset) return false;
-        s.assign(reinterpret_cast<char*>(packet.packet+offset),n); offset+=n; return true;
-    };
-    std::string vendor;
-    if(!read(vendor) || offset+4>limit) return false;
-    uint32_t count=Little(packet.packet+offset); offset+=4;
-    if(count>100000 || count>(limit-offset)/4) return false;
+    VorbisComments parsed;
+    if(!ParseVorbisComments(packet.packet+7,size_t(packet.bytes)-7,true,parsed))return false;
+    auto vendor=std::move(parsed.vendor);
     // Artwork is optional. A valid complete capture must still be taggable
     // when Spotify has no artwork, or the cached image is too large/unsupported.
     // Only replace an existing picture when a valid replacement is available.
     std::vector<uint8_t> picture;
     const bool replace_picture=BuildPicture(tags,picture);
     std::vector<std::string> fields;
-    for(uint32_t i=0;i<count;i++) {
-        std::string field; if(!read(field)) return false;
+    for(auto& field:parsed.fields) {
         std::string key=Upper(field.substr(0,field.find('=')));
         bool replace=key=="METADATA_BLOCK_PICTURE" && replace_picture;
         for(const auto& item:tags.fields) if(key==Upper(item.first)) replace=true;
         if(!replace) fields.push_back(std::move(field));
     }
-    if(offset+1!=limit || packet.packet[offset]!=1) return false;
     for(const auto& item:tags.fields) fields.push_back(item.first+'='+item.second);
     if(replace_picture)
         fields.push_back("METADATA_BLOCK_PICTURE="+Base64(picture));
-    out.assign({'\x03','v','o','r','b','i','s'});
     if(vendor.empty()) vendor="SpotifyRepair native history";
-    Number(out,uint32_t(vendor.size())); out.insert(out.end(),vendor.begin(),vendor.end());
-    Number(out,uint32_t(fields.size()));
-    for(const auto& field:fields) {
-        Number(out,uint32_t(field.size())); out.insert(out.end(),field.begin(),field.end());
-    }
-    out.push_back(1); return out.size()<=16*1024*1024;
+    if(!BuildVorbisComments(vendor,fields,true,out)||out.size()>VorbisCommentByteLimit-7)return false;
+    out.insert(out.begin(),{'\x03','v','o','r','b','i','s'});
+    return true;
 }
 struct OggStreams {
     ogg_stream_state input={},output={}; bool initialized=false;

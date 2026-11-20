@@ -77,7 +77,7 @@ std::vector<std::uint8_t> MappedImage(std::uint32_t shift = 0,
     Put<std::uint32_t>(image, sections + 40 + 16, 0x47000);
     Put<std::uint32_t>(image, sections + 40 + 36, 0x60000020);
 
-    std::vector<Function> functions = {
+    const Function functions[] = {
         {0x3000 + shift, 0x308e + shift, 17, flac_error, sizeof(flac_error)},
         {0x3550 + shift, 0x3761 + shift, 107, flac_init, sizeof(flac_init)},
         {0x3c60 + shift, 0x3d4e + shift, 112, flac_read, sizeof(flac_read)},
@@ -86,13 +86,13 @@ std::vector<std::uint8_t> MappedImage(std::uint32_t shift = 0,
          static_cast<std::uint32_t>((inconsistent_layout ? 0x1aaf6 : 0x9af6) + shift),
          55, sniff, sizeof(sniff)},
         {0x2b000 + shift, 0x2b1b4 + shift, 103, ogg, sizeof(ogg)},
+        {0x3b000, 0x3b1b4, 103, ogg, sizeof(ogg)},
     };
-    if (duplicate_ogg)
-        functions.push_back({0x3b000, 0x3b1b4, 103, ogg, sizeof(ogg)});
+    const std::size_t function_count = duplicate_ogg ? 7 : 6;
 
     Put<std::uint32_t>(image, 0x98 + 112 + 3 * 8 + 4,
-                       static_cast<std::uint32_t>(functions.size() * 12));
-    for (std::size_t index = 0; index < functions.size(); ++index) {
+                       static_cast<std::uint32_t>(function_count * 12));
+    for (std::size_t index = 0; index < function_count; ++index) {
         const auto& function = functions[index];
         Put<std::uint32_t>(image, 0x1000 + index * 12, function.begin);
         Put<std::uint32_t>(image, 0x1000 + index * 12 + 4, function.end);

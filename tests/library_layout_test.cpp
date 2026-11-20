@@ -52,6 +52,12 @@ int main() {
           L"D:\\Music\\Album Artist\\Track／Name.ogg","template appends real capture extension");
 
     Quality high{Codec::Vorbis,44100,2,0,320000},low{Codec::Vorbis,44100,2,0,160000};
+    const std::string identity="spotify:track:0123456789ABCDEFGHIJKL";
+    const auto duplicate=DuplicatePaths(L"D:\\Music",L"D:\\Music\\Custom\\東京.ogg",identity);
+    check(duplicate.size()==3&&duplicate[0]==L"D:\\Music\\Duplicates\\Custom\\東京 [t-CDEFGHIJKL].ogg","duplicate preserves Unicode and custom hierarchy");
+    check(duplicate[2]==L"D:\\Music\\Duplicates\\Custom\\東京 [t-0123456789ABCDEFGHIJKL].ogg","full identity fallback");
+    check(DuplicatePaths(L"D:\\Music",L"D:\\Music\\Song.ogg","spotify:track:short").empty(),"invalid identity cannot route duplicate");
+    check(DuplicatePaths(L"D:\\Music",L"D:\\Other\\Song.ogg",identity).empty(),"duplicate stays inside configured root");
     check(HigherQuality(high,low),"higher Vorbis bitrate upgrades");
     check(!HigherQuality(low,high) && !HigherQuality(high,high),"equal or better existing Vorbis skipped");
     Quality flac{Codec::Flac,44100,2,16,0},hires{Codec::Flac,48000,2,24,0};

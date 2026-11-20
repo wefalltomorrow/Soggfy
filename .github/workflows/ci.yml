@@ -13,12 +13,29 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install test dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential python3 nodejs
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3 nodejs ffmpeg
       - name: Run native regression suite
         run: bash test-native.sh
 
+  sanitizer-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [4043931417, 1592594996]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install sanitizer toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang ffmpeg
+      - name: Run deterministic ASan and UBSan campaign
+        env:
+          CC: clang
+          CXX: clang++
+        run: bash test-sanitizers.sh 20000 ${{ matrix.seed }}
+
   windows-release-build:
-    needs: native-tests
+    needs: [native-tests, sanitizer-tests]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -39,16 +56,22 @@ jobs:
             }
           }
           if ($failed) { exit 1 }
+          "SGF_PWSH_PATH=$((Get-Process -Id $PID).Path)" >> $env:GITHUB_ENV
+          "SGF_PYTHON_PATH=$((Get-Command python.exe -ErrorAction Stop).Source)" >> $env:GITHUB_ENV
 
       - name: Set up newer MinGW-w64 toolchain
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
         with:
           msystem: MINGW64
+          # Reuse the runner installation; still update packages and enforce
+          # the compiler floor below. Avoid a separate installer download.
+          release: false
           update: true
           suppress-deprecation-warnings: msystem-mingw64
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-binutils
+            mingw-w64-x86_64-ffmpeg
             python
 
       - name: Verify toolchain floor
@@ -72,6 +95,25 @@ jobs:
           print(f"Accepted release toolchain: GCC {gcc}, binutils {ld}")
           PY
 
+      - name: Test Windows media observer boundary
+        shell: msys2 {0}
+        env:
+          CXX: g++
+        run: bash test-media-observer-windows.sh
+
+      - name: Test conversion and library status maintenance
+        shell: msys2 {0}
+        env:
+          CXX: g++
+        run: bash test-maintenance-windows.sh
+
+      - name: Test Windows publication, settings, logging, metadata and quality
+        shell: msys2 {0}
+        env:
+          CC: gcc
+          CXX: g++
+        run: bash test-native-windows.sh
+
       - name: Build Windows x64 DLL
         shell: msys2 {0}
         env:
@@ -80,8 +122,13 @@ jobs:
           WINDRES: windres
           STRIP: strip
           LD: ld
+          OBJDUMP: objdump
           PYTHON: python
-        run: bash build-native.sh
+        run: |
+          set -euo pipefail
+          bash build-native.sh
+          python -c "from pathlib import Path; a=Path('build/validation-worker/validation-worker.exe').read_bytes(); b=Path('build/windows-tests/validation-process/validation-worker.exe').read_bytes(); raise SystemExit(0 if a == b else 'Release helper differs from tested helper')"
+          echo 'Release helper matches the fully exercised test helper byte-for-byte.'
 
       - name: Package release
         shell: msys2 {0}
@@ -97,16 +144,19 @@ jobs:
           objdump -h build/version.dll | grep -q '\.rsrc'
           strings -el build/version.dll | grep -Fq 'Soggfy Spotify history capture proxy'
           strings -el build/version.dll | grep -Fq "$version"
-          objdump -p build/version.dll | grep -iq 'DLL Name: msvcrt.dll'
-          if objdump -p build/version.dll | grep -iq 'DLL Name: libwinpthread-1.dll'; then
-            echo 'Unexpected dynamic MinGW pthread runtime dependency' >&2
-            exit 1
-          fi
+          for binary in build/version.dll build/Soggfy.exe; do
+            imports="$(objdump -p "$binary")"
+            grep -iq 'DLL Name: msvcrt.dll' <<< "$imports"
+            if grep -Ei 'DLL Name: (libwinpthread|libgcc|libstdc[+][+])' <<< "$imports"; then
+              echo "Unexpected dynamic MinGW runtime dependency in $binary" >&2
+              exit 1
+            fi
+          done
           cd dist
           grep -Fq "  $archive" SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
           python - "$archive" <<'PY'
-          import sys, zipfile
+          import hashlib, re, sys, zipfile
           required = {
               "version.dll",
               "Launcher/Soggfy.exe",
@@ -119,10 +169,29 @@ jobs:
               "Scripts/Install.ps1",
               "Scripts/Uninstall.ps1",
               "Scripts/PostProcess.ps1",
+              "Scripts/ConverterProcess.cs",
               "Scripts/Diagnose.ps1",
+              "Scripts/ValidationWorker.ps1",
+              "VALIDATION_WORKER.txt",
+              "third-party/libvorbis/LICENSE.txt",
+              "third-party/libFLAC/LICENSE.txt",
+              "third-party/libpng/LICENSE.txt",
+              "third-party/zlib/LICENSE.txt",
+              "third-party/libjpeg-turbo/LICENSE.txt",
+              "third-party/libjpeg-turbo/README.ijg",
           }
           with zipfile.ZipFile(sys.argv[1]) as z:
               names = set(z.namelist())
+              digest = z.read("VALIDATION_WORKER.txt").decode("ascii").strip()
+              assert re.fullmatch(r"[a-f0-9]{64}", digest)
+              worker = f"SoggfyValidation-{digest}.exe"
+              assert z.read(worker) == z.read("Launcher/" + worker)
+              assert hashlib.sha256(z.read(worker)).hexdigest() == digest
+              assert digest.encode() in z.read("version.dll")
+              assert z.read("version.dll") == z.read("Launcher/Soggfy.dll")
+              for line in z.read("SHA256SUMS.txt").decode().splitlines():
+                  expected, path = line.split("  ", 1)
+                  assert hashlib.sha256(z.read(path)).hexdigest() == expected, path
           missing = sorted(required - names)
           if missing:
               raise SystemExit("Missing release files: " + ", ".join(missing))

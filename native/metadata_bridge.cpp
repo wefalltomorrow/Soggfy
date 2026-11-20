@@ -1,5 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include "metadata_bridge.h"
+#include "client_playback.h"
 #include "cef_identity.h"
 #include "hook_init_state.h"
 #include "hook_installation.h"
@@ -13,6 +14,7 @@
 #include "vendor/minhook/include/MinHook.h"
 #include "../build/metadata_script.h"
 #include "../build/soggfy_ui_script.h"
+#include "procedure_cast.h"
 #include <atomic>
 #include <algorithm>
 #include <array>
@@ -163,6 +165,7 @@ static std::wstring UiConfigCode() {
  add("metadata",bit(s.metadata));
  add("log",bit(s.log));
  add("debug",bit(s.debug_log));
+ add("logLevel",std::to_string(s.log_level));
  add("normalize",bit(s.normalize_artist_separators));
  add("skipDownloaded",bit(s.skip_downloaded_tracks));
  add("skipIgnored",bit(s.skip_ignored_tracks));
@@ -258,11 +261,15 @@ struct Message { ULONGLONG time=0; char data[131073];size_t length=0;};
 static std::array<Message,4> messages;static size_t head=0,tail=0,count=0;static HANDLE message_event=nullptr;
 static SRWLOCK ui_status_lock=SRWLOCK_INIT;
 static std::string ui_status_request,ui_status_response;
+static std::vector<std::string> ui_m3u_responses;
+static std::atomic<uint64_t> ui_status_sequence{0};
+static HANDLE status_event=nullptr;
+static constexpr size_t kClassicStatusBatchLimit=128;
 
 static std::vector<ClassicTrackQuery> ParseClassicStatusBatch(const std::string& data) {
  std::vector<ClassicTrackQuery> out;
  size_t start=0;
- while(start<=data.size() && out.size()<128) {
+ while(start<=data.size() && out.size()<kClassicStatusBatchLimit) {
   size_t end=data.find(char(0x1e),start);if(end==std::string::npos)end=data.size();
   std::array<std::string,5> fields{};size_t f=0,pos=start;
   while(f<fields.size()) {
@@ -293,20 +300,49 @@ static std::string SerializeClassicStatuses(const std::vector<ClassicTrackResult
  return out;
 }
 static void QueueClassicStatusRequest(const std::string& request) {
- AcquireSRWLockExclusive(&ui_status_lock);ui_status_request=request;ReleaseSRWLockExclusive(&ui_status_lock);
- if(message_event)SetEvent(message_event);
+ AcquireSRWLockExclusive(&ui_status_lock);ui_status_request=request;++ui_status_sequence;ReleaseSRWLockExclusive(&ui_status_lock);
+ if(status_event)SetEvent(status_event);
 }
 static void ProcessClassicStatusRequest() {
  std::string request;
- AcquireSRWLockExclusive(&ui_status_lock);request.swap(ui_status_request);ReleaseSRWLockExclusive(&ui_status_lock);
+ AcquireSRWLockExclusive(&ui_status_lock);request.swap(ui_status_request);const auto sequence=ui_status_sequence.load();ReleaseSRWLockExclusive(&ui_status_lock);
  if(request.empty())return;
- auto result=SerializeClassicStatuses(QueryClassicTrackStatuses(ParseClassicStatusBatch(request)));
+ const auto separator=request.find(char(0x1d));
+ if(separator==std::string::npos||separator==0||separator>96)return;
+ const auto id=request.substr(0,separator);
+ if(id.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.")!=std::string::npos)return;
+ std::string result=id+char(0x1d);
+ ClassicStatusControl control;
+ control.canceled=[sequence]{return !metadata_running.load()||ui_status_sequence.load()!=sequence;};
+ try {result+=SerializeClassicStatuses(QueryClassicTrackStatuses(ParseClassicStatusBatch(request.substr(separator+1)),nullptr,control));}
+ catch(...) {HistoryLog("classic status lookup failed; returning an empty correlated reply");}
+ if(control.canceled())return;
  AcquireSRWLockExclusive(&ui_status_lock);ui_status_response=std::move(result);ReleaseSRWLockExclusive(&ui_status_lock);
  SchedulePoll();
 }
+static void QueueClassicM3UResponse(const std::string& id,ClassicM3UResult result) {
+ const char* status=result==ClassicM3UResult::Saved?"saved":result==ClassicM3UResult::Canceled?"canceled":"failed";
+ AcquireSRWLockExclusive(&ui_status_lock);
+ try {
+  if(ui_m3u_responses.size()>=8)ui_m3u_responses.erase(ui_m3u_responses.begin());
+  ui_m3u_responses.push_back(id+char(0x1d)+status);
+ }catch(...) {ReleaseSRWLockExclusive(&ui_status_lock);throw;}
+ ReleaseSRWLockExclusive(&ui_status_lock);
+ SchedulePoll();
+}
 static void FlushClassicStatusResponse(Frame* frame) {
+ std::vector<std::string> saves;
+ AcquireSRWLockExclusive(&ui_status_lock);saves.swap(ui_m3u_responses);ReleaseSRWLockExclusive(&ui_status_lock);
+ for(const auto& save:saves) {
+  auto encoded=PercentEncode(save);
+  ExecuteFrameCode(frame,L"if(window.__soggfyM3UResult)window.__soggfyM3UResult(decodeURIComponent(\""+
+      std::wstring(encoded.begin(),encoded.end())+L"\"));",L"soggfy-m3u-result.js");
+ }
  std::string response;
  AcquireSRWLockExclusive(&ui_status_lock);response.swap(ui_status_response);ReleaseSRWLockExclusive(&ui_status_lock);
+ const auto revision=ClassicStatusRevision();
+ ExecuteFrameCode(frame,L"if(window.__soggfyStatusRevision)window.__soggfyStatusRevision("+
+     std::to_wstring(revision)+L");",L"soggfy-status-revision.js");
  if(response.empty())return;
  auto encoded=PercentEncode(response);
  std::wstring wide(encoded.begin(),encoded.end());
@@ -325,11 +361,18 @@ static bool Enqueue(const String* value) {
   } ReleaseSRWLockExclusive(&message_lock);
  } return true;
 }
+static DWORD WINAPI ClassicStatusWorker(LPVOID) {
+ SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL);
+ while(metadata_running.load(std::memory_order_acquire)) {
+  ProcessClassicStatusRequest();
+  WaitForSingleObject(status_event,1000);
+ }
+ return 0;
+}
 static DWORD WINAPI MetadataWorker(LPVOID) {
  SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL);
  Message m;
  while(metadata_running.load(std::memory_order_acquire)){
-  ProcessClassicStatusRequest();
   if(metadata_polling.load(std::memory_order_acquire))SchedulePoll();
   bool got=false;AcquireSRWLockExclusive(&message_lock);if(count){m=messages[head];head=(head+1)%messages.size();--count;got=true;}ReleaseSRWLockExclusive(&message_lock);
   if(!got){WaitForSingleObject(message_event,1000);continue;}
@@ -351,11 +394,14 @@ static bool CurrentPlayback(const String* text) {
   if(text->length<=n+4096) {
    std::string payload;payload.reserve(text->length-n);
    for(size_t i=n;i<text->length;++i) {
-    if(text->str[i]>127){PublishClientPlaybackQuality({});return true;}
+    if(text->str[i]>127){client_playback.Publish({},double(GetTickCount64())/1000);PublishClientPlaybackQuality({});return true;}
     payload+=char(text->str[i]);
    }
-   RichMetadata record;std::string error;
-   if(ParsePlaybackMetadata(payload,record,error)) {
+   ClientPlayback observation;
+   const bool parsed=ParseClientPlayback(payload,observation);
+   client_playback.Publish(observation,double(GetTickCount64())/1000);
+   const auto& record=observation.media;
+   if(parsed && observation.available) {
     snapshot.identity=PlaybackIdentity(record.kind=="episode"
         ? record.uri : record.title+"\x1f"+record.artist+"\x1f"+record.album);
     snapshot.level=ParsePlaybackLevel(record.playback_quality);
@@ -368,9 +414,9 @@ static bool CurrentPlayback(const String* text) {
      std::copy_n(title.begin(),count,snapshot.title.begin());
     }
    }
-  }
+  } else client_playback.Publish({},double(GetTickCount64())/1000);
   PublishClientPlaybackQuality(snapshot);
- }catch(...){PublishClientPlaybackQuality({});}
+ }catch(...){client_playback.Publish({},double(GetTickCount64())/1000);PublishClientPlaybackQuality({});}
  return true;
 }
 
@@ -386,7 +432,8 @@ static bool ParseClassicM3U(const std::string& payload,std::wstring& suggested,s
  playlist=header.substr(split+1);
  if(suggested.empty()||suggested.size()>240||playlist.size()>4096)return false;
  size_t start=first+1;
- while(start<payload.size()&&entries.size()<10000) {
+ while(start<payload.size()) {
+  if(entries.size()>=10000)return false;
   size_t end=payload.find(rs,start);if(end==std::string::npos)end=payload.size();
   auto record=payload.substr(start,end-start);
   std::array<std::string,4> fields;size_t at=0;bool valid=true;
@@ -394,12 +441,15 @@ static bool ParseClassicM3U(const std::string& payload,std::wstring& suggested,s
    size_t sep=record.find(fs,at);if(sep==std::string::npos){valid=false;break;}
    fields[i]=record.substr(at,sep-at);at=sep+1;
   }
-  if(valid) {
+  if(!valid)return false;
+  {
    fields[3]=record.substr(at);
    ClassicM3UEntry entry;
    try{entry.duration_seconds=std::max(0L,std::min(86400L,std::stol(fields[0])));}catch(...){entry.duration_seconds=0;}
    entry.artist=fields[1];entry.title=fields[2];entry.path=WideUtf8(fields[3]);
-   if(!entry.path.empty())entries.push_back(std::move(entry));
+   if(entry.path.empty()||entry.path.find_first_of(L"\r\n")!=std::wstring::npos||
+      entry.path.find(wchar_t(0))!=std::wstring::npos)return false;
+   entries.push_back(std::move(entry));
   }
   start=end+1;
  }
@@ -422,6 +472,7 @@ static bool ClassicUiMessage(const String* text) {
  else if(key==L"ogg")ok=SetOgg(flag());
  else if(key==L"flac")ok=SetFlac(flag());
  else if(key==L"metadata")ok=SetMetadata(flag());
+ else if(key==L"logLevel")ok=decoded.size()==1 && (decoded[0]=='0'||decoded[0]=='1'||decoded[0]=='2'||decoded[0]=='4') && SetLogLevel(unsigned(decoded[0]-'0'));
  else if(key==L"log")ok=SetLogging(flag());
  else if(key==L"debug")ok=SetDebugLogging(flag());
  else if(key==L"normalize")ok=SetNormalizeArtistSeparators(flag());
@@ -456,9 +507,17 @@ static bool ClassicUiMessage(const String* text) {
  }
  else if(key==L"open_folder"){RevealClassicTrack(WideUtf8(decoded));return true;}
  else if(key==L"save_m3u"){
-  std::wstring suggested;std::string playlist;std::vector<ClassicM3UEntry> entries;
-  if(ParseClassicM3U(decoded,suggested,playlist,entries))SaveClassicM3U(suggested,playlist,entries);
-  else HistoryLog("failed to parse classic M3U request");
+  const auto separator=decoded.find(char(0x1d));
+  if(separator==std::string::npos||separator==0||separator>96)return true;
+  const auto id=decoded.substr(0,separator);
+  if(id.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.")!=std::string::npos)return true;
+  bool started=false;
+  try {
+   std::wstring suggested;std::string playlist;std::vector<ClassicM3UEntry> entries;
+   if(ParseClassicM3U(decoded.substr(separator+1),suggested,playlist,entries))
+    started=SaveClassicM3U(suggested,playlist,entries,[id](ClassicM3UResult result){QueueClassicM3UResponse(id,result);});
+  }catch(...) {HistoryLog("failed to prepare classic M3U request");}
+  if(!started)QueueClassicM3UResponse(id,ClassicM3UResult::Failed);
   return true;
  }
  else if(key==L"canvas"){
@@ -634,6 +693,8 @@ void EnrichCatalog(const Media& media,Catalog& catalog) {
  if(auto m=cache.Find(Utf8(media.title),Utf8(media.artist),Utf8(media.album),media.duration)){copy=*m;found=true;}
  ReleaseSRWLockShared(&cache_lock);
  if(!found)return;
+ catalog.spotify_uri=copy.uri;
+ catalog.spotify_album_uri=copy.album_uri;
  auto field=[&](const char* key)->std::string{
   auto it=copy.fields.find(key);return it==copy.fields.end()?std::string{}:it->second;
  };
@@ -661,26 +722,32 @@ void StartMetadataCollector(HMODULE cef) {
  if(!metadata_init.TryBegin(now))return;
  auto settings=GetSettings();
  if(!settings.metadata&&!settings.classic_ui){HistoryLog("CEF bridge disabled: Metadata=0 and Classic UI=0");metadata_init.MarkUnsupported();return;}
- auto address=GetProcAddress(cef,"cef_version_info");int(*version)(int)=nullptr;static_assert(sizeof(version)==sizeof(address));memcpy(&version,&address,sizeof(version));
+ auto version=ProcedureCast<int(*)(int)>(GetProcAddress(cef,"cef_version_info"));
  if(!version||!cef_compat::IsSupported({version(0),version(1),version(2),version(3)})){
   HistoryLog("metadata CEF identity unsupported; revision is not in the audited compatibility table");metadata_init.MarkUnsupported();return;
  }
- auto post_address=GetProcAddress(cef,"cef_post_task");memcpy(&post_task,&post_address,sizeof(post_task));
- auto browser_address=GetProcAddress(cef,"cef_browser_host_get_browser_by_identifier");memcpy(&get_browser_by_id,&browser_address,sizeof(get_browser_by_id));
+ post_task=ProcedureCast<decltype(post_task)>(GetProcAddress(cef,"cef_post_task"));
+ get_browser_by_id=ProcedureCast<decltype(get_browser_by_id)>(GetProcAddress(cef,"cef_browser_host_get_browser_by_identifier"));
  if(!post_task){HistoryLog("metadata collector unsupported: cef_post_task missing");metadata_init.MarkUnsupported();return;}
  browser_discovery_ready_at=GetTickCount64()+1500;
  if(!get_browser_by_id)HistoryLog("CEF post-start discovery export unavailable; browser-creation hooks only");
  message_event=CreateEventW(nullptr,FALSE,FALSE,nullptr);
  if(!message_event){HistoryLog("metadata event allocation failed; retry scheduled");metadata_init.Retry(now);return;}
+ status_event=CreateEventW(nullptr,FALSE,FALSE,nullptr);
+ if(!status_event){CloseHandle(message_event);message_event=nullptr;metadata_init.Retry(now);return;}
  head=tail=count=0;
  metadata_polling.store(false,std::memory_order_release);metadata_running.store(true,std::memory_order_release);
  HANDLE thread=CreateThread(nullptr,0,MetadataWorker,nullptr,0,nullptr);
- if(!thread){metadata_running.store(false,std::memory_order_release);CloseHandle(message_event);message_event=nullptr;HistoryLog("metadata worker startup failed; retry scheduled");metadata_init.Retry(now);return;}
+ if(!thread){metadata_running.store(false,std::memory_order_release);CloseHandle(message_event);message_event=nullptr;CloseHandle(status_event);status_event=nullptr;HistoryLog("metadata worker startup failed; retry scheduled");metadata_init.Retry(now);return;}
+ HANDLE status_thread=CreateThread(nullptr,0,ClassicStatusWorker,nullptr,0,nullptr);
  auto stop_worker=[&] {
-  metadata_polling.store(false,std::memory_order_release);metadata_running.store(false,std::memory_order_release);SetEvent(message_event);
+  metadata_polling.store(false,std::memory_order_release);metadata_running.store(false,std::memory_order_release);SetEvent(message_event);SetEvent(status_event);
+  const bool status_stopped=!status_thread||WaitForSingleObject(status_thread,5000)==WAIT_OBJECT_0;
+  if(status_thread){CloseHandle(status_thread);status_thread=nullptr;}
   const bool stopped=WaitForSingleObject(thread,5000)==WAIT_OBJECT_0;CloseHandle(thread);thread=nullptr;
-  if(stopped){CloseHandle(message_event);message_event=nullptr;}return stopped;
+  if(stopped&&status_stopped){CloseHandle(message_event);message_event=nullptr;CloseHandle(status_event);status_event=nullptr;}return stopped&&status_stopped;
  };
+ if(!status_thread){if(stop_worker())metadata_init.Retry(now);else metadata_init.MarkUnsupported();return;}
  auto status=MH_Initialize();if(status==MH_ERROR_ALREADY_INITIALIZED)status=MH_OK;
  if(status!=MH_OK){if(stop_worker()){HistoryLog("metadata MinHook initialization failed; retry scheduled");metadata_init.Retry(now);}else{HistoryLog("metadata worker did not quiesce; state preserved");metadata_init.MarkUnsupported();}return;}
  const char* names[]={"cef_browser_host_create_browser","cef_browser_host_create_browser_sync","cef_browser_view_create"};
@@ -706,10 +773,10 @@ void StartMetadataCollector(HMODULE cef) {
   rollback.ObserveQuiescence(metadata_callbacks.Active()==0);
   if(rollback.quiescent)for(unsigned i=0;i<created_count;i++)rollback.ObserveRemove(removed(MH_RemoveHook(created_targets[i])));
   if(rollback.CanRelease()&&stop_worker())metadata_init.Retry(now);
-  else {if(thread)CloseHandle(thread);HistoryLog("metadata rollback incomplete; callback state preserved and retries disabled");metadata_init.MarkUnsupported();}
+  else {if(thread)CloseHandle(thread);if(status_thread)CloseHandle(status_thread);HistoryLog("metadata rollback incomplete; callback state preserved and retries disabled");metadata_init.MarkUnsupported();}
   return;
  }
- metadata_polling.store(true,std::memory_order_release);SetEvent(message_event);CloseHandle(thread);metadata_init.Activate();
+ metadata_polling.store(true,std::memory_order_release);SetEvent(message_event);CloseHandle(thread);CloseHandle(status_thread);metadata_init.Activate();
  char line[220];snprintf(line,sizeof(line),"metadata collector active: found=%u created=%u enabled=%u discovery=%s delay_ms=1500",
    counts.found,counts.created,counts.enabled,get_browser_by_id?"available":"unavailable");HistoryLog(line);
 }

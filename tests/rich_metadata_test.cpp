@@ -4,6 +4,15 @@
 using namespace history;
 int main() {
  RichMetadata m; std::string e;
+ const std::string identity="v=1&title=Song&artist=Artist&album=Album&duration=200&uri=spotify:track:0000000000000000000001";
+ const std::string album="spotify:album:0000000000000000000002";
+ assert(ParseRichMetadata(identity+"&album_uri="+album,m,e));
+ assert(m.album_uri==album&&m.fields.at("SPOTIFY_ALBUM_URI")==album&&m.fields.at("SPOTIFY_URI")==m.uri);
+ assert(ParseRichMetadata(identity+"&SPOTIFY_ALBUM_URI="+album,m,e)&&m.album_uri==album);
+ assert(!ParseRichMetadata(identity+"&album_uri="+album+"&SPOTIFY_ALBUM_URI=spotify:album:0000000000000000000003",m,e));
+ assert(!ParseRichMetadata(identity+"&album_uri=spotify:album:short",m,e));
+ assert(!ParseRichMetadata(identity+"&SPOTIFY_URI=spotify:track:0000000000000000000003",m,e));
+ assert(!ParseRichMetadata("v=1&title=Episode&artist=A&album=B&duration=20&uri=spotify:episode:0000000000000000000001&album_uri="+album,m,e));
  assert(ParseRichMetadata("v=1&title=Song&artist=Artist&album=Album&duration=200&uri=spotify%3Atrack%3A123&DATE=2026-09-30&GENRE=Rock&LYRICS=one%0Atwo%20%C3%A9",m,e));
  assert(m.fields.at("LYRICS")=="one\ntwo é" && m.fields.at("DATE")=="2026-09-30");
  assert(m.Matches("Song","Artist","Album",200.5));
