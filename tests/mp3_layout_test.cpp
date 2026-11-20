@@ -34,14 +34,61 @@ static void SetBits(Bytes& b,size_t byte,size_t bit,unsigned count,unsigned valu
             (((value>>(count-1-i))&1)?mask:0));
     }
 }
-static void Reject(const Bytes& bytes) {
+static void Reject(const Bytes& bytes,const char* expected=nullptr) {
     Mp3Layout info;info.frames=999;info.rate=123;const char* error=nullptr;
     assert(!InspectMp3Layout(bytes,info,error)&&error&&*error);
+    if(expected)assert(std::strcmp(error,expected)==0);
     assert(!info.frames&&!info.rate&&!info.audio_size&&!info.nominal_samples);
     assert(!info.xing.present&&!info.xing.flags&&!info.xing.audio_frames&&!info.xing.stream_bytes);
+    assert(!info.xing.gapless_present&&!info.xing.encoder_delay&&!info.xing.encoder_padding&&!info.xing.gapless_samples);
+    assert(!info.vbri.present&&!info.vbri.version&&!info.vbri.audio_frames&&!info.vbri.stream_bytes);
+}
+static void Put16(Bytes& bytes,size_t at,uint16_t value) {
+    bytes.at(at)=uint8_t(value>>8);bytes.at(at+1)=uint8_t(value);
 }
 static void Put32(Bytes& bytes,size_t at,uint32_t value) {
     for(unsigned i=0;i<4;++i)bytes.at(at+i)=uint8_t(value>>(24-8*i));
+}
+static void Vbri() {
+    Mp3Layout info;const char* error=nullptr;
+    for(unsigned version:{3u,2u,0u})for(unsigned channels:{1u,2u})for(bool crc:{false,true}) {
+        const bool high=version==3;
+        const unsigned second=(high?0xfbu:version==2?0xf3u:0xe3u)-(crc?1:0);
+        const unsigned third=high?0x90:version==2?0x80:0x40,length=high?417:208;
+        auto seek=Frame(second,third,length,channels==1?0xc0:0);
+        const size_t tag=36;std::memcpy(seek.data()+tag,"VBRI",4);
+        Put16(seek,tag+4,1);Put16(seek,tag+6,576);Put16(seek,tag+8,75);
+        Put32(seek,tag+10,3*length);Put32(seek,tag+14,2);
+        Put16(seek,tag+18,4);Put16(seek,tag+20,1);
+        Put16(seek,tag+22,2);Put16(seek,tag+24,1);
+        for(unsigned i=0;i<8;++i)seek[tag+26+i]=uint8_t(i+1);
+        Crc(seek);
+        auto complete=seek;Append(complete,Frame(second,third,length,channels==1?0xc0:0));
+        Append(complete,Frame(second,third,length,channels==1?0xc0:0));
+        assert(InspectMp3Layout(complete,info,error));
+        assert(info.frames==3&&info.vbri.present&&info.vbri.version==1);
+        assert(info.vbri.delay==576&&info.vbri.quality==75);
+        assert(info.vbri.audio_frames==2&&info.vbri.stream_bytes==3*length);
+        assert(info.vbri.toc_entries==4&&info.vbri.toc_scale==1&&
+               info.vbri.toc_entry_bytes==2&&info.vbri.frames_per_entry==1);
+        auto bad=complete;Put32(bad,tag+14,1);Crc(bad);Reject(bad,"MP3 VBRI frame count mismatch");
+        bad=complete;Put32(bad,tag+10,3*length-1);Crc(bad);Reject(bad,"MP3 VBRI byte count mismatch");
+        bad=complete;Put16(bad,tag+4,2);Crc(bad);Reject(bad,"unsupported MP3 VBRI version");
+        bad=complete;Put16(bad,tag+22,5);Crc(bad);Reject(bad,"invalid MP3 VBRI table dimensions");
+        bad=complete;SetBits(bad,length+(crc?6:4),0,high?9:8,1);Crc(bad,length);
+        Reject(bad,"MP3 reservoir starts before recording");
+        // The fixed header and declared TOC must fit inside the tag frame.
+        Mp3VbriInfo parsed;error=nullptr;
+        assert(!mp3_layout_detail::ReadVbri(complete,0,69,parsed,error));
+        assert(error&&std::strcmp(error,"truncated MP3 VBRI table")==0&&!parsed.present);
+    }
+    auto short_tag=Frame();std::memcpy(short_tag.data()+36,"VBRI",4);
+    Mp3VbriInfo parsed;error=nullptr;
+    for(size_t bound=40;bound<62;++bound) {
+        assert(!mp3_layout_detail::ReadVbri(short_tag,0,bound,parsed,error));
+        assert(error&&std::strcmp(error,"truncated MP3 VBRI header")==0&&!parsed.present);
+    }
+    std::cout<<"PASS: VBRI fixed offset, declared extents/counts, table bounds, versions, CRC layouts and fixed frames\n";
 }
 static void Xing() {
     Mp3Layout info;const char* error=nullptr;
@@ -64,6 +111,25 @@ static void Xing() {
             assert(info.frames==3&&info.xing.present&&info.xing.flags==flags);
             assert(info.xing.audio_frames==((flags&1)?2u:0u));
             assert(info.xing.stream_bytes==((flags&2)?3*length:0u));
+            if(flags==15)for(const char* encoder:{"LAME","Lavf","Lavc"}) {
+                auto gapless=tag;std::memcpy(gapless.data()+cursor,encoder,4);
+                gapless[cursor+21]=0x02;gapless[cursor+22]=0x10;gapless[cursor+23]=0x03;
+                auto tagged=gapless;Append(tagged,audio);Append(tagged,audio);
+                assert(InspectMp3Layout(tagged,info,error));
+                assert(info.xing.gapless_present&&info.xing.encoder_delay==33&&
+                       info.xing.encoder_padding==3);
+                const uint64_t audio_samples=(high?2304:1152);
+                assert(info.xing.gapless_samples==audio_samples-36);
+                Mp3XingInfo parsed;error=nullptr;
+                assert(mp3_layout_detail::ReadXing(gapless,0,cursor+23,side,parsed,error));
+                assert(parsed.present&&!parsed.gapless_present);
+                error=nullptr;
+                assert(mp3_layout_detail::ReadXing(gapless,0,cursor+24,side,parsed,error));
+                assert(parsed.gapless_present&&parsed.encoder_delay==33&&parsed.encoder_padding==3);
+                auto impossible=tagged;
+                impossible[cursor+21]=0xff;impossible[cursor+22]=0xff;impossible[cursor+23]=0xff;
+                Crc(impossible);Reject(impossible,"MP3 gapless trim exceeds audio extent");
+            }
             CompressedBuffer blocks;assert(blocks.Append(complete.data(),complete.size(),65536));
             assert(InspectMp3Layout(blocks,info,error)&&info.xing.present);
             Reject(tag);
@@ -85,7 +151,7 @@ static void Xing() {
             bad=complete;SetBits(bad,length+(crc?6:4),0,high?9:8,1);Crc(bad,length);Reject(bad);
         }
     }
-    std::cout<<"PASS: Xing/Info counts, all flag combinations, bounded optional fields, protected frames, fixed blocks and seek-frame reservoir isolation\n";
+    std::cout<<"PASS: Xing/Info counts, all flag combinations, bounded optional fields, gapless delay/padding, protected frames and seek-frame reservoir isolation\n";
 }
 static void Scalefactors() {
     // Independent boundary expectations for the six LSF encoding ranges and
@@ -182,16 +248,95 @@ static void HuffmanSelectors() {
     assert(cases==6912);
     std::cout<<"PASS: 6912 Huffman selector declarations across versions, records, blocks, CRC and fixed buffers; reserved selectors rejected even in empty regions\n";
 }
+static void HuffmanBitLimits() {
+    using history::mp3_huffman_detail::BoundedBits;
+    using history::mp3_huffman_detail::DecodePair;
+    using history::mp3_huffman_detail::TryDecodeCount1;
+    uint8_t zeros[4]{};
+
+    // The all-zero table-16 path decodes magnitudes (14, 15), then consumes
+    // one linbit and both signs. Table 31 uses the 13-bit escape form.
+    BoundedBits table16(zeros,sizeof(zeros),0,10);
+    assert(DecodePair(table16,16)&&table16.position()==10);
+    BoundedBits table16_short(zeros,sizeof(zeros),0,9);
+    assert(!DecodePair(table16_short,16));
+    BoundedBits table31(zeros,sizeof(zeros),0,21);
+    assert(DecodePair(table31,31)&&table31.position()==21);
+    BoundedBits table31_short(zeros,sizeof(zeros),0,20);
+    assert(!DecodePair(table31_short,31));
+
+    // Count1 table 0's zero-prefix symbol needs three signs; table 1's
+    // zero-prefix symbol has four nonzero coefficients and needs four signs.
+    BoundedBits count1_table0(zeros,sizeof(zeros),0,9);
+    assert(TryDecodeCount1(count1_table0,0)&&count1_table0.position()==9);
+    BoundedBits count1_table0_short(zeros,sizeof(zeros),0,8);
+    assert(!TryDecodeCount1(count1_table0_short,0));
+    BoundedBits count1_table1(zeros,sizeof(zeros),0,8);
+    assert(TryDecodeCount1(count1_table1,1)&&count1_table1.position()==8);
+    BoundedBits count1_table1_short(zeros,sizeof(zeros),0,7);
+    assert(!TryDecodeCount1(count1_table1_short,1));
+    std::cout<<"PASS: bounded linbits escapes and count1 code/sign limits\n";
+}
+static void EntropyPayload() {
+    Mp3Layout info;const char* error=nullptr;
+    // Table 1's all-zero prefix selects a 3-bit (1,1) pair and two sign bits.
+    auto pair=Frame();
+    constexpr unsigned record=20,switched=record+33,payload=36;
+    SetBits(pair,4,record,12,5);
+    SetBits(pair,4,record+12,9,1);
+    SetBits(pair,4,switched+1,5,1);
+    assert(InspectMp3Layout(pair,info,error));
+    SetBits(pair,4,record,12,4);
+    Reject(pair,"truncated or invalid MP3 Huffman pair");
+
+    // The first long band has two pairs at 44.1 kHz; the third pair must use
+    // region 1's table. Table 0 consumes no bits, then table 1 consumes five.
+    auto long_region=Frame();
+    SetBits(long_region,4,record,12,5);
+    SetBits(long_region,4,record+12,9,3);
+    SetBits(long_region,4,switched+6,5,1);
+    SetBits(long_region,payload,0,5,0);
+    assert(InspectMp3Layout(long_region,info,error));
+
+    auto switched_region=[&](unsigned block,bool mixed,unsigned big_values) {
+        auto frame=Frame();
+        SetBits(frame,4,record,12,5);
+        SetBits(frame,4,record+12,9,big_values);
+        SetBits(frame,4,switched,1,1);
+        SetBits(frame,4,switched+1,2,block);
+        SetBits(frame,4,switched+3,1,mixed);
+        SetBits(frame,4,switched+9,5,1);
+        SetBits(frame,payload,0,5,0);
+        if(!InspectMp3Layout(frame,info,error)) {
+            std::cerr<<"switched block "<<block<<": "<<(error?error:"no error")<<'\n';
+            assert(false);
+        }
+    };
+    // At 44.1 kHz, start/stop blocks cross after eight long bands (18 pairs),
+    // ordinary short blocks after nine short bands, and mixed short blocks
+    // after eight mixed bands. The next pair must use region 1 in every case.
+    switched_region(1,false,19);
+    switched_region(2,false,19);
+    switched_region(2,true,19);
+    switched_region(3,false,19);
+    std::cout<<"PASS: exact Huffman bit limits and long/start/short region boundaries\n";
+}
 int main(int argc,char** argv) {
-    if(argc==2) {
-        std::ifstream input(argv[1],std::ios::binary);assert(input);
+    if(argc==2||(argc==3&&std::strcmp(argv[1],"--gapless")==0)) {
+        const bool show_gapless=argc==3;
+        std::ifstream input(argv[show_gapless?2:1],std::ios::binary);assert(input);
         Bytes bytes{std::istreambuf_iterator<char>(input),std::istreambuf_iterator<char>()};
         Mp3Layout info;const char* error=nullptr;
         if(!InspectMp3Layout(bytes,info,error)){std::cerr<<error<<"\n";return 1;}
+        if(show_gapless) {
+            std::cout<<unsigned(info.xing.gapless_present)<<' '<<info.xing.encoder_delay<<' '
+                     <<info.xing.encoder_padding<<' '<<info.xing.gapless_samples<<'\n';
+            return 0;
+        }
         std::cout<<info.rate<<' '<<info.channels<<' '<<info.frames<<' '<<info.nominal_samples<<' '<<info.audio_offset<<' '<<info.audio_size<<'\n';
         return 0;
     }
-    assert(argc==1);Scalefactors();Xing();HuffmanSelectors();Mp3Layout info;const char* error="stale";
+    assert(argc==1);Scalefactors();Xing();Vbri();HuffmanSelectors();HuffmanBitLimits();EntropyPayload();Mp3Layout info;const char* error="stale";
     auto bytes=Frame();Append(bytes,Frame(0xfa,0xa2,523));Append(bytes,Frame());
     assert(InspectMp3Layout(bytes,info,error)&&!error);
     assert(info.rate==44100&&info.channels==2&&info.frames==3&&info.nominal_samples==3456&&info.audio_offset==0&&info.audio_size==1357);
@@ -294,6 +439,6 @@ int main(int argc,char** argv) {
         if(InspectMp3Layout(mutated,info,error))assert(!error&&info.frames&&info.audio_offset<=mutated.size()&&info.audio_size<=mutated.size()-info.audio_offset);
         else assert(error&&!info.frames&&!info.audio_size);
     }
-    std::cout<<"PASS: bounded MP3 layout, protected CRC, side constraints, reservoir extents, ID3 extents/footer, fixed blocks, truncation and mutations; not an audio validator\n";
+    std::cout<<"PASS: bounded MP3 layout and Huffman syntax, protected CRC, side constraints, reservoir extents, ID3 extents/footer, fixed blocks, truncation and mutations; not an audio decoder\n";
     return 0;
 }

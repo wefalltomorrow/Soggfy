@@ -506,6 +506,92 @@ All producers, exception paths, actual service selection and decoder association
 remain open. No runtime hook or production identity reader is enabled.
 
 Pinned validation passes 1,299 unique instruction checks plus tables/literals.
-Evidence: outputs/Soggfy-native-notification-task-20261108.json. The exploratory
-reference report is outputs/Soggfy-native-stream-trampoline-references-20261108.json;
-its search coverage is limited, and the probe records the established edges.
+Evidence: outputs/Soggfy-native-audit-recheck-20261120.json. The focused
+notification scheduler probe below independently rechecks the dispatch boundary.
+The earlier exploratory stream-trampoline reference report is not present in
+the current outputs directory; do not treat it as reproducible evidence.
+
+## Notification scheduler injection and dispatch boundary — November 20
+
+The pinned factory at RVA 0x82d7fc saves its incoming r9 value at 0x82d82c.
+At 0x82dd67 it forwards that value as rdx to constructor 0x82bac0. That
+constructor copies the 32-byte context, and its call to 0x8310d4 passes the
+copy by address. The latter constructor stores the context's first qword at
+streaming-object +8. The task objects at +0x538 and +0x548 are initialized
+from that interface. Initialization calls virtual slot +0x60; notification
+submission calls +0x68; cleanup calls +0x70 with r8 zero and then destroys
+the task-side object.
+
+The focused probe verifies 35 instruction locations against the pinned
+Spotify.dll SHA-256 and records the instruction bytes in
+outputs/Soggfy-native-notification-scheduler-boundary-20261120.json. Reproduce
+with tools/probe_native_notification_scheduler_boundary.py and Capstone against
+the same pinned DLL. A bounded direct-call scan finds the sole .text call
+chain 0x82d3b8 -> 0x82d7fc -> 0x82bac0 -> 0x8310d4. In the factory caller, a
+provider virtual slot +8 returns the 32-byte value copied into the factory
+context. This confirms static provider-to-context provenance
+and the dispatch edges; it does not identify the concrete runtime scheduler/
+vtable or establish whether slot +0x70 cancels queued work, waits for running
+work, or does both. Runtime provider selection, callback completion, races and
+exception paths remain unknown. No Spotify code was executed and no production
+identity reader or runtime hook is enabled.
+
+## Callback provider vtable and selected-data path — November 20
+
+A follow-up address reconciliation corrected the provisional descriptor
+interpretation from the November 20 investigation. The RIP-relative lea at
+0x8527ed resolves to RVA 0x19eede0, not 0x1a1ede0. The former is a two-entry
+pointer table in non-writable .rdata: slot zero targets 0x82b3fc and slot +8
+targets 0x852c34. The _player.proto.PlayedItems descriptor text is at the
+separate RVA 0x1a1ede0; this callback does not dispatch through that descriptor.
+
+Factory 0x8527c0 stores the table pointer at its returned object's +0 and
+stores an inner-object pointer at +8. Its sole verified direct caller in .text,
+0x82b7d5, passes that returned pointer by address to constructor 0x82c788.
+That constructor transfers the pointer into provider +0x10 and clears the
+source. The callback closure captures the provider at closure +8. On the
+inspected path, callback 0x82d3b8 loads provider +0x10, reads the object's
+vtable, takes a mode from provider +0x18, and dispatches slot +8 to 0x852c34.
+That method calls 0x852b48 on the inner object at object +8. Mode zero selects
+inner +0x78; mode one selects inner +0x80. The helper fills four qwords in the
+callback's 32-byte output buffer, which the callback then reads.
+
+This establishes a static construction and method-call path and rejects the
+descriptor-dispatch concern. It does not identify the semantic type of those
+four qwords, prove that this factory is selected during playback, or establish
+identity correctness or complete lifetime. The lazy-initialization follow-up
+below verifies one-time setup ordering, not synchronization of later reads or
+replacement. No Spotify code was executed, and no production reader or runtime
+hook was enabled.
+
+Reproduce with tools/probe_native_identity_dispatch_context.py against the
+pinned DLL. The probe hash-checks the artifact, validates 81 instruction
+locations, scans .text for the factory, initializer and writer direct calls,
+checks both InitOnce imports and IAT slots, checks both vtable slots and their
+targets, and records the method's selected-data path. Evidence:
+outputs/Soggfy-native-identity-dispatch-context-20261120.json.
+
+## Callback selected-field lazy initialization — November 20
+
+The same hash-pinned probe verifies the setup that precedes the callback's
+selected-field read. Import-table entries identify KERNEL32.dll
+InitOnceBeginInitialize at IAT RVA 0x18f80a0 and InitOnceComplete at
+0x18f80a8; the RIP-relative calls at 0x85207e and 0x8520ad resolve to those
+slots. Callback helper 0x852b48 passes the inner object's +0x70 member as the
+one-time state to 0x852064. The initializer calls writer 0x852d40 only when
+InitOnceBeginInitialize reports initialization pending, then completes that
+initialization. The bounded .text scan finds 0x852b80 as the initializer's only
+direct caller and 0x85209f as the writer's only direct caller.
+
+Constructor 0x8522c8 zeros inner-object members +0x70, +0x78 and +0x80. Writer
+0x852d40 stores its first generated pointer at +0x78. It builds and stores the
+second at +0x80 only when byte +0x40 is nonzero. The callback helper invokes
+the one-time initialization path before selecting +0x78 for mode zero or +0x80
+for mode one. This verifies a statically serialized lazy-initialization path
+and corrects the earlier suspicion that the writer was only on an error path.
+
+It does not show that this factory is selected at runtime, identify the values'
+semantic type, establish identity correctness or complete object lifetime, or
+prove synchronization of later reads or replacement. The optional +0x80 value
+is not shown to be populated on every construction path. No Spotify code was
+executed and no runtime hook or production reader was enabled.

@@ -1,5 +1,71 @@
 # Engineering milestones
 
+## November 20 notification scheduler boundary
+
+Added a hash-pinned static probe for the notification scheduler handoff. Its
+35 checked instruction locations and a bounded .text call scan confirm that
+the sole factory caller obtains a 32-byte value through a provider's virtual
++8 slot and passes it as context through 0x82d7fc and 0x82bac0 into
+streaming-object +8. Task initialization/submission/cleanup dispatch through slots
++0x60/+0x68/+0x70. Cleanup passes a zero flag before destroying the task-side
+object. The concrete runtime scheduler and the meaning of its cleanup call
+remain unresolved; queued-work cancellation does not prove running-callback
+drain. Probe evidence: outputs/Soggfy-native-notification-scheduler-boundary-20261120.json.
+
+The pinned DLL is read statically and is not executed. PR #64 was checked on
+November 20 and remains open and unmerged at source commit
+b53a2e414397f0814afbe909c6abd012acb880c2; live-client acceptance and release
+remain separate gates.
+
+## November 20 native identity lazy-initialization path
+
+Extended the hash-pinned callback probe to verify both KERNEL32.dll InitOnce
+imports and their IAT call sites, the callback helper's +0x70 state argument,
+the initializer's sole direct caller, the writer's sole direct caller, the
+constructor's zeroing of +0x70/+0x78/+0x80, and the writer's unconditional +0x78
+and conditional +0x80 stores. All 81 checked instruction locations and the
+direct-reference/import checks pass against the pinned Spotify DLL. This
+establishes a static lazy-initialization path before the selected-field read;
+it does not establish runtime factory selection, value semantics, identity
+correctness, full lifetime, or synchronization of later reads/replacement.
+Evidence: outputs/Soggfy-native-identity-dispatch-context-20261120.json.
+Live-client acceptance, PR #64 merge, and release remain separate outstanding
+gates.
+
+## November 20 native identity callback dispatch correction
+
+The pinned callback-context follow-up corrected a provisional RVA mix-up:
+factory 0x8527c0 points to an object vtable at 0x19eede0, while the
+_player.proto.PlayedItems descriptor is separately located at 0x1a1ede0.
+The vtable's slot +8 resolves to 0x852c34, which selects one of two inner
+members and fills the callback's 32-byte output buffer. The dispatch-only check
+validated 57 instruction locations and the sole direct factory caller; the
+lazy-initialization follow-up below extends the same probe to 81 checks. This
+clarifies static dispatch only; the data's semantic identity, live selection,
+lifetime and post-initialization synchronization remain unverified. See
+NATIVE_IDENTITY_AUDIT.md and
+outputs/Soggfy-native-identity-dispatch-context-20261120.json.
+
+## November 20 busy-publication retry verification
+
+Commit `b53a2e414397f0814afbe909c6abd012acb880c2` distinguishes a busy destination from
+permanent publication failure. It retains the complete capture for up to three
+retries (2, 10 and 30 seconds), subject to a two-job / 512 MiB bound, and cancels
+retained work when the settings generation or capture epoch changes. This keeps
+retry ownership explicit while preserving the existing destination policy.
+
+CI run 216 (`44678355380`) passed all four jobs for that exact source commit. GitHub
+bound artifact `14603764378` to the commit. Independent verification passed ZIP
+integrity, all seven package-manifest hashes, required-content and helper-binding
+checks, AMD64 PE header/import checks, and a normalized comparison of 27 packaged
+text/source files with HEAD. The outer artifact is 3,304,734 bytes, SHA-256
+`94a2be817c54290ea5a91b566014ef82afbeb0274584570d5b12e86124f403ad`; the inner RC87
+package is 3,306,710 bytes, SHA-256
+`333713a8321410b21d10be15e2ac00da7949a511917af324ba6a40a001e773b6`. Evidence and the
+reproducible verifier are in `outputs/Soggfy-run216-retry-evidence.json` and
+`outputs/verify_run216.py`. This confirms CI and package provenance, not live-client
+acceptance; PR #64 remains open and unmerged.
+
 ## November 20 CI artifact verification
 
 CI run 214 (`44673329029`) passed all four jobs for source commit
@@ -84,9 +150,9 @@ verification passed. Live acceptance remains separate.
 | Installation-directory transaction | RC75 CI/package verified | Live installation acceptance |
 | Manual watch scan cost | RC75 CI/package verified | Live acceptance |
 | Native playlist save result | RC75 CI/package verified | Live save dialog |
-| Native playback/decoder identity | Static candidate traced through consumer, configured generator, recovery invocation and teardown | Null fallback places the upstream read outside its allocation; a traced non-null path spans separate byte fields and part of an ownership pointer. A separate candidate has playback-ID consumer, hex-encoding and configured 16-byte generator evidence. Audio-driver recovery has a conditional synchronous replacement-callback path; teardown replaces a shared byte flag and conditionally destroys the native object when its strong count reaches zero. One callback checks the token before using its stored pointers; its clone retains that guard and is built alongside a copy of the candidate ID. The dispatch-provider pointer is traced to its service-table entry. A registered service-zero candidate now traces configuration ownership into a streaming object: ID at +0x350, guarded wrapper at +0x3a8, and conditional destructor cleanup. Two component cleanup submissions have a completion-counter wait before wrapper destruction; 1,299 pinned instruction checks pass. A notification producer reaches the retained wrapper through a task at +0x538; its cleanup reaches scheduler slot +0x70, whose running-task drain behavior remains unresolved. This does not establish that those component destructors drain all audio callbacks. Registry resolution and runtime selection, scheduling, other consumers, callback completion, synchronized lifetime, decoder association, integration and transitions remain unverified; see NATIVE_IDENTITY_AUDIT.md |
+| Native playback/decoder identity | Static candidate traced through consumer, configured generator, recovery invocation and teardown | Null fallback places the upstream read outside its allocation; a traced non-null path spans separate byte fields and part of an ownership pointer. A separate candidate has playback-ID consumer, hex-encoding and configured 16-byte generator evidence. Audio-driver recovery has a conditional synchronous replacement-callback path; teardown replaces a shared byte flag and conditionally destroys the native object when its strong count reaches zero. One callback checks the token before using its stored pointers; its clone retains that guard and is built alongside a copy of the candidate ID. The dispatch-provider pointer is traced to its service-table entry. A registered service-zero candidate now traces configuration ownership into a streaming object: ID at +0x350, guarded wrapper at +0x3a8, and conditional destructor cleanup. Two component cleanup submissions have a completion-counter wait before wrapper destruction; 1,299 pinned instruction checks pass. The notification scheduler handoff now has a 35-instruction pinned probe and unique direct-call path; a provider returns the 32-byte context, while concrete runtime selection and whether cleanup drains running callbacks remain unresolved. This does not establish that those component destructors drain all audio callbacks. Registry resolution and runtime selection, scheduling, other consumers, callback completion, synchronized lifetime, decoder association, integration and transitions remain unverified; see NATIVE_IDENTITY_AUDIT.md |
 | Ad/DJ/interstitial isolation | Open | Trustworthy identity plus transition/live evidence |
-| Native podcast MP3 capture | Structural, CRC and reservoir-extent prototype | Bounded MPEG-1/2/2.5 layout, ID3 extents and reservoir bit-range accounting; 36 real mono/stereo CBR/VBR fixtures and missing-prefix rejection locally verified. All four jobs passed in CI 42469354367 after using the runner MSYS2 installation (the preceding run hit HTTP 504 during setup). Native and both sanitizer jobs exercised the 36 real fixtures; each sanitizer campaign completed 20,000 seeded iterations. The MinGW package was independently verified at source f34da7d7b94c43dea22463a3302db9babc3e4d09; its DLL and validation helper match the original RC85 binaries. Protected-frame CRC and selected side-information constraints now pass local independent-decoder checks (follow-up below). Full compressed-payload and remaining side-information semantics, gapless/completeness validation and lifecycle integration remain; no production capture enabled |
+| Native podcast MP3 capture | Structural, CRC and reservoir-extent prototype | Bounded MPEG-1/2/2.5 layout, ID3 extents and reservoir bit-range accounting; 36 real mono/stereo CBR/VBR fixtures and missing-prefix rejection locally verified. All four jobs passed in CI 42469354367 after using the runner MSYS2 installation (the preceding run hit HTTP 504 during setup). Native and both sanitizer jobs exercised the 36 real fixtures; each sanitizer campaign completed 20,000 seeded iterations. The MinGW package was independently verified at source f34da7d7b94c43dea22463a3302db9babc3e4d09; its DLL and validation helper match the original RC85 binaries. Protected-frame CRC and selected side-information constraints now pass local independent-decoder checks (follow-up below). LAME-compatible delay/padding declarations match decoded PCM lengths across 36 fixtures (follow-up below); full compressed-payload semantics, completeness/provenance and lifecycle integration remain; no production capture enabled |
 | Concurrent capture/cross-format association | RC84 shared-ready rejection and RC85 retention-conflict fix CI/package verified | Late first retention now rejects candidates shared by queued listens, including competing ready captures. Native identity-aware lifecycle, future-listen/preload and live transition evidence remain |
 | Playback metadata refresh/instance-bound skip | Partial | RC78 queue fencing and RC79 exact-instance active/final/pending metadata refresh CI/packages verified; native current-track skip remains open |
 | Saved-recording metadata refresh/preservation | Offline preparation and RC82 helper deployment verified | Inspection, isolated Ogg/FLAC decoding, minimal text/lyrics policy, output verification and preparation passed CI. RC82 DLL-bound helper packaging and installation passed CI/artifact verification. Local probes demonstrate concurrent ADS, attribute and DACL mutation despite the source lock. Same-file stream swaps preserve tested metadata but expose an empty default stream; even a reader can block publication and rollback. That approach remains disabled. Artwork envelope inventory and RC87 supervised PNG/JPEG decoding are CI/package verified; filesystem metadata preservation, artwork source/replacement policy and production coordinator remain; see METADATA_REFRESH_DESIGN.md |
@@ -321,3 +387,81 @@ corrections; runtime validation and the disabled metadata refresh coordinator
 have not changed. CI193 exposed a harness mistake: requiring clean stderr from
 native debug programs rejected normal libFLAC rewind messages. CI194 fixes that
 by applying the clean-diagnostic requirement to every FFmpeg operation only.
+
+## MP3 gapless trim metadata follow-up
+
+The offline Xing/Info parser now recognizes bounded nine-byte encoder identifiers
+with the LAME-compatible delay/padding fields (LAME, Lavf and Lavc). It reports
+the observed audio-frame sample extent after the declared trim and rejects a
+declaration whose combined trim exceeds those frames. This remains untrusted tag
+metadata and does not establish a valid compressed payload, complete recording,
+or production capture readiness. Native cases cover MPEG-1/2/2.5, mono/stereo,
+protected/unprotected frames, all three identifiers, a truncated extension, and
+an impossible trim. The independent FFmpeg integration corpus confirms parsed
+delay/padding against decoded PCM length for all 36 Xing/Info fixtures. Both the
+native suite and complete MP3 integration corpus passed locally under UBSan;
+`git diff --check` and Python syntax validation passed. ASan and CI have not run
+for these uncommitted changes.
+
+## MP3 VBRI extent follow-up
+
+The offline Layer III inspector now recognizes the fixed-offset VBRI header,
+bounds its optional TOC within the first frame, and checks its declared stream
+byte and audio-frame counts against observed extents. As with Xing/Info, the
+VBRI metadata frame is excluded from reservoir history. FFmpeg's parser treats
+the VBRI frame count as audio frames and skips the metadata frame when deriving
+duration, while physical frame and nominal-sample totals here still include it.
+This cross-check follows FFmpeg
+cc583787bbecd4914fee7c2bf7f09463113822fe, which reads VBRI at frame offset 36.
+
+New C++ cases exercise all supported MPEG versions, mono/stereo, protected and
+unprotected frames, version/count errors, malformed table dimensions,
+truncated header/table bounds, and reservoir isolation. The integration harness
+also converts 36 FFmpeg-encoded Xing/Info seek frames to synthetic VBRI headers
+and checks native inspection, FFprobe packet counts, untrimmed frame-PCM
+equivalence (the Xing/LAME gapless extension is intentionally removed), and
+malformed-count/table rejection for 216 bad VBRI declarations. A
+local interoperability spot-check parsed and decoded one 16-frame MPEG-1
+stereo stream (3,551 bytes) after VBRI retagging. An independent FFmpeg/FFprobe
+matrix then passed all 36 rate/channel/CBR/VBR combinations: packet counts and
+decoded PCM match with automatic Xing/LAME gapless trimming disabled on both
+streams. This comparison intentionally isolates frame audio because retagging
+removes the Xing/LAME delay/padding extension. These are synthetic VBRI tags,
+not output from a VBRI encoder. The native C++ suite was compiled with the
+checksum-verified LLVM-MinGW 2026-11-17 toolchain (Clang 23.1.6) and passed;
+the complete FFmpeg integration harness also passed, including the VBRI matrix.
+The portable compiler lived in a task-specific temporary folder and was not
+installed system-wide. On November 20 the current worktree was recompiled with
+`-std=c++17 -Wall -Wextra -Werror`; the native suite passed, followed by the full
+integration harness against FFmpeg/FFprobe 9.0.2. This rerun passed the complete
+36-stream corpus, 216 malformed VBRI declarations, existing Xing and reservoir
+checks, CRC and side-information mutations, and clean-diagnostic fixture guard.
+`git diff --check` also passes. UndefinedBehaviorSanitizer coverage passes for
+the same native suite and full integration harness.
+AddressSanitizer and the repository's seeded sanitizer campaign remain pending; the
+available Windows LLVM-MinGW distribution has no compatible AddressSanitizer runtime.
+Spectral reconstruction and full Huffman semantic validation, recording
+completeness/provenance and capture lifecycle remain open, and production MP3
+capture remains disabled. Gapless trim parsing is a bounded metadata check
+only. The bounded syntax traversal described in the following follow-up does
+not close those remaining validation requirements.
+
+## MP3 Huffman payload syntax follow-up
+
+The offline Layer III inspector now traverses bounded pair-codebook payloads,
+including linbits escapes and sign bits, followed by count1 symbols and their
+sign bits. It applies each granule's declared bit budget and selects Huffman
+regions across long, start, stop, ordinary short and mixed-block boundaries.
+Focused tests check exact and one-bit-short limits for table 16 and 31 escapes
+and both count1 tables, plus region crossings in all switched-block layouts.
+This establishes bounded syntax traversal; it does not reconstruct spectral
+coefficients or establish whole-recording completeness, provenance or capture
+lifecycle safety. Production MP3 capture remains disabled.
+
+The native suite and full FFmpeg/FFprobe 9.0.2 integration corpus passed for
+both the strict C++17 build and the UBSan build. The corpus covered 36 real
+MPEG-1/2/2.5 mono/stereo CBR/VBR configurations, 420 reserved-selector
+mutations, protected-frame PCM comparisons, and the existing reservoir, CRC,
+Xing/VBRI, side-information and scalefactor checks. `git diff --check` passed.
+AddressSanitizer and the repository's seeded sanitizer campaign were not rerun
+for this follow-up; no CI/package or live-client acceptance is claimed.

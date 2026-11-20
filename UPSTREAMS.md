@@ -1,7 +1,8 @@
-## November 19, 2026 update review
+## November 20, 2026 update review
 
-Reviewed stable Floggfy v1.3 (fa26418728074e2823384b097eecfde6fde69ddf)
-and prerelease v1.4-RC2 (660ba79409629b8d572b12c420ada71ad1e55dde).
+Rechecked the release references on November 20: stable Floggfy v1.3
+(fa26418728074e2823384b097eecfde6fde69ddf) and prerelease v1.4-RC2
+(660ba79409629b8d572b12c420ada71ad1e55dde) remain the reviewed releases.
 See FLOGGFY_20261119_REVIEW.md for pinned references, confirmed gaps, existing
 overlap and implementation order. Main alone excludes the RC2 telemetry work.
 This is source comparison, not a port or new runtime validation. An accompanying
@@ -188,9 +189,11 @@ milestone, not upstream feature parity or proof of a live-stall fix.
 ## RC75 maintenance checkpoint
 
 Installation-directory rollback, bounded watch events and correlated playlist
-save results have local regression coverage; CI/package verification is pending.
-See MILESTONES.md for outstanding work and NATIVE_IDENTITY_AUDIT.md for the
-correction to RC74 native compatibility findings.
+save results have local regression coverage and passed CI/package verification
+at run 216 for source commit b53a2e414397f0814afbe909c6abd012acb880c2. Live
+installation, watch and playlist-dialog acceptance remain. See MILESTONES.md
+for evidence and NATIVE_IDENTITY_AUDIT.md for the correction to RC74 native
+compatibility findings.
 
 RC76 adds independently implemented bounded seeded mutation/model tests for the
 current Soggfy APIs. The sanitizer-campaign concept was reviewed in Floggfy

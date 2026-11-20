@@ -98,13 +98,31 @@ def xing_case(directory, rate, channels, quality, vbr):
     side = (17 if channels == 1 else 32) if high else (9 if channels == 1 else 17)
     tag = offset + 4 + side
     assert source[tag:tag + 4] == (b"Xing" if vbr else b"Info")
-    assert int.from_bytes(source[tag + 4:tag + 8], "big") == 15
+    xing_flags = int.from_bytes(source[tag + 4:tag + 8], "big")
+    assert xing_flags == 15
     assert actual_rate == rate and actual_channels == channels
     assert frames == len(packets) + 1
     assert samples == frames * (1152 if high else 576)
     assert int.from_bytes(source[tag + 8:tag + 12], "big") == len(packets)
     assert int.from_bytes(source[tag + 12:tag + 16], "big") == size
     assert offset + size == len(source)
+    xing_cursor = tag + 8
+    if xing_flags & 1:
+        xing_cursor += 4
+    if xing_flags & 2:
+        xing_cursor += 4
+    if xing_flags & 4:
+        xing_cursor += 100
+    if xing_flags & 8:
+        xing_cursor += 4
+    assert source[xing_cursor:xing_cursor + 4] in (b"LAME", b"Lavf", b"Lavc")
+    delay_at = xing_cursor + 21
+    declared_delay = (source[delay_at] << 4) | (source[delay_at + 1] >> 4)
+    declared_padding = ((source[delay_at + 1] & 15) << 8) | source[delay_at + 2]
+    inspected_gapless = tuple(map(int, run(test, "--gapless", path).split()))
+    frame_samples = 1152 if high else 576
+    expected_gapless_samples = len(packets) * frame_samples - declared_delay - declared_padding
+    assert inspected_gapless == (1, declared_delay, declared_padding, expected_gapless_samples)
     first = int(packets[0]["pos"])
     assert first - offset + sum(int(p["size"]) for p in packets) == size
     def mutation(data, error):
@@ -141,10 +159,72 @@ def xing_case(directory, rate, channels, quality, vbr):
     protected = pathlib.Path(directory) / "xing-protected.mp3"
     protected.write_bytes(data)
     assert run(test, protected) == run(test, path)
-    def pcm(file):
+    def pcm(file, skip_manual=False):
+        gapless = ("-flags2", "+skip_manual") if skip_manual else ()
         return run(ffmpeg, "-v", "error", "-nostdin", "-xerror", "-err_detect", "crccheck+explode",
-                   "-i", file, "-map", "0:a:0", "-f", "s16le", "-")
-    assert pcm(protected) == pcm(path)
+                   *gapless, "-i", file, "-map", "0:a:0", "-f", "s16le", "-")
+    decoded_pcm = pcm(path)
+    assert pcm(protected) == decoded_pcm
+    assert len(decoded_pcm) == expected_gapless_samples * channels * 2
+
+    # Replace the existing Xing/Info marker with a fixed-offset VBRI tag in
+    # the already non-audio seek frame. FFmpeg must recover the same audio
+    # frame count and PCM, while our inspector checks the declared extents.
+    vbri = bytearray(source)
+    audio_frames = int.from_bytes(source[tag + 8:tag + 12], "big")
+    vbri[tag:tag + 4] = b"----"
+    vbri_tag = offset + 36
+    first_packet = int(packets[0]["pos"])
+    assert vbri_tag + 34 <= first_packet  # fixed header plus one four-byte TOC entry
+    vbri[vbri_tag:vbri_tag + 4] = b"VBRI"
+    def put16(at, value):
+        vbri[at:at + 2] = value.to_bytes(2, "big")
+    def put32(at, value):
+        vbri[at:at + 4] = value.to_bytes(4, "big")
+    put16(vbri_tag + 4, 1)             # VBRI version
+    put16(vbri_tag + 6, 0)             # encoder delay
+    put16(vbri_tag + 8, 75)            # quality indicator
+    put32(vbri_tag + 10, size)         # complete MPEG stream extent
+    put32(vbri_tag + 14, audio_frames) # audio frames after the seek frame
+    put16(vbri_tag + 18, 1)            # one TOC entry
+    put16(vbri_tag + 20, 1)            # TOC scale
+    put16(vbri_tag + 22, 4)            # four-byte TOC entry
+    put16(vbri_tag + 24, audio_frames) # frames represented by that entry
+    vbri[vbri_tag + 26:vbri_tag + 30] = size.to_bytes(4, "big")
+    vbri_path = pathlib.Path(directory) / "vbri.mp3"
+    vbri_path.write_bytes(vbri)
+    vbri_info = tuple(map(int, run(test, vbri_path).split()))
+    assert vbri_info == (actual_rate, actual_channels, frames, samples, offset, size)
+
+    def vbri_mutation(data, error):
+        damaged = pathlib.Path(directory) / "vbri-malformed.mp3"
+        damaged.write_bytes(data)
+        run(test, damaged, expected_return=1, expected_stderr=error)
+
+    for value in (0, audio_frames + 1):
+        damaged = bytearray(vbri)
+        damaged[vbri_tag + 14:vbri_tag + 18] = value.to_bytes(4, "big")
+        vbri_mutation(damaged, b"zero MP3 VBRI stream count" if value == 0
+                      else b"MP3 VBRI frame count mismatch")
+    for value in (0, size + 1):
+        damaged = bytearray(vbri)
+        damaged[vbri_tag + 10:vbri_tag + 14] = value.to_bytes(4, "big")
+        vbri_mutation(damaged, b"zero MP3 VBRI stream count" if value == 0
+                      else b"MP3 VBRI byte count mismatch")
+    damaged = bytearray(vbri)
+    damaged[vbri_tag + 22:vbri_tag + 24] = (5).to_bytes(2, "big")
+    vbri_mutation(damaged, b"invalid MP3 VBRI table dimensions")
+    damaged = bytearray(vbri)
+    damaged[vbri_tag + 18:vbri_tag + 20] = (0xffff).to_bytes(2, "big")
+    vbri_mutation(damaged, b"truncated MP3 VBRI table")
+
+    vbri_packets = json.loads(run(ffprobe, "-v", "error", "-show_packets",
+                                  "-select_streams", "a:0", "-of", "json", vbri_path))["packets"]
+    assert len(vbri_packets) == audio_frames
+    # Replacing Xing removes its LAME delay/padding extension. Compare the
+    # decoded frame PCM with automatic gapless trimming disabled on both.
+    assert pcm(vbri_path, skip_manual=True) == pcm(path, skip_manual=True)
+    return 1
 
 
 test = str(pathlib.Path(sys.argv[1]).resolve())
@@ -163,12 +243,13 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
     scalefactor_cases = 0
     huffman_cases = 0
     xing_cases = 0
+    vbri_cases = 0
     for rate in (8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000):
         for channels in (1, 2):
             for vbr in (False, True):
                 path = pathlib.Path(directory) / f"{rate}-{channels}-{vbr}.mp3"
                 quality = ("-q:a", "4") if vbr else ("-b:a", "64k")
-                xing_case(directory, rate, channels, quality, vbr)
+                vbri_cases += xing_case(directory, rate, channels, quality, vbr)
                 xing_cases += 1
                 # Omit the seek frame so every frame is a demuxed packet.
                 # Seek headers and gapless timing require separate work.
@@ -296,6 +377,7 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
     assert protected_cases == 18, protected_cases
     assert scalefactor_cases == 72, scalefactor_cases
     assert xing_cases == 36, xing_cases
+    assert vbri_cases == 36, vbri_cases
     assert 288 <= huffman_cases <= 432, huffman_cases
     print(f"PASS: {huffman_cases} reserved Huffman selector mutations rejected in real-stream granules/channels")
     print("PASS: 36 real MPEG-1/2/2.5 mono/stereo CBR/VBR layouts agree with FFprobe and decoded sample counts; missing reservoir prefixes rejected")
@@ -303,3 +385,5 @@ with tempfile.TemporaryDirectory(prefix="soggfy-mp3-layout-") as directory:
     print("PASS: 72 real-stream side-information mutations rejected by native inspection and FFmpeg with matching causes")
     print("PASS: 72 real-stream impossible scalefactor declarations rejected across all granules/channels and MPEG versions")
     print("PASS: 36 real Xing/Info streams, 360 count/truncation/reservoir mutations, ID3 exclusion and protected seek-frame PCM equivalence")
+    print("PASS: 36 synthetic VBRI streams preserve extents and PCM; 216 bad VBRI declarations rejected")
+    print("PASS: 36 LAME-compatible delay/padding declarations match decoded gapless PCM lengths; impossible trim extents rejected")

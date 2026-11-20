@@ -9,6 +9,9 @@ struct Mp3XingInfo {
     bool present=false;
     unsigned flags=0;
     uint32_t audio_frames=0,stream_bytes=0;
+    bool gapless_present=false;
+    uint16_t encoder_delay=0,encoder_padding=0;
+    uint64_t gapless_samples=0; // Declared trim applied to observed audio frames; not a completeness claim.
 };
 namespace mp3_layout_detail {
 // Input is one complete, bounded frame. Xing/Info uses the fixed offset after
@@ -50,6 +53,22 @@ bool ReadXing(const Bytes& bytes,size_t frame,size_t length,unsigned side,
     }
     uint32_t quality=0;
     if((flags&8)&&!read(quality)){error="truncated MP3 Xing quality";return false;}
+    // LAME-compatible encoder extensions place the 12-bit delay/padding pair
+    // 21 bytes after their nine-byte version string. Treat it as an untrusted
+    // declaration and require both a recognized prefix and bounded bytes.
+    auto encoder=[&](const char* prefix) {
+        for(unsigned i=0;i<4;++i)if(at+i>=length||bytes[frame+at+i]!=uint8_t(prefix[i]))return false;
+        return true;
+    };
+    if(at<=length&&length-at>=24&&
+       (encoder("LAME")||encoder("Lavf")||encoder("Lavc"))) {
+        const unsigned first=bytes[frame+at+21];
+        const unsigned second=bytes[frame+at+22];
+        const unsigned third=bytes[frame+at+23];
+        found.gapless_present=true;
+        found.encoder_delay=uint16_t((first<<4)|(second>>4));
+        found.encoder_padding=uint16_t(((second&15)<<8)|third);
+    }
     output=found;return true;
 }
 }
