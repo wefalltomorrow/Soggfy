@@ -1,10 +1,28 @@
 # Engineering milestones
 
+## November 20 CI artifact verification
+
+CI run 214 (`44673329029`) passed all four jobs for source commit
+`d8fde9ad98322246b118481fd6b354ee80393240`. GitHub binds artifact
+`Soggfy-Windows-x64` (`14601322917`) to that exact commit. The independently
+downloaded artifact is 3,290,783 bytes and matches GitHub's SHA-256
+`32e55fa37b83e1ca1d016e1d5f3e1fa7a62c05d6f474c26012e916e9a7468a37`. Its
+RC87 release package passes ZIP integrity checks; all seven entries in
+`SHA256SUMS.txt` match. The inner package SHA-256 is
+`d957b6513eb6dc79fc693d9d02eed11bb7ac024cd287e37942677d26213e12a8`.
+`BUILDINFO.txt` identifies Soggfy 3.0.0-rc.87 and the x86_64 MinGW target.
+This verifies CI packaging and artifact provenance, not pinned-client acceptance.
+
+The November 20 upstream recheck found no Floggfy release or main-branch commit
+newer than v1.4-RC2 (November 15) and commit
+`1e0201492afc72702337fa4980dda9314b9ab000` (November 14). No additional upstream
+port was identified.
+
 November 19 upstream review: FLOGGFY_20261119_REVIEW.md pins stable v1.3 and
 prerelease v1.4-RC2, records gaps and updates implementation order. Busy-file
 retention/retries, unmatched recordings and expanded telemetry are not implied
 complete by earlier selective ports. Bounded stream evidence and replay are now
-implemented in the current PR diff, with CI/package validation still pending.
+implemented and passed full CI/package verification in run 214, as recorded above.
 It also records a canceled-conversion/DONE status defect, corrected in source
 with an explicit canceled result. Local object compilation and Classic status
 regressions pass; full CI/package verification passed in CI run 206 as recorded
@@ -25,7 +43,8 @@ Windows logger lane and history tests, and audio_history.cpp object compilation
 with Zig 0.13 targeting x86_64 Windows GNU. The object compile suppresses Zig/Clang's
 -Wmissing-field-initializers diagnostic for pre-existing Publication
 aggregate returns; other -Wall -Wextra -Werror checks remain enabled. Full
-MinGW CI/package verification and pinned-client live evidence remain pending.
+CI/package verification passed in run 214; pinned-client live evidence remains
+pending.
 
 ## November 19 cancellation and compiler compatibility checkpoint
 
