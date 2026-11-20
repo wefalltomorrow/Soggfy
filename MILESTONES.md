@@ -1,5 +1,23 @@
 # Engineering milestones
 
+## November 20 CI run 219 and independent package verification
+
+Source commit `06482452065cc0f85e269737a5a5e4500efe8172` passed all four
+CI jobs in run 219 (`44734949744`): native regressions, both 20,000-iteration
+seeded ASan/UBSan campaigns, and Windows maintenance/integration/release
+packaging. GitHub artifact `14629411727` is bound to that source commit. Its
+3,310,454-byte outer archive matches GitHub SHA-256
+`75ddf3be99647910c74eb2b4fefedf6ac3c780b8a7af483cf0c8b3218e2864f4`. The
+3,312,377-byte RC87 package has SHA-256
+`3a35c8f101948248a51831cf77a61a6a42c2949bbd288246b73412308de88a93`.
+Independent checks passed ZIP CRC and path safety, all seven manifest hashes,
+required files, validation-helper digest binding, AMD64 PE/import checks, and
+normalized exact-source comparison for all 27 packaged text/source files. The
+reproducible verifier and report are in `outputs/verify_run219.py` and
+`outputs/Soggfy-run219-package-evidence.json`. This verifies CI/package
+provenance; it does not close the pinned-client runtime or live-acceptance gates
+below.
+
 ## November 20 CI run 218 and independent package verification
 
 Source commit b93d88d97c835a6c80f4b53b59aeb02a757be710 passed all four
