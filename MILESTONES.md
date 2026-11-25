@@ -1,5 +1,40 @@
 # Engineering milestones
 
+## November 25 CI run 226 and independent package verification
+
+Documentation/source commit `50c36577b94627030717cd872ed74ae13059bf7d`
+passed all four jobs in [CI run 226](https://github.com/wefalltomorrow/Soggfy/actions/runs/45604564058): native regressions, both seeded 20,000-iteration ASan/UBSan
+campaigns, Windows media-observer and maintenance tests, the Windows
+publication/settings/logging/metadata/quality suite, and the x64 release
+build/package checks.
+
+GitHub artifact `15017619031` is bound to that exact commit. Its 3,315,454-byte
+outer ZIP has SHA-256
+`8fa3feb7dc01c80b19a825e9efb06ee8430b579abf4d50ccd8d660bc9a657e69`; the
+3,317,496-byte RC88 package has SHA-256
+`b391019e22c5dfaab06a8a6f66ae99d672bf225faa69cfe78bda4fc0b626b55b`.
+Independent verification passed ZIP integrity and safe-path checks, all seven
+manifest hashes, required package content, the DLL-bound validation-helper
+digest, AMD64 PE/import checks, and normalized comparison of all 27 packaged
+source/text files with the tested commit. The helper SHA-256 is
+`d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f`. The
+reproducible verifier and report are `outputs/verify_run226.py` and
+`outputs/Soggfy-run226-package-evidence.json`.
+
+A follow-up static recheck again matched the pinned Spotify DLL
+(42,852,224 bytes; SHA-256
+`210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f`) and
+passed 1,299 identity-path, 81 dispatch/import, and 35 scheduler-boundary
+instruction checks using Capstone. The reports are the three
+`outputs/*20261125-followup1.json` files. This confirms the inspected static
+paths only: no Spotify execution or usable Ghidra/REA provider evidence was
+available. Runtime provider selection, callback completion and synchronized
+lifetime, decoder-to-playback association, ad/DJ/interstitial isolation and
+transitions, exact-instance current-track skip, and production MP3 capture
+remain unverified. Production native MP3 capture and saved-recording metadata
+refresh remain disabled. Live install/restart and Classic save-dialog
+acceptance, PR #64 merge and official release remain separate gates.
+
 ## November 25 CI run 225 and playback-identity recovery fence
 
 PR #64 source commit `054137c036dbe6ffd0aa593b6ec316721db16955` adds
