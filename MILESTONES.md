@@ -1,5 +1,46 @@
 # Engineering milestones
 
+## November 25 CI run 229 and independent package verification
+
+RC88 at exact source commit `af3cf2a1a978195ad96511e3c4f05fe01be3d6e8` passed
+all four jobs in [CI run 229](https://github.com/wefalltomorrow/Soggfy/actions/runs/45617009227):
+native regression tests, both seeded 20,000-iteration ASan/UBSan campaigns,
+Windows media-observer and maintenance tests, the Windows
+publication/settings/logging/metadata/quality suite, and x64 release
+build/package checks. GitHub artifact `15023503003` is bound to that commit.
+Its 3,316,481-byte outer ZIP has SHA-256
+`5bf513a8753024dc4f106d8f077d0baa4815eed3f7dab22c93f6b91fed35e4b2`; the
+3,318,483-byte RC88 package has SHA-256
+`e6b269d42879870268d471131cf052405c2ebaa2ca11ed82e2c23569c76bad64`.
+Independent verification passed ZIP integrity and safe-path checks, all seven
+manifest hashes, required content, helper digest binding, AMD64 PE/import
+constraints, and normalized comparison of all 27 packaged source/text files to
+the tested commit. The helper SHA-256 is
+`d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f`. The
+reproducible verifier and report are `outputs/verify_run229.py` and
+`outputs/Soggfy-run229-package-evidence.json`.
+
+On November 25 the installed Spotify DLL was rechecked at 42,852,224 bytes
+with SHA-256
+`210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f`, matching
+the pinned 1.3.1.234 artifact; no Spotify process was running. Hash-pinned
+static probes checked 1,299 identity-path instructions, 81 dispatch/context
+instructions and 35 scheduler-boundary instructions. They strengthen static
+provenance only: the configured native analysis provider is unavailable
+(`GHIDRA_INSTALL_DIR` is not set), no Spotify code was executed, and runtime
+provider selection, callback completion and synchronized lifetime,
+decoder-to-playback association, ad/DJ/interstitial isolation and transitions,
+and exact-instance current-track skip remain unverified. Native MP3 capture
+and saved-recording metadata refresh remain disabled.
+
+Maintenance transactions, bounded watch scans, native playlist-save
+acknowledgements, diagnostics, sanitizer campaigns and package verification
+are implemented and CI-covered. The current Floggfy v1.4.1 comparison remains
+in `FLOGGFY_20261125_REVIEW.md`; its remaining product candidates require
+separate design or pinned-client evidence before they can be ported safely.
+Live installation/restart and Classic save-dialog acceptance have not been
+performed. PR #64 merge and official release remain separate gates.
+
 ## November 25 CI run 228, independent package verification and pinned identity follow-up
 
 RC88 at exact source commit `a168e02dc93b65995a095fdd0a45cf5e12d92ada` passed all four jobs in [CI run 228](https://github.com/wefalltomorrow/Soggfy/actions/runs/45611267118): native regression tests, both seeded 20,000-iteration ASan/UBSan campaigns, Windows media-observer and maintenance tests, the Windows publication/settings/logging/metadata/quality suite, and x64 release build/package checks. GitHub artifact `15022175087` is bound to that commit. Its 3,316,214-byte outer ZIP has SHA-256 `a9a324edbc184258d4413be5b71288f971c2364fa2991b1490e5edd26c2d5a62`; the 3,318,220-byte RC88 package has SHA-256 `79f84dfabecefcdce0e2e64c596486711ccb90ceb0b6aca353a6757ce74b9c64`. Independent verification passed ZIP integrity and safe-path checks, all seven manifest hashes, required content, helper digest binding, AMD64 PE/import constraints, and normalized comparison of all 27 packaged source/text files to the tested commit. The helper SHA-256 is `d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f`. The reproducible verifier and report are `outputs/verify_run228.py` and `outputs/Soggfy-run228-package-evidence.json`.
