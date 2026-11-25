@@ -22,6 +22,7 @@
 #include "library_layout.h"
 #include "existing_quality.h"
 #include "file_publication.h"
+#include "delete_on_close.h"
 #include "media_session.h"
 #include "listen_metadata.h"
 #include "spotify_hook_discovery.h"
@@ -259,11 +260,12 @@ static bool WriteSidecar(const std::wstring& path,const void* data,size_t size) 
     if(path.empty()||!data||!size||size>MAXDWORD)return false;
     auto parent=path.substr(0,path.find_last_of(L'\\'));
     if(!Directories(parent))return false;
-    HANDLE file=CreateFileW(WindowsPath(path).c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,
+    HANDLE file=CreateFileW(WindowsPath(path).c_str(),GENERIC_WRITE|DELETE,FILE_SHARE_READ,nullptr,
                             CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
     if(file==INVALID_HANDLE_VALUE)return GetLastError()==ERROR_FILE_EXISTS;
     DWORD written=0;bool ok=WriteFile(file,data,DWORD(size),&written,nullptr)&&written==size;
-    CloseHandle(file);if(!ok)DeleteFileW(WindowsPath(path).c_str());return ok;
+    if(!ok)MarkOpenFileForDeletion(file);
+    CloseHandle(file);return ok;
 }
 static PublicationResult Publish(Capture& c,const Heard& heard,unsigned expected_epoch,
                                  bool enforce_generation=false,unsigned expected_generation=0) {

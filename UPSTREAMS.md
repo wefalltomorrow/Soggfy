@@ -208,3 +208,24 @@ of complete upstream diagnostics parity or disk-latency isolation.
 RC78 strengthens existing Classic queue removal with cached playback identity and
 policy rechecks. It does not port upstream's native current-song skip or recent
 playback metadata refresh. Outstanding queue mutations retain their UID reservations.
+
+## Floggfy v1.4.1 review — November 25, 2026
+
+Floggfy `main` and `v1.4.1` both resolve to `15e1e286ea1ac474be4aff30e6db1541ba790340`.
+The review covers the Saved-date catalog/order, expanded telemetry and diagnostics,
+helper-process network controls, offline telemetry suppression, metadata/artwork/lyrics
+fallbacks, WebP decoding, podcast MP3 handoff finalization, and upstream cleanup work.
+Soggfy already has telemetry privacy filtering, separate default-off NetworkPatch,
+metadata/artwork/lyrics handling, AAC/MP3 conversion presets, and podcast paths; these
+are not feature-equivalent to Floggfy's broader catalog, process-wide network switch,
+or native podcast MP3 flow. Saved-date sorting remains a product/design candidate.
+Native MP3 capture remains gated by Soggfy's identity/lifetime/completeness evidence.
+The upstream test versions do not validate Soggfy's pinned Spotify 1.3.1.234 client.
+Full comparison and port decisions: [FLOGGFY_20261125_REVIEW.md](FLOGGFY_20261125_REVIEW.md).
+
+This review also validates the local file-cleanup race fix: failed new-file writes
+mark their open handles for deletion before close, preventing cleanup from deleting a
+replacement created at the original path. The Windows history regression and complete
+`test-native-windows.sh` suite passed locally with MinGW x64 GCC 16.2.0/MSVCRT;
+an isolated full release build and package verification passed as well. CI and
+live-client acceptance are not claimed for these uncommitted changes.

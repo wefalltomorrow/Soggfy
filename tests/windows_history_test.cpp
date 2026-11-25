@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <vector>
 #include <filesystem>
+#include <cstring>
+#include "../native/delete_on_close.h"
 using namespace history;
 static void check(bool ok,const char* label) { if(!ok) { std::fprintf(stderr,"FAIL: %s error=%lu\n",label,GetLastError()); std::exit(1); } }
 static std::vector<unsigned char> read(const std::wstring& p) {
@@ -28,6 +30,30 @@ int main() {
     check(defaults.save_location.empty() && defaults.max_buffered_mib==500,
           "generated INI uses default Music location and 500 MiB buffer");
     check(GetPrivateProfileIntW(L"History",L"StopAfter",UINT(-1),ini.c_str())==UINT(-1),"generated INI omits history limit");
+    const auto ownedPath=dir+L"/owned-delete.txt",heldPath=dir+L"/owned-delete.held";
+    HANDLE owned=CreateFileW(ownedPath.c_str(),GENERIC_WRITE|DELETE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+    check(owned!=INVALID_HANDLE_VALUE,"create owned-file deletion fixture");
+    const char ownedBytes[]="owned";DWORD ownedWritten=0;
+    check(WriteFile(owned,ownedBytes,sizeof(ownedBytes),&ownedWritten,nullptr)&&ownedWritten==sizeof(ownedBytes),
+          "write owned-file deletion fixture");
+    std::vector<unsigned char> renameStorage(sizeof(FILE_RENAME_INFO)+heldPath.size()*sizeof(wchar_t));
+    auto renameInfo=reinterpret_cast<FILE_RENAME_INFO*>(renameStorage.data());
+    renameInfo->ReplaceIfExists=FALSE;renameInfo->RootDirectory=nullptr;
+    renameInfo->FileNameLength=DWORD(heldPath.size()*sizeof(wchar_t));
+    std::memcpy(renameInfo->FileName,heldPath.data(),renameInfo->FileNameLength);
+    check(SetFileInformationByHandle(owned,FileRenameInfo,renameInfo,DWORD(renameStorage.size())),
+          "rename held deletion target");
+    HANDLE replacement=CreateFileW(ownedPath.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+    check(replacement!=INVALID_HANDLE_VALUE,"create replacement at original path");
+    const char replacementBytes[]="keep";DWORD replacementWritten=0;
+    check(WriteFile(replacement,replacementBytes,sizeof(replacementBytes),&replacementWritten,nullptr)&&
+          replacementWritten==sizeof(replacementBytes),"write replacement sentinel");
+    CloseHandle(replacement);
+    check(MarkOpenFileForDeletion(owned),"mark the exact held file for deletion");CloseHandle(owned);
+    check(GetFileAttributesW(heldPath.c_str())==INVALID_FILE_ATTRIBUTES,"held file removed on close");
+    check(read(ownedPath)==std::vector<unsigned char>(replacementBytes,replacementBytes+sizeof(replacementBytes)),
+          "replacement at old path survives handle-based cleanup");
+    DeleteFileW(ownedPath.c_str());
     auto low=dir+L"\\low.ogg",high=dir+L"\\high.ogg",target=dir+L"\\published.ogg";
     Quality qlow,qhigh,qflac; check(ReadQuality(low,qlow) && qlow.bitrate==160000,"real CRC Vorbis low bitrate header");
     check(ReadQuality(high,qhigh) && qhigh.bitrate==320000,"real CRC Vorbis high bitrate header");

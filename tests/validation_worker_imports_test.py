@@ -11,6 +11,14 @@ Entry d 0000000000000000 00000000 Delay Import Directory
         DLL Name: msvcrt.dll
 """
 assert verify(metadata) == {"kernel32.dll", "msvcrt.dll"}
+llvm_metadata = """worker.exe: file format coff-x86-64
+architecture: x86_64
+Magic                   020b	(PE32+)
+Entry d 0000000000000000 00000000 Delay Import Directory
+        DLL Name: KERNEL32.dll
+        DLL Name: msvcrt.dll
+"""
+assert verify(llvm_metadata) == {"kernel32.dll", "msvcrt.dll"}
 invalid = [
     "",
     metadata.replace("pei-x86-64", "pei-i386"),
@@ -22,6 +30,13 @@ invalid = [
     metadata.replace("Entry d 0000000000000000", "Entry d 0000000000001000"),
     metadata.replace("00000000 Delay", "00000020 Delay"),
     metadata + "Entry d 0000000000000000 00000000 Delay Import Directory\n",
+    llvm_metadata.replace("coff-x86-64", "coff-i386"),
+    llvm_metadata.replace("architecture: x86_64", "architecture: i386"),
+    llvm_metadata.replace("020b", "010b"),
+    llvm_metadata.replace("msvcrt.dll", "ucrtbase.dll"),
+    llvm_metadata.replace("Delay Import Directory", "Unknown Directory"),
+    llvm_metadata.replace("Entry d 0000000000000000", "Entry d 0000000000001000"),
+    llvm_metadata + "        DLL Name: api-ms-win-crt-runtime-l1-1-0.dll\n",
 ]
 for dependency in ("libgcc_s_seh-1.dll", "libstdc++-6.dll", "libwinpthread-1.dll",
                    "libFLAC.dll", "libvorbis.dll", "unknown.dll"):

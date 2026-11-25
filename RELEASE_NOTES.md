@@ -1,4 +1,22 @@
-# Soggfy v3.0.0-rc.87 - supervised artwork validation foundation
+# Soggfy v3.0.0-rc.88 - handle-bound cleanup and portable package checks
+
+Failed writes now mark the exact open file handle for deletion before closing
+it. This prevents cleanup from deleting a different file created at the same
+path after the failed file closes. A Windows regression renames the owned file,
+creates a replacement at its former path, and verifies that cleanup removes
+only the owned file.
+
+The validation-helper import verifier now accepts both GNU and LLVM PE metadata
+formats while keeping the x64 architecture checks and strict kernel32.dll /
+msvcrt.dll import allowlist. Floggfy v1.4.1 was reviewed against its source and
+release; no unverified Spotify hooks or native MP3 capture were enabled.
+
+The Windows regression suite, isolated release build and package checks passed
+locally. CI and live Spotify acceptance for RC88 are pending. This candidate is
+not an official release; installation, merge and official release remain
+separate gates.
+
+## RC87 background - supervised artwork validation foundation
 
 The build-pinned helper now decodes bounded static PNG and 8-bit Huffman JPEG
 images in a separate process. Image dimensions and format properties use a

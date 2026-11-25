@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "file_publication.h"
+#include "delete_on_close.h"
 #include "history_settings.h"
 namespace history {
 static bool IsBusyError(DWORD error) {
@@ -9,12 +10,12 @@ static bool IsBusyError(DWORD error) {
 static bool WriteNew(const std::wstring& path,const void* bytes,size_t size,bool flush=false) {
     if(!size || size>MAXDWORD) return false;
     auto name=WindowsPath(path);
-    HANDLE file=CreateFileW(name.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+    HANDLE file=CreateFileW(name.c_str(),GENERIC_WRITE|DELETE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
     if(file==INVALID_HANDLE_VALUE) return false;
     DWORD written=0;
     bool ok=WriteFile(file,bytes,DWORD(size),&written,nullptr) && written==size && (!flush||FlushFileBuffers(file));
+    if(!ok) MarkOpenFileForDeletion(file);
     CloseHandle(file);
-    if(!ok) DeleteFileW(name.c_str());
     return ok;
 }
 bool ReplaceCompleteFile(const std::wstring& path,const void* bytes,size_t size) {

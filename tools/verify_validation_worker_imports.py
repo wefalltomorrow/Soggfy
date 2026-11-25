@@ -1,4 +1,4 @@
-"""Check GNU objdump metadata for the MinGW validation helper before binding it."""
+"""Check GNU or LLVM objdump metadata before binding the validation helper."""
 import os
 from pathlib import Path
 import re
@@ -7,10 +7,17 @@ import sys
 
 
 def verify(metadata: str) -> set[str]:
-    if not re.search(r"file format pei-x86-64(?:\s|$)", metadata):
+    gnu_x64 = (
+        re.search(r"file format pei-x86-64(?:\s|$)", metadata)
+        and re.search(r"^architecture: i386:x86-64,", metadata, re.M)
+    )
+    llvm_x64 = (
+        re.search(r"file format coff-x86-64(?:\s|$)", metadata)
+        and re.search(r"^architecture: x86_64(?:\s|$)", metadata, re.M)
+        and re.search(r"^Magic\s+020b\s+\(PE32\+\)$", metadata, re.M)
+    )
+    if not (gnu_x64 or llvm_x64):
         raise ValueError("validation helper must be an x64 PE executable")
-    if not re.search(r"^architecture: i386:x86-64,", metadata, re.M):
-        raise ValueError("unexpected helper architecture")
     # Delay-loaded dependencies must not bypass the ordinary import allowlist.
     delay = re.findall(r"^Entry d\s+([0-9a-fA-F]+)\s+([0-9a-fA-F]+)\s+Delay Import Directory", metadata, re.M)
     if len(delay) != 1 or any(int(value, 16) for value in delay[0]):

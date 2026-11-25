@@ -2,7 +2,7 @@
 
 A maintained Windows x64 continuation of Soggfy with the old Soggfy Spotify UI on top of the modern Floggfy capture engine.
 
-The goal is to keep the interaction model people used in old Soggfy on the modern x64 capture backend. RC40 deliberately uses Spotify 1.3.1.234 as the supported playback-speed baseline after abandoning the unstable 1.3.3.264 experiment line.
+**Release status (November 25, 2026):** the latest published build is [v3.0.0-rc.61](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.61), published October 10, 2026. Open [PR #64](https://github.com/wefalltomorrow/Soggfy/pull/64) carries the v3.0.0-rc.88 candidate. RC88 is not published or live-accepted; its candidate build and remaining evidence gates are tracked in the PR and [MILESTONES.md](MILESTONES.md). The maintained playback-speed target remains Spotify Windows x64 1.3.1.234.g59d6bf59. The abandoned 1.3.3.264 experiment line is not supported.
 
 ## What it does
 
@@ -68,7 +68,7 @@ the remaining live Spotify validation requirement.
 
 ## Install
 
-**RC40 targets Spotify Windows x64 1.3.1.234.** That is the runtime-validated baseline for Soggfy's native 1-30x playback-speed hook. The Spotify 1.3.3.264 experiment line has been rolled back rather than carried into this build. Existing saved speeds above 30x are automatically limited to 30x. Other Spotify versions fail closed for native playback speed. Microsoft Store installs remain unvalidated.
+**The published RC61 package targets Spotify Windows x64 1.3.1.234.g59d6bf59.** That is the supported target for Soggfy's native 1–30x playback-speed hook. Existing saved speeds above 30x are automatically limited to 30x. Other Spotify versions fail closed for native playback speed. Microsoft Store installs remain unvalidated. RC88 is a PR candidate, not a published download; use the Releases page for the latest published package.
 
 Releases use a single all-in-one Windows x64 ZIP. It contains both startup modes; install **only one**.
 

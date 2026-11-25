@@ -595,3 +595,21 @@ semantic type, establish identity correctness or complete object lifetime, or
 prove synchronization of later reads or replacement. The optional +0x80 value
 is not shown to be populated on every construction path. No Spotify code was
 executed and no runtime hook or production reader was enabled.
+
+## Local pinned-artifact identity check — November 20
+
+The installed `C:\Users\Shimon\AppData\Roaming\Spotify\Spotify.dll`
+was read without launching or modifying Spotify. Its size is 42,852,224 bytes
+and its SHA-256 is
+`210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f`, matching
+the pinned artifact used by the static probes. No Spotify process was running
+during this check, so it adds no runtime playback, callback, decoder-association
+or transition evidence.
+
+The connected REA service was also checked: Ghidra is not configured, Hopper is
+unsupported on this Windows host, and IDA has no registered provider. This
+prevents a fresh provider-backed analysis in this session; it does not invalidate
+the existing hash-pinned Capstone probes or turn their static findings into
+runtime evidence. Production capture therefore remains disabled pending direct
+evidence of selected provider, emitted-audio identity, callback completion and
+synchronized lifetime across playback transitions.

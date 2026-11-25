@@ -1,5 +1,22 @@
 # Engineering milestones
 
+## November 25 Floggfy review and native reliability fix
+
+Prepared as v3.0.0-rc.88 for PR #64; the published release remains v3.0.0-rc.61.
+The candidate is not live-accepted or officially released.
+
+The Floggfy v1.4.1 source and release comparison is recorded in
+FLOGGFY_20261125_REVIEW.md. Failed-write cleanup now marks the original open
+file handle for deletion, with a Windows regression proving that a replacement
+created at the old path is preserved. The complete test-native-windows.sh
+suite passed locally with MinGW x64 GCC 16.2.0/MSVCRT, including the strict
+kernel32.dll/msvcrt.dll helper-import policy. The import verifier now reads
+both GNU and LLVM objdump PE metadata while keeping that allowlist unchanged.
+An isolated full release build and ZIP verification passed, including PE/import
+checks, deterministic packaging, and archive-manifest validation. The packaged
+helper was byte-identical to the tested helper. CI and pinned Spotify live
+acceptance remain outstanding.
+
 ## November 20 CI run 219 and independent package verification
 
 Source commit `06482452065cc0f85e269737a5a5e4500efe8172` passed all four
@@ -191,7 +208,7 @@ verification passed. Live acceptance remains separate.
 | Installation-directory transaction | RC75 CI/package verified | Live installation acceptance |
 | Manual watch scan cost | RC75 CI/package verified | Live acceptance |
 | Native playlist save result | RC75 CI/package verified | Live save dialog |
-| Native playback/decoder identity | Static candidate traced through consumer, configured generator, recovery invocation and teardown | Null fallback places the upstream read outside its allocation; a traced non-null path spans separate byte fields and part of an ownership pointer. A separate candidate has playback-ID consumer, hex-encoding and configured 16-byte generator evidence. Audio-driver recovery has a conditional synchronous replacement-callback path; teardown replaces a shared byte flag and conditionally destroys the native object when its strong count reaches zero. One callback checks the token before using its stored pointers; its clone retains that guard and is built alongside a copy of the candidate ID. The dispatch-provider pointer is traced to its service-table entry. A registered service-zero candidate now traces configuration ownership into a streaming object: ID at +0x350, guarded wrapper at +0x3a8, and conditional destructor cleanup. Two component cleanup submissions have a completion-counter wait before wrapper destruction; 1,299 pinned instruction checks pass. The notification scheduler handoff now has a 35-instruction pinned probe and unique direct-call path; a provider returns the 32-byte context, while concrete runtime selection and whether cleanup drains running callbacks remain unresolved. This does not establish that those component destructors drain all audio callbacks. Registry resolution and runtime selection, scheduling, other consumers, callback completion, synchronized lifetime, decoder association, integration and transitions remain unverified; see NATIVE_IDENTITY_AUDIT.md |
+| Native playback/decoder identity | Static candidate traced through consumer, configured generator, recovery invocation and teardown | Null fallback places the upstream read outside its allocation; a traced non-null path spans separate byte fields and part of an ownership pointer. A separate candidate has playback-ID consumer, hex-encoding and configured 16-byte generator evidence. Audio-driver recovery has a conditional synchronous replacement-callback path; teardown replaces a shared byte flag and conditionally destroys the native object when its strong count reaches zero. One callback checks the token before using its stored pointers; its clone retains that guard and is built alongside a copy of the candidate ID. The dispatch-provider pointer is traced to its service-table entry. A registered service-zero candidate now traces configuration ownership into a streaming object: ID at +0x350, guarded wrapper at +0x3a8, and conditional destructor cleanup. Two component cleanup submissions have a completion-counter wait before wrapper destruction; 1,299 pinned instruction checks pass. The notification scheduler handoff now has a 35-instruction pinned probe and unique direct-call path; a provider returns the 32-byte context, while concrete runtime selection and whether cleanup drains running callbacks remain unresolved. This does not establish that those component destructors drain all audio callbacks. On 2026-11-20, the installed Spotify.dll matched the pinned 42,852,224-byte artifact SHA-256; no Spotify process was running and REA had no usable native provider, so this is identity verification only. Runtime provider selection, callback completion, synchronized lifetime, decoder association, integration and transitions remain unverified; see NATIVE_IDENTITY_AUDIT.md |
 | Ad/DJ/interstitial isolation | Open | Trustworthy identity plus transition/live evidence |
 | Native podcast MP3 capture | Offline inspector only; production capture disabled | Bounded MPEG-1/2/2.5 layout, CRC, reservoir, scalefactor and Layer III Huffman syntax checks cover 36 real mono/stereo CBR/VBR fixtures plus 420 reserved-selector mutations. Runs 217 and 218 passed full CI; run 218 also passed independent RC87 package verification at exact source b93d88d. Syntax traversal does not reconstruct spectral coefficients or establish completeness, provenance, decoder association or capture lifetime. Native capture remains disabled |
 | Concurrent capture/cross-format association | RC84 shared-ready rejection and RC85 retention-conflict fix CI/package verified | Late first retention now rejects candidates shared by queued listens, including competing ready captures. Native identity-aware lifecycle, future-listen/preload and live transition evidence remain |
