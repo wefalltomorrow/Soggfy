@@ -14,8 +14,21 @@ kernel32.dll/msvcrt.dll helper-import policy. The import verifier now reads
 both GNU and LLVM objdump PE metadata while keeping that allowlist unchanged.
 An isolated full release build and ZIP verification passed, including PE/import
 checks, deterministic packaging, and archive-manifest validation. The packaged
-helper was byte-identical to the tested helper. CI and pinned Spotify live
-acceptance remain outstanding.
+helper was byte-identical to the tested helper. All four jobs passed in [CI run
+221](https://github.com/wefalltomorrow/Soggfy/actions/runs/45582817885) for exact
+source commit `295488f687bf44f86c0be12c863ea6f2a33e37af`: native regressions, both
+20,000-iteration seeded ASan/UBSan campaigns, Windows maintenance/integration
+and native suites, release build, and package checks. GitHub artifact
+`15008318103` is bound to that commit. Its 3,312,173-byte outer ZIP has SHA-256
+`0d7a200b369265081e350bc488cf4311453c72f7b1c998bc70b51a2cae310c6d`; the
+3,314,216-byte RC88 package has SHA-256
+`0a5a69bb7228fd3adbca2a09a7547562a46009933dfa85280869a60f333f68db`.
+Independent verification passed ZIP integrity and path checks, all seven
+manifest hashes, required content, helper digest binding, AMD64 PE/import
+checks, and normalized source comparison for all 27 packaged text/source
+files. The verifier and result are `outputs/verify_run221.py` and
+`outputs/Soggfy-run221-package-evidence.json`. Pinned Spotify live acceptance
+remains outstanding; this candidate is not an official release.
 
 ## November 20 CI run 219 and independent package verification
 

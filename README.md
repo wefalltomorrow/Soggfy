@@ -2,7 +2,7 @@
 
 A maintained Windows x64 continuation of Soggfy with the old Soggfy Spotify UI on top of the modern Floggfy capture engine.
 
-**Release status (November 25, 2026):** the latest published build is [v3.0.0-rc.61](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.61), published October 10, 2026. Open [PR #64](https://github.com/wefalltomorrow/Soggfy/pull/64) carries the v3.0.0-rc.88 candidate. RC88 is not published or live-accepted; its candidate build and remaining evidence gates are tracked in the PR and [MILESTONES.md](MILESTONES.md). The maintained playback-speed target remains Spotify Windows x64 1.3.1.234.g59d6bf59. The abandoned 1.3.3.264 experiment line is not supported.
+**Release status (November 25, 2026):** the latest published build is [v3.0.0-rc.61](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.61), published October 10, 2026. Open [PR #64](https://github.com/wefalltomorrow/Soggfy/pull/64) carries the v3.0.0-rc.88 candidate. RC88 passed all four jobs in [CI run 221](https://github.com/wefalltomorrow/Soggfy/actions/runs/45582817885); the uploaded package was independently verified against commit `295488f687bf44f86c0be12c863ea6f2a33e37af`. RC88 remains unpublished and has not passed live Spotify acceptance; its candidate build and remaining evidence gates are tracked in the PR and [MILESTONES.md](MILESTONES.md). The maintained playback-speed target remains Spotify Windows x64 1.3.1.234.g59d6bf59. The abandoned 1.3.3.264 experiment line is not supported.
 
 ## What it does
 
