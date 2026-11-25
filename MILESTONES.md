@@ -1,5 +1,13 @@
 # Engineering milestones
 
+## November 25 CI run 222 and pinned-client static recheck
+
+RC88 passed all four jobs in [CI run 222](https://github.com/wefalltomorrow/Soggfy/actions/runs/45586601342) for exact source commit `ee7950113db8196071dce9c3d2cda78a96286f52`: native regressions, both 20,000-iteration seeded ASan/UBSan campaigns, Windows maintenance/integration and native suites, and release build/package checks. GitHub artifact `15010675443` is bound to that commit. The independently verified 3,312,703-byte outer ZIP has SHA-256 `83a5272ba3085d536938ace3f5ab4a199b6a2542a38eb5f5c68ad1e9b2232bc0`; its 3,314,751-byte RC88 package has SHA-256 `18e09f6f873fdb0366c0cca7c15e8c66872742870c684542b06691ac9c7be5e8`. ZIP integrity and safe paths, all seven manifest hashes, required files, helper digest binding, AMD64 PE/import constraints, and normalized comparison of all 27 packaged source/text files passed. The reproducible verifier and report are outputs/verify_run222.py and outputs/Soggfy-run222-package-evidence.json.
+
+On November 25, the installed Spotify.dll was rechecked at 42,852,224 bytes and SHA-256 `210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f`, matching the pinned artifact; no Spotify process was running. Fresh hash-pinned static probes passed 1,299 identity-path instruction checks, 81 dispatch/import checks, and 35 scheduler-boundary checks using Capstone 5.0.7. Their reports are outputs/Soggfy-native-identity-parent-20261125.json, outputs/Soggfy-native-identity-dispatch-context-20261125.json, and outputs/Soggfy-native-notification-scheduler-boundary-20261125.json.
+
+This confirms artifact identity and the inspected static paths only. No usable native analysis provider was configured. Runtime provider selection, callback completion and synchronized lifetime, decoder-to-playback association, ad/DJ/interstitial isolation, transitions, exact-instance current-track skip and production native MP3 capture remain unverified. Saved-recording metadata refresh remains disabled. Live installation/restart and Classic save-dialog acceptance, PR #64 merge and official release are separate gates.
+
 ## November 25 Floggfy review and native reliability fix
 
 Prepared as v3.0.0-rc.88 for PR #64; the published release remains v3.0.0-rc.61.

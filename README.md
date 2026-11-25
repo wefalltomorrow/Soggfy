@@ -2,7 +2,7 @@
 
 A maintained Windows x64 continuation of Soggfy with the old Soggfy Spotify UI on top of the modern Floggfy capture engine.
 
-**Release status (November 25, 2026):** the latest published build is [v3.0.0-rc.61](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.61), published October 10, 2026. Open [PR #64](https://github.com/wefalltomorrow/Soggfy/pull/64) carries the v3.0.0-rc.88 candidate. RC88 passed all four jobs in [CI run 221](https://github.com/wefalltomorrow/Soggfy/actions/runs/45582817885); the uploaded package was independently verified against commit `295488f687bf44f86c0be12c863ea6f2a33e37af`. RC88 remains unpublished and has not passed live Spotify acceptance; its candidate build and remaining evidence gates are tracked in the PR and [MILESTONES.md](MILESTONES.md). The maintained playback-speed target remains Spotify Windows x64 1.3.1.234.g59d6bf59. The abandoned 1.3.3.264 experiment line is not supported.
+**Release status (November 25, 2026):** the latest published build is [v3.0.0-rc.61](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.61), published October 10, 2026. Open [PR #64](https://github.com/wefalltomorrow/Soggfy/pull/64) carries the v3.0.0-rc.88 candidate. RC88 passed all four jobs in [CI run 222](https://github.com/wefalltomorrow/Soggfy/actions/runs/45586601342); the uploaded package was independently verified against commit `ee7950113db8196071dce9c3d2cda78a96286f52`. RC88 remains unpublished and has not passed live Spotify acceptance; its candidate build and remaining evidence gates are tracked in the PR and [MILESTONES.md](MILESTONES.md). The maintained playback-speed target remains Spotify Windows x64 1.3.1.234.g59d6bf59. The abandoned 1.3.3.264 experiment line is not supported.
 
 ## What it does
 
@@ -11,7 +11,7 @@ A maintained Windows x64 continuation of Soggfy with the old Soggfy Spotify UI o
 - Restores Skip Downloaded Tracks, Skip Ignored Tracks, Ignore/Unignore and Generate M3U.
 - Offers a conservative 1–30x playback-speed control only on explicitly runtime-validated Spotify player ABIs. Unsupported or newer builds fail closed at 1x instead of risking startup.
 - Restores old-style output presets including MP3, M4A/AAC, Opus and custom FFmpeg output.
-- Always captures Spotify's native Ogg or FLAC first, and keeps native FLAC lossless.
+- Captures Spotify's native Ogg or FLAC data and keeps native FLAC lossless. Direct native podcast MP3 capture remains disabled pending stronger playback-identity and lifetime evidence.
 - Embeds artwork, lyrics and rich locally cached metadata when enabled.
 - Can save cover art, synchronized lyrics as .lrc, plain lyrics as .txt, and Spotify Canvas video.
 - Uses separate track and podcast path templates.
@@ -114,6 +114,8 @@ The context menu restores Ignore / Unignore and Generate M3U. Ignore rules can a
 ## Output formats
 
 Capture always starts from Spotify's native compressed Ogg or FLAC data. Optional FFmpeg conversion happens only after the complete native file has been validated and published.
+
+MP3 presets convert a validated native Ogg/FLAC capture. They do not enable direct capture of Spotify's native podcast MP3 stream; that feature remains disabled until decoder association, recording completeness and native lifetime are established.
 
 Built-in presets include:
 
