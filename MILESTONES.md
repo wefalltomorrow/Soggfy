@@ -1,5 +1,37 @@
 # Engineering milestones
 
+## November 25 CI run 225 and playback-identity recovery fence
+
+PR #64 source commit `054137c036dbe6ffd0aa593b6ec316721db16955` adds
+playback-ID fencing to Classic recovery retries and skip decisions so work
+from an earlier playback cannot act on a later track. All four jobs passed in
+[CI run 225](https://github.com/wefalltomorrow/Soggfy/actions/runs/45600564087):
+native regression tests, both seeded ASan/UBSan campaigns, Windows
+media-observer and maintenance tests, the Windows publication/settings/logging/
+metadata/quality suite, and release build/package checks.
+
+GitHub artifact `15017535237` is bound to that exact commit. Its 3,315,013-byte
+outer ZIP has SHA-256
+`6bd40f9a5ac7e02887ddc3c9d38d75ef99c18c4f0916b154a730dac51a24053d`; the
+3,316,980-byte RC88 package has SHA-256
+`9f6a799833f74301e4ba0265975ff1aab803a679d3460ffe0b84328e69880f44`.
+Independent verification passed ZIP integrity and safe-path checks, all seven
+manifest hashes, required package content, the DLL-bound validation-helper
+digest, AMD64 PE/import checks, and normalized comparison of all 27 packaged
+source/text files with the tested commit. The helper SHA-256 is
+`d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f`. The
+reproducible verifier and report are `outputs/verify_run225.py` and
+`outputs/Soggfy-run225-package-evidence.json`.
+
+These checks establish CI and package provenance, not live Spotify behavior.
+Pinned runtime/provider selection, callback completion and synchronized
+lifetime, decoder-to-playback association, ad/DJ/interstitial isolation and
+transitions, exact-instance current-track skip, production MP3 capture, and
+Classic save-dialog acceptance still need the stated live evidence. Production
+native MP3 capture and saved-recording metadata refresh remain disabled. No live
+installation/restart was performed; PR #64 merge and official release remain
+separate gates.
+
 ## November 25 CI run 223 and independent package verification
 
 RC88 passed all four CI jobs in [run 223](https://github.com/wefalltomorrow/Soggfy/actions/runs/45591471028) for exact source commit `2d1d757c13a669195ff4470db8b7371d0853294f`: native regression tests, both 20,000-iteration seeded ASan/UBSan campaigns, Windows media-observer and maintenance transactions, the Windows publication/settings/logging/metadata/quality suite, and the release build/package checks. GitHub artifact `15012825498` is bound to that commit. Its 3,313,310-byte outer ZIP has SHA-256 `e4cfbb0cbe52277e18f95278874066a278abea1f136ad5b78875e44b011f647b`; the 3,315,388-byte RC88 package has SHA-256 `a8d1c9b1f668c9d2c15790ed3f8b37ccec872562d11c0c8cec20db30e11a0ca8`. Independent verification passed ZIP integrity and safe-path checks, all seven manifest hashes, required contents, helper digest binding, AMD64 PE/import constraints, and normalized comparison of all 27 packaged source/text files to the tested commit. The helper SHA-256 is `d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f`. The reproducible verifier and report are `outputs/verify_run223.py` and `outputs/Soggfy-run223-package-evidence.json`.
