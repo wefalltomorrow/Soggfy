@@ -85,6 +85,43 @@ async function tick(t){time=t;await monitor.tick();}
   await failures.tick();
   assert.strictEqual(skips,2,'Failed requeue does not repeatedly skip');
 
+  // Same-URI replays are distinct playback instances. A successful retry may
+  // create a fresh ID, which starts a clean retry budget without skipping.
+  let instanceTime=0,instance='1'.repeat(32),instanceRetries=0,instanceSkips=0;
+  const instanceState=()=>({item:{uri:'spotify:track:replay',duration:100000},
+    playbackId:instance,is_playing:true,is_paused:false});
+  const instanceMonitor=sgf.createPlaybackRecoveryMonitor({
+    now:()=>instanceTime,getState:instanceState,allowed:()=>true,speed:()=>30,
+    reset:async()=>{instanceRetries++;instance='2'.repeat(32);return true;},
+    skip:async()=>{instanceSkips++;},report:()=>{}
+  });
+  await instanceMonitor.tick();instanceTime=18000;await instanceMonitor.tick();
+  assert.strictEqual(instanceRetries,1,'Same-URI instance can receive its first bounded retry');
+  assert.strictEqual(instanceSkips,0,'Successful same-URI replay is not skipped');
+  assert.strictEqual(instanceMonitor.snapshot().playbackId,'2'.repeat(32),
+    'Successful retry adopts its new exact playback ID');
+  assert.strictEqual(instanceMonitor.snapshot().attempts,0,
+    'A replacement playback instance gets a fresh retry budget');
+
+  // If an unsuccessful async retry observes a replacement instance, its stale
+  // fallback Next action must be abandoned even when the URI is unchanged.
+  let raceTime=0,raceInstance='3'.repeat(32),raceRetries=0,raceSkips=0;
+  const raceState=()=>({item:{uri:'spotify:track:replay',duration:100000},
+    playbackId:raceInstance,is_playing:true,is_paused:false});
+  const raceMonitor=sgf.createPlaybackRecoveryMonitor({
+    now:()=>raceTime,getState:raceState,allowed:()=>true,speed:()=>30,
+    reset:async()=>{raceRetries++;raceInstance='4'.repeat(32);return false;},
+    skip:async()=>{raceSkips++;},report:()=>{}
+  });
+  await raceMonitor.tick();raceTime=18000;await raceMonitor.tick();
+  assert.strictEqual(raceRetries,1,'Stalled instance retry was attempted');
+  assert.strictEqual(raceSkips,0,'New same-URI playback instance blocks stale fallback Next');
+  assert.strictEqual(raceMonitor.snapshot().playbackId,'4'.repeat(32),
+    'Monitor rebinds after detecting the replacement instance');
+  const invalidInstance=sgf.readRecoveryState({item:{uri:'spotify:track:invalid'},
+    playbackId:'0'.repeat(32),is_playing:true,is_paused:false});
+  assert.strictEqual(invalidInstance.playbackId,'','Null playback IDs are not trusted');
+
   sgf.installPlaybackStallRecovery();
   assert(intervals.some(i=>i.ms===1500),'Watchdog installed only after player initialization');
   console.log('PASS: accelerated stalled-track retries, bounded skip, pause safety and normal transitions');

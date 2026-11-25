@@ -17,6 +17,9 @@ sgf.__recoveryLoaded=true;
 sgf.readRecoveryState=st=>{
   const item=st?.item||st?.track||st?.contextTrack||st?.context_track;
   const uri=item?.uri||item?.contextTrack?.uri||st?.track_uri||'';
+  const rawPlaybackId=st?.playbackId??st?.playback_id;
+  const playbackId=typeof rawPlaybackId==='string'&&/^[a-fA-F0-9]{32}$/.test(rawPlaybackId)&&
+    !/^0{32}$/.test(rawPlaybackId)?rawPlaybackId.toLowerCase():'';
   const paused=st?.isPaused??st?.is_paused??st?.paused;
   const playing=st?.isPlaying??st?.is_playing;
   let mode='unknown',source='unavailable';
@@ -40,13 +43,13 @@ sgf.readRecoveryState=st=>{
     item?.metadata?.duration??0);
   const position=Number(st?.positionAsOfTimestamp??st?.position_as_of_timestamp??
     st?.position??st?.positionMs??st?.position_ms??0);
-  return {uri,mode,source,
+  return {uri,playbackId,mode,source,
     positionMs:Number.isFinite(position)&&position>=0?position:0,
     durationMs:Number.isFinite(duration)&&duration>0?
       (duration>1000?duration:duration*1000):0};
 };
 sgf.createPlaybackRecoveryMonitor=(opts={})=>{
-  let uri='',since=0,attempts=0,busy=false,finished=false,lastDiagnostic=-Infinity;
+  let uri='',playbackId='',since=0,attempts=0,busy=false,finished=false,lastDiagnostic=-Infinity;
   let lastMode='unknown';
   let generation=0;
   const clock=opts.now||(()=>Date.now());
@@ -62,7 +65,7 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
        sgf.state.playbackSpeed>=5);
   const speed=opts.speed||(()=>Number(sgf.state.playbackSpeed)||1);
   // Invalidate pending work without releasing its lock before it settles.
-  const clear=()=>{generation++;uri='';since=0;attempts=0;finished=false;lastMode='unknown';};
+  const clear=()=>{generation++;uri='';playbackId='';since=0;attempts=0;finished=false;lastMode='unknown';};
   const diagnostic=(now,reason,name)=>{
     if(now-lastDiagnostic<30000)return;
     lastDiagnostic=now;
@@ -88,10 +91,11 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
       if(!Number.isFinite(now))return;
       const st=read(state());
       const current=st?.uri||'';
+      const currentPlaybackId=st?.playbackId||'';
       if(!current){clear();diagnostic(now,'no_track','');return;}
-      if(current!==uri){
+      if(current!==uri||currentPlaybackId!==playbackId){
         generation++;
-        uri=current;since=now;attempts=0;finished=false;lastMode=st.mode;
+        uri=current;playbackId=currentPlaybackId;since=now;attempts=0;finished=false;lastMode=st.mode;
         if(st.mode==='paused')
           report('track_started_paused',current,0,'source='+st.source+
             ' position_ms='+Math.round(st.positionMs));
@@ -125,18 +129,25 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
       busy=true;
       const startedGeneration=generation,player=sgf.player;
       let aborted=false;
-      const canContinue=(phase='during_retry')=>{
+      const canContinue=(phase='during_retry',allowRetryInstanceChange=false,observedState)=>{
         if(aborted)return false;
-        const live=read(state());
+        const live=observedState||read(state());
+        const samePlaybackInstance=live.playbackId===playbackId;
         if(startedGeneration===generation&&allowed()&&sgf.player===player&&
-           live.uri===current&&live.mode==='playing')return true;
+           live.uri===current&&live.mode==='playing'&&
+           (samePlaybackInstance||allowRetryInstanceChange))return true;
         aborted=true;
         report('recovery_aborted_state_changed',current,clock()-since,
           'phase='+phase+' mode='+live.mode+' source='+live.source+
           ' allowed='+Number(!!allowed())+' generation_changed='+Number(startedGeneration!==generation));
         if(startedGeneration===generation){
-          if(live.uri===uri)observeMode(live,clock());
+          const identityChanged=live.uri!==uri||live.playbackId!==playbackId;
+          if(!identityChanged&&live.uri===uri)observeMode(live,clock());
           generation++;attempts=0;since=clock();
+          if(identityChanged){
+            uri=live.uri||'';playbackId=live.playbackId||'';
+            finished=false;lastMode=live.mode||'unknown';
+          }
         }
         return false;
       };
@@ -150,11 +161,20 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
             'mode='+st.mode+' source='+st.source);
           let ok=false;
           try{ok=(await reset(canContinue))===true;}catch(e){console.warn('Soggfy recovery retry failed',e);}
-          if(!canContinue('before_skip'))return;
           if(ok) {
+            // A successful requeue may intentionally create a new Spotify
+            // playback ID for the same URI. Accept that completed retry, but
+            // keep the new instance separate from the old retry/skip budget.
+            const live=read(state());
+            if(!canContinue('after_retry',true,live))return;
+            if(live.playbackId!==playbackId){
+              playbackId=live.playbackId||'';generation++;attempts=0;finished=false;
+              lastMode=live.mode||'unknown';
+            }
             since=clock();
             return;
           }
+          if(!canContinue('before_skip'))return;
           // Failed async retry may have changed Spotify to paused. Even if
           // it failed, the next-track fallback must not undo that pause.
           attempts=2;
@@ -169,7 +189,7 @@ sgf.createPlaybackRecoveryMonitor=(opts={})=>{
         try{await skip();}catch(e){console.warn('Soggfy recovery skip failed',e);}
       } finally {busy=false;}
     },
-    snapshot:()=>({uri,since,attempts,busy,finished,lastMode})
+    snapshot:()=>({uri,playbackId,since,attempts,busy,finished,lastMode})
   };
 };
 
