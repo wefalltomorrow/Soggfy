@@ -1,5 +1,38 @@
 # Engineering milestones
 
+## November 25 CI run 227, package verification and pinned-client identity
+
+PR #64 head commit `077e378fb8e06775058ebb2e73ae58491a538145` passed all four
+jobs in [CI run 227](https://github.com/wefalltomorrow/Soggfy/actions/runs/45607711580):
+native regressions, both seeded ASan/UBSan campaigns, Windows media-observer
+and maintenance tests, the Windows publication/settings/logging/metadata/quality
+suite, and x64 release build/package checks. GitHub artifact `15019757527` is
+bound to that exact commit. Its 3,315,844-byte outer ZIP has SHA-256
+`8e20fd89ef6581e3e7401eba5a6a2d91fc7b39d6eb02ecb9bcc2107deb2f47b5`; the
+3,317,864-byte RC88 package has SHA-256
+`49c5db2cf563bf9ba4970187dfab5eede08c9a7d90b4e314f4ef2286d8f4a9bc`.
+Independent verification passed ZIP integrity and safe-path checks, all seven
+manifest hashes, required content, helper digest binding, AMD64 PE/import
+checks, and normalized comparison of all 27 packaged source/text files to the
+tested commit. The helper SHA-256 is
+`d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f`. The
+reproducible verifier and report are `outputs/verify_run227.py` and
+`outputs/Soggfy-run227-package-evidence.json`. The verifier was rerun locally
+and passed.
+
+The installed Spotify executable reports version 1.3.1.234. Its 42,852,224-byte
+`Spotify.dll` has SHA-256
+`210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f`, matching
+the pinned runtime artifact. No Spotify process was running during this check.
+The available deep-analysis providers are not configured on this workstation
+(Ghidra and IDA); this check confirms file identity only, not runtime behavior.
+Provider selection, callback completion and synchronized lifetime, decoder-to-
+playback association, ad/DJ/interstitial isolation and transitions, exact-
+instance current-track skip, and production MP3 capture remain unverified.
+Production native MP3 capture and saved-recording metadata refresh remain
+disabled. Live installation/restart and Classic save-dialog acceptance, PR #64
+merge, and official release remain separate gates.
+
 ## November 25 CI run 226 and independent package verification
 
 Documentation/source commit `50c36577b94627030717cd872ed74ae13059bf7d`
