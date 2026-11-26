@@ -1,5 +1,20 @@
 # Engineering milestones
 
+## November 26 CI run 235 and independent package verification
+
+RC88 at exact PR head commit `af565feca7ae5171840f423e88170fdab01dc06c` passed
+all four jobs in [CI run 235](https://github.com/wefalltomorrow/Soggfy/actions/runs/45740386658).
+Artifact `15081492037` is bound to that commit. Its 3,319,641-byte outer ZIP
+SHA-256 is `ae205b5c58a900857584cd47db8fecb4f8f6ae7a6abe4caf7ec9826822161512`;
+the 3,321,592-byte RC88 package SHA-256 is
+`ebf0d83b7a705b66da422e2c00cc560467bda6f688d9c846f574923e05da5864`. The
+independent verifier passed both ZIP integrity checks, safe paths, all seven
+manifest hashes, required contents, helper digest binding, AMD64 PE/import
+checks, and normalized source matching for all 27 packaged source/text files.
+See `outputs/verify_run235.py` and
+`outputs/Soggfy-run235-package-evidence.json`. This documentation/evidence-only
+commit adds no new runtime compatibility evidence; see the run-234 record below.
+
 ## November 26 CI run 234, package verification and native-provider recheck
 
 RC88 at exact source commit `684758e6f173f2b20527d3cee0082fc50ce7fbb4` passed
