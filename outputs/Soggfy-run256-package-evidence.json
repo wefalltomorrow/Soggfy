@@ -1,0 +1,63 @@
+{
+  "verified_at_local_date": "2026-11-26",
+  "source_commit": "ac232c3719a971c18849257b28b2eec3426e9f97",
+  "source_parent_commit": "c99be2db84bbe16d7c6367588b32d8a73fa2a8e6",
+  "changed_source_git_blob_shas": {
+    "README.md": "9291df6c4bf848975d28e3dc0c0a0b708007a675",
+    "RELEASE_NOTES.md": "af36d8b02876453e7206ac68436c6b761ce78371",
+    "MILESTONES.md": "0f98dd95bb6a96bc7a0d2e201e02d288d05925ee"
+  },
+  "github_commit_changed_files": [
+    "MILESTONES.md",
+    "README.md",
+    "RELEASE_NOTES.md"
+  ],
+  "ci_conclusion": "success",
+  "ci_job_conclusions": {
+    "native-tests": "success",
+    "sanitizer-tests": "success",
+    "windows-release-build": "success"
+  },
+  "workflow_run_id": 45822129144,
+  "artifact_id": 15120580115,
+  "artifact_name": "Soggfy-Windows-x64",
+  "artifact_size": 3327152,
+  "artifact_sha256": "85b76b2b04902cb6c48b92a20addea96436937584b3d679f5da485afa27081d4",
+  "package": "Soggfy-v3.0.0-rc.88-Windows-x64.zip",
+  "package_size": 3329128,
+  "package_sha256": "46b6e0bcc19fde1faab5a662b45fa23c1f21a57a3f18ba526f5463c8424468e3",
+  "entry_count": 35,
+  "manifest_entry_count": 7,
+  "helper_sha256": "d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f",
+  "source_files_matched_source_commit": 27,
+  "pe_checks": {
+    "version.dll": {
+      "machine": "0x8664",
+      "optional_header": "0x20b",
+      "imports": [
+        "bcrypt.dll",
+        "iphlpapi.dll",
+        "kernel32.dll",
+        "msvcrt.dll",
+        "ole32.dll",
+        "api-ms-win-core-winrt-l1-1-0.dll",
+        "api-ms-win-core-winrt-string-l1-1-0.dll",
+        "shell32.dll",
+        "user32.dll",
+        "winhttp.dll"
+      ]
+    },
+    "Launcher/Soggfy.exe": {
+      "machine": "0x8664",
+      "optional_header": "0x20b",
+      "imports": [
+        "kernel32.dll",
+        "msvcrt.dll",
+        "user32.dll"
+      ]
+    }
+  },
+  "zip_integrity": "passed",
+  "manifest_hashes": "passed",
+  "safety_and_required_content": "passed"
+}

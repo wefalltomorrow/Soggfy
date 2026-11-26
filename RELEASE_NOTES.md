@@ -19,15 +19,11 @@ enabled.
 RC88 is available as a [GitHub prerelease candidate](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.88);
 the latest official release remains v3.0.0-rc.61.
 
-## PR-head CI checkpoint: run 255
+## PR-head CI and package checkpoint: run 256
 
-Documentation-only PR-head commit `c99be2db84bbe16d7c6367588b32d8a73fa2a8e6`
-passed all four jobs in [CI run 255](https://github.com/wefalltomorrow/Soggfy/actions/runs/45815884067):
-native regressions, both sanitizer campaigns, and the Windows tests/build/package
-checks. GitHub artifact `15117035731` is 3,326,478 bytes with the recorded
-SHA-256 `4f2779c693edb079189500af1aefdd0c7f59f2aba7985611bce109613a8cef27`.
-The functional source tree is unchanged from the independently verified run-254
-package, but this run-255 ZIP itself has not been independently inspected.
+Functional source commit ac232c3719a971c18849257b28b2eec3426e9f97 passed all four jobs in [CI run 256](https://github.com/wefalltomorrow/Soggfy/actions/runs/45822129144): native regressions, both seeded sanitizer campaigns, and Windows tests, build, and package checks. GitHub artifact 15120580115 is 3,327,152 bytes with SHA-256 85b76b2b04902cb6c48b92a20addea96436937584b3d679f5da485afa27081d. Its embedded 3,329,128-byte RC88 package has SHA-256 46b6e0bcc19fde1faab5a662b45fa23c1f21a57a3f18ba526f5463c8424468e3.
+
+Independent verification passed both ZIP integrity and safe-path checks, all seven manifest hashes, required-content and helper-digest binding checks, AMD64 PE/import checks, and normalized source matching for all 27 packaged source/text files. The verifier and report are outputs/verify_run256.py and outputs/Soggfy-run256-package-evidence.json. Run 255 passed CI, but its exact ZIP was not independently inspected. Neither the run-254 nor run-256 package was uploaded to the public RC88 prerelease.
 
 ## Functional source CI and independent package verification
 

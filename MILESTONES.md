@@ -1,5 +1,13 @@
 # Engineering milestones
 
+## November 26 CI run 256 and independent package verification
+
+Functional source commit ac232c3719a971c18849257b28b2eec3426e9f97 passed all four jobs in [CI run 256](https://github.com/wefalltomorrow/Soggfy/actions/runs/45822129144): native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, Windows maintenance/publication/settings/logging/metadata/quality tests, x64 release build, and package checks. The exact GitHub artifact 15120580115 is 3,327,152 bytes with SHA-256 85b76b2b04902cb6c48b92a20addea96436937584b3d679f5da485afa27081d. Its 3,329,128-byte RC88 package SHA-256 is 46b6e0bcc19fde1faab5a662b45fa23c1f21a57a3f18ba526f5463c8424468e3.
+
+Independent verification passed outer and inner ZIP integrity, safe archive paths, all seven manifest hashes, required contents, helper digest binding, AMD64 PE/import checks, and normalized source matching for all 27 packaged source/text files. The documentation-only run-256 head preserved the functional source tree from the previous verified package; changed documentation members were checked against their exact commit blobs. The verifier and report are tracked as outputs/verify_run256.py and outputs/Soggfy-run256-package-evidence.json; the extracted package is preserved in the local outputs folder.
+
+Run 255 passed CI, but its exact ZIP was not independently inspected; run 256 verification applies to its own artifact. Neither the run-254 nor run-256 package was uploaded to the public RC88 prerelease. The latest official release remains v3.0.0-rc.61. Pinned-client runtime acceptance, live installation and restart, merge, and official release remain separate gates described below.
+
 ## November 26 CI run 255 evidence checkpoint
 
 At this checkpoint, PR-head commit `c99be2db84bbe16d7c6367588b32d8a73fa2a8e6` passed all
