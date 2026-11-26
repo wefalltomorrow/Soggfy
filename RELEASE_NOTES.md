@@ -21,12 +21,12 @@ the latest official release remains v3.0.0-rc.61.
 
 ## CI and independent package verification
 
-Exact PR-head commit ee51a622d74856080142704ef02feef7abf1e1c9 passed all four
-jobs in [CI run 250](https://github.com/wefalltomorrow/Soggfy/actions/runs/45786376217).
-The bound GitHub artifact 15101882073 has SHA-256
-f04be77a9feb834b54bd716061620cdf48e4efbbeb8e1411ff4cde0cdda0f595; the
-3,326,655-byte RC88 package SHA-256 is
-f4db7eb7e135760ca4e1f3ab11d230e53a351c3a15b6d6b1c69129c3952fc552.
+PR-head commit `1379ffef5cdda78c0199d08467763cc352ba4074` passed all four jobs
+in [CI run 251](https://github.com/wefalltomorrow/Soggfy/actions/runs/45790193655).
+The bound GitHub artifact `15103762991` has SHA-256
+`24c151147e9d066fef855d58acee1b864700ee932c6cf59d394577bbdaceb809`; the
+3,327,028-byte RC88 package SHA-256 is
+`f9d4cae1a783e2bb9f3488c8af2492285478f1a5ca6117157ab3bbc29bcc1327`.
 Independent verification passed both ZIP integrity checks, safe paths, all
 seven manifest hashes, required contents, helper binding, AMD64 PE/import
 checks, and all 27 packaged source/text comparisons. Full evidence is in

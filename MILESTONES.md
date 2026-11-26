@@ -1,5 +1,28 @@
 # Engineering milestones
 
+## November 26 CI run 251 and independent package verification
+
+Exact PR-head commit `1379ffef5cdda78c0199d08467763cc352ba4074` passed all
+four jobs in [CI run 251](https://github.com/wefalltomorrow/Soggfy/actions/runs/45790193655):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, Windows
+media-observer and maintenance tests, publication/settings/logging/metadata/
+quality tests, x64 release build, and package checks. GitHub artifact
+`15103762991` is bound to that exact commit. The 3,325,045-byte outer ZIP
+SHA-256 is
+`24c151147e9d066fef855d58acee1b864700ee932c6cf59d394577bbdaceb809`; the
+3,327,028-byte RC88 package SHA-256 is
+`f9d4cae1a783e2bb9f3488c8af2492285478f1a5ca6117157ab3bbc29bcc1327`.
+
+Independent verification passed both ZIP integrity checks, safe paths, all
+seven manifest hashes, required contents, helper digest binding, AMD64 PE/import
+checks, and normalized source matching for all 27 packaged source/text files.
+The verifier, report, and downloaded artifact are `outputs/verify_run251.py`,
+`outputs/Soggfy-run251-package-evidence.json`, and
+`outputs/Soggfy-Windows-x64-run251.zip`. These checks do not establish live
+Spotify behavior; the runtime identity, capture-lifecycle, installation, and
+Classic save-dialog evidence requirements below remain open. PR #64 remains
+open and unmerged, and official release remains a separate gate.
+
 ## November 26 CI run 250 and independent package verification
 
 Exact PR-head commit `ee51a622d74856080142704ef02feef7abf1e1c9` passed all four
