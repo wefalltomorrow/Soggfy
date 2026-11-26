@@ -1,5 +1,34 @@
 # Engineering milestones
 
+## November 26 CI run 231 and independent package verification
+
+RC88 at exact source commit `978b1d9195360e767b39097a7d65ae6ccacd12e8` passed
+all four jobs in [CI run 231](https://github.com/wefalltomorrow/Soggfy/actions/runs/45729218270):
+native regression tests; both 20,000-iteration seeded ASan/UBSan campaigns;
+Windows media-observer, maintenance, publication, settings, logging, metadata
+and quality tests; and x64 release build/package checks. GitHub artifact
+`15076671809` is bound to that commit. Its 3,318,096-byte outer ZIP has SHA-256
+`6ac306da54af3c1f368642250e40b0999c93ed95017fcd4e5750f6bf74630427`; the
+3,320,059-byte RC88 package has SHA-256
+`b379145d4060ed8d225814be9c5cc27c6f98ffa25231de3efdca07e262f09652`.
+Independent verification passed ZIP integrity and safe paths, all seven manifest
+hashes, required content, helper digest binding, AMD64 PE/import checks, and
+normalized comparison of all 27 packaged source/text files to the exact commit.
+The helper SHA-256 is
+`d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f`. The
+reproducible verifier and report are `outputs/verify_run231.py` and
+`outputs/Soggfy-run231-package-evidence.json`.
+
+Run 231 is a documentation/evidence refresh of the same RC88 implementation
+already covered by run 230. It adds no new Spotify runtime evidence. The pinned
+Spotify 1.3.1.234 artifact identity was rechecked November 26 as recorded below,
+but no Spotify code was executed. Runtime provider selection, callback completion
+and synchronized lifetime, decoder-to-playback association, ad/DJ/interstitial
+isolation and transitions, and exact-instance current-track skip remain
+unverified. Production native MP3 capture and saved-recording metadata refresh
+remain disabled. Live installation/restart and Classic save-dialog acceptance
+have not been performed. PR #64 merge and official release remain separate gates.
+
 ## November 26 CI run 230, package verification and pinned-client recheck
 
 RC88 at exact source commit `58048d1a1f4bae28e9944a51ef0cf48656500f2b` passed
