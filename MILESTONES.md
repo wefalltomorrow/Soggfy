@@ -1,5 +1,46 @@
 # Engineering milestones
 
+## November 26 CI run 230, package verification and pinned-client recheck
+
+RC88 at exact source commit `58048d1a1f4bae28e9944a51ef0cf48656500f2b` passed
+all four jobs in [CI run 230](https://github.com/wefalltomorrow/Soggfy/actions/runs/45622191137):
+native regression tests; both 20,000-iteration seeded ASan/UBSan campaigns;
+Windows media-observer, maintenance, publication, settings, logging, metadata
+and quality tests; and x64 release build/package checks. GitHub artifact
+`15027613274` is bound to that commit. Its 3,316,951-byte outer ZIP has SHA-256
+`4c866cc3c5b4571781f84332d07448979185235803de7ec3af13b23737c2ca58`; the
+3,318,951-byte RC88 package has SHA-256
+`fde62d69de099d4f0182079f99d802f9e36153ed9ac136a4ceeac93479ad1040`.
+Independent verification passed both ZIP integrity checks and safe paths, all
+seven manifest hashes, required contents, helper digest binding, AMD64 PE/import
+constraints, and normalized source matching for all 27 packaged text/source
+files. The helper SHA-256 is
+`d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f`. The
+reproducible verifier and report are `outputs/verify_run230.py` and
+`outputs/Soggfy-run230-package-evidence.json`.
+
+On November 26 the installed Spotify executable reported version 1.3.1.234;
+`Spotify.dll` remained 42,852,224 bytes with SHA-256
+`210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f`, matching
+the pinned artifact. No Spotify process was running. The REA session had no
+target open; Ghidra was not configured, Hopper is unsupported on this Windows
+host, and IDA was not configured. No fresh native analysis or Spotify runtime
+observation was possible. Static identity/dispatch probes therefore still do
+not prove runtime provider selection, callback completion and synchronized
+lifetime, decoder-to-playback association, ad/DJ/interstitial isolation and
+transitions, or exact-instance current-track skip. Production native MP3
+capture and saved-recording metadata refresh remain disabled.
+
+The documented implementation milestones after RC74—maintenance transactions,
+bounded watch scans, playlist-save acknowledgements, diagnostics, sanitizer
+campaigns and package verification—are implemented and covered by CI. Floggfy
+was rechecked: v1.4.1 remains the newest listed release and both `main` and the
+tag resolve to `15e1e286ea1ac474be4aff30e6db1541ba790340`. Its remaining catalog,
+network-control and decoder features are product or pinned-client compatibility
+work, not safe unreviewed ports. Live installation/restart and Classic save-dialog
+acceptance have not been performed. PR #64 merge and official release remain
+separate gates.
+
 ## November 25 CI run 229 and independent package verification
 
 RC88 at exact source commit `af3cf2a1a978195ad96511e3c4f05fe01be3d6e8` passed

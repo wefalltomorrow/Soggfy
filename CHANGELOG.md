@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-rc.88
+
+- Fence Classic recovery retries and skip decisions to the playback identity that created them.
+- Bind failed-write cleanup to the original open file handle so a replacement at the old path is preserved.
+- Accept GNU and LLVM x64 PE metadata in helper-import verification while retaining the strict system-runtime allowlist.
+- Review Floggfy v1.4.1 selectively; keep native MP3 capture and saved-file metadata refresh disabled pending pinned-client and lifecycle evidence.
+- Pass all four CI jobs and independently verify the RC88 package; see MILESTONES.md for hashes and remaining acceptance gates.
+
 ## 3.0.0-rc.87
 
 - Add bounded PNG/JPEG decoding to the build-pinned validation helper with an explicit image reply protocol.

@@ -1,10 +1,11 @@
-# Floggfy upstream review — November 25, 2026
+# Floggfy upstream review — November 26, 2026
 
 ## Reviewed source
 
 The current `main` branch and `v1.4.1` tag both resolve to
-`15e1e286ea1ac474be4aff30e6db1541ba790340` (checked November 25, 2026). The
-comparison uses the tagged release and its source, rather than treating release
+`15e1e286ea1ac474be4aff30e6db1541ba790340` (rechecked November 26, 2026).
+The releases list still identifies v1.4.1, published November 21, 2026, as
+the newest release. The comparison uses the tagged release and its source, rather than treating release
 notes as a compatibility or correctness test for Soggfy. References: [v1.4.1
 release](https://github.com/Mainkill1/Floggfy/releases/tag/v1.4.1), [reviewed
 source commit](https://github.com/Mainkill1/Floggfy/commit/15e1e286ea1ac474be4aff30e6db1541ba790340),

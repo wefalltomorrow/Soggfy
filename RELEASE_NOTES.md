@@ -12,10 +12,12 @@ msvcrt.dll import allowlist. Floggfy v1.4.1 was reviewed against its source and
 release; no unverified Spotify hooks or native MP3 capture were enabled.
 
 The Windows regression suite, isolated release build and package checks passed
-locally. All four CI jobs passed in run 221 at source commit
-`295488f687bf44f86c0be12c863ea6f2a33e37af`; independent package verification
-is recorded in `outputs/Soggfy-run221-package-evidence.json`. Pinned Spotify
-live acceptance remains pending. This candidate is not an official release;
+locally. All four CI jobs passed in [run 230](https://github.com/wefalltomorrow/Soggfy/actions/runs/45622191137)
+at exact source commit `58048d1a1f4bae28e9944a51ef0cf48656500f2b`;
+independent verification of the 3,318,951-byte package (SHA-256
+`fde62d69de099d4f0182079f99d802f9e36153ed9ac136a4ceeac93479ad1040`) is
+recorded in `outputs/Soggfy-run230-package-evidence.json`. Pinned Spotify live
+acceptance remains pending. This candidate is not an official release;
 installation, merge and official release remain separate gates.
 
 ## RC87 background - supervised artwork validation foundation
