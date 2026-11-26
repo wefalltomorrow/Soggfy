@@ -16,17 +16,21 @@ msvcrt.dll import allowlist. Floggfy v1.4.1 was reviewed against its source and
 release; no unverified Spotify hooks or production native MP3 capture were
 enabled.
 
+RC88 is available as a [GitHub prerelease candidate](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.88);
+the latest official release remains v3.0.0-rc.61.
+
 ## CI and independent package verification
 
-Exact PR-head commit 319f072204a89fcac8e3676739c582e87cdd81b3 passed all four
-jobs in [CI run 249](https://github.com/wefalltomorrow/Soggfy/actions/runs/45782945346).
-The bound GitHub artifact 15099799070 has SHA-256
-5538f989b5aed52b5c35693fe554a30a2575cb81bcf1caa484ff2363f11ff928; the
-3,325,930-byte RC88 package SHA-256 is
-7e3c4bcad410618a7f673622d25e3f1af8fcd2c626eee01c3fbdfda35ea48020.
-Independent verification passed ZIP integrity, safe paths, all seven manifest
-hashes, required contents, helper binding, AMD64 PE/import checks, and all 27
-packaged source/text comparisons. Full evidence is in MILESTONES.md.
+Exact PR-head commit ee51a622d74856080142704ef02feef7abf1e1c9 passed all four
+jobs in [CI run 250](https://github.com/wefalltomorrow/Soggfy/actions/runs/45786376217).
+The bound GitHub artifact 15101882073 has SHA-256
+f04be77a9feb834b54bd716061620cdf48e4efbbeb8e1411ff4cde0cdda0f595; the
+3,326,655-byte RC88 package SHA-256 is
+f4db7eb7e135760ca4e1f3ab11d230e53a351c3a15b6d6b1c69129c3952fc552.
+Independent verification passed both ZIP integrity checks, safe paths, all
+seven manifest hashes, required contents, helper binding, AMD64 PE/import
+checks, and all 27 packaged source/text comparisons. Full evidence is in
+MILESTONES.md.
 
 ## Acceptance gates
 

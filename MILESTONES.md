@@ -1,5 +1,37 @@
 # Engineering milestones
 
+## November 26 CI run 250 and independent package verification
+
+Exact PR-head commit `ee51a622d74856080142704ef02feef7abf1e1c9` passed all four
+jobs in [CI run 250](https://github.com/wefalltomorrow/Soggfy/actions/runs/45786376217):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, Windows
+maintenance/publication tests, x64 release build, and package checks. GitHub
+artifact `15101882073` is bound to that exact commit. The 3,324,675-byte outer
+ZIP SHA-256 is
+`f04be77a9feb834b54bd716061620cdf48e4efbbeb8e1411ff4cde0cdda0f595`; the
+3,326,655-byte RC88 package SHA-256 is
+`f4db7eb7e135760ca4e1f3ab11d230e53a351c3a15b6d6b1c69129c3952fc552`.
+
+Independent verification passed both ZIP integrity checks, safe paths, all
+seven manifest hashes, required contents, helper digest binding, AMD64 PE/import
+checks, and normalized source matching for all 27 packaged source/text files.
+The verifier, report, and downloaded artifact are
+`outputs/verify_run250.py`, `outputs/Soggfy-run250-package-evidence.json`, and
+`outputs/Soggfy-Windows-x64-run250.zip`. RC88 is available as a GitHub
+prerelease candidate at [v3.0.0-rc.88](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.88);
+the latest official release remains v3.0.0-rc.61.
+
+These CI/package checks do not establish live Spotify behavior. The installed
+Spotify DLL identity is confirmed, but runtime provider selection, callback
+completion and synchronized teardown, decoder-to-playback association,
+ad/DJ/interstitial isolation and transitions, and exact-instance current-track
+skip remain unverified. Production native MP3 capture and saved-recording
+metadata refresh remain disabled pending provenance, completeness, ownership,
+freshness, replacement-preservation, and lifecycle evidence. Live Spotify
+installation/restart and Classic save-dialog acceptance have not been
+performed. PR #64 remains open and unmerged; official release remains a
+separate gate.
+
 ## November 26 CI run 249 and independent package verification
 
 Exact PR-head commit 319f072204a89fcac8e3676739c582e87cdd81b3 passed all four
