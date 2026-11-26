@@ -1,5 +1,30 @@
 # Engineering milestones
 
+## November 26 CI run 244 and independent package verification
+
+Candidate commit `61a5547d2fcea7e522cff04ad573c07257eb1629` passed all four
+jobs in [CI run 244](https://github.com/wefalltomorrow/Soggfy/actions/runs/45762844720):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, and the
+Windows media-observer, maintenance transaction/watch, publication/settings/
+logging/diagnostics/metadata/quality, release build and package checks. Artifact
+`15090738944` is bound to that exact commit. The 3,321,926-byte outer ZIP
+SHA-256 is
+`d8d56d8f834e7b1b001028c7c2d8279a8a9d6bf135475e613e1f0c0cafdea82b`; the
+3,323,879-byte RC88 package SHA-256 is
+`b03bfbfdb7e7df39ac72854608fd5a4ce3cbfaa047f5c1c8549b0326463de6a3`.
+Independent verification passed outer and inner ZIP integrity, safe paths, all
+seven manifest hashes, required contents, helper digest binding, AMD64 PE/import
+checks, and normalized source matching for all 27 packaged source/text files.
+
+These CI/package checks add no live Spotify evidence. Provider selection, callback
+completion and synchronized lifetime, decoder-to-playback association,
+ad/DJ/interstitial isolation and transitions, and exact-instance current-track
+skip remain unverified. Production native MP3 capture and saved-recording
+metadata refresh remain disabled pending runtime provenance, ownership, freshness
+and lifecycle evidence. Live installation/restart and Classic save-dialog
+acceptance have not been performed. PR merge and official release remain
+separate gates.
+
 ## November 26 CI run 243 and independent package verification
 
 Documentation commit `612aa8cdca2c83063eb764a42ff2c764b8c4dd85` passed all four
