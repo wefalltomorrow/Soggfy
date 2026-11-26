@@ -1,5 +1,39 @@
 # Engineering milestones
 
+## November 26 CI run 252 and independent package verification
+
+Exact PR-head commit `e7aafcc7ca9ab4faccc7ea9c3084a1d104b2b664` passed all
+four jobs in [CI run 252](https://github.com/wefalltomorrow/Soggfy/actions/runs/45794576492):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, Windows
+maintenance/publication/settings/logging/metadata/quality tests, x64 release
+build, and package checks. GitHub artifact `15105875844` is bound to that exact
+commit. The 3,325,277-byte outer ZIP SHA-256 is
+`2849a6244e556f08490574fc2f1705c1c64328bfbf15a59fe2f69dee69ccebc7`; the
+3,327,264-byte RC88 package SHA-256 is
+`65b4f1dd8bee391f464dd204724eb6d2e9078d29cc787b0af0b1a4af3d88a4d4`.
+
+Independent verification passed both ZIP integrity checks, safe archive paths,
+all seven manifest hashes, required contents, helper digest binding, AMD64
+PE/import checks, and normalized source matching for all 27 packaged
+source/text files. The verifier and report are
+`outputs/verify_run252.py` and `outputs/Soggfy-run252-package-evidence.json`;
+the verified package is `outputs/Soggfy-v3.0.0-rc.88-Windows-x64-run252.zip`.
+The package is attached to the existing RC88 prerelease as a distinct asset;
+the earlier asset is preserved.
+
+This verifies CI and package contents, not live Spotify behavior. The pinned
+installed Spotify DLL identity matches the expected 42,852,224-byte artifact
+with SHA-256
+`210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f`, but
+runtime provider selection, callback completion and synchronized teardown,
+decoder-to-playback association, ad/DJ/interstitial isolation and transitions,
+and exact-instance current-track skip remain unverified. Production native MP3
+capture and saved-recording metadata refresh remain disabled pending
+completeness, provenance, ownership, freshness, replacement-preservation, and
+lifecycle evidence. Live Spotify installation/restart and Classic save-dialog
+acceptance have not been performed. PR #64 remains open and unmerged; live
+installation, merging, and official release remain separately gated.
+
 ## November 26 CI run 251 and independent package verification
 
 Exact PR-head commit `1379ffef5cdda78c0199d08467763cc352ba4074` passed all
