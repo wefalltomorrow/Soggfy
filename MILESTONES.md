@@ -1,5 +1,37 @@
 # Engineering milestones
 
+## November 26 CI run 249 and independent package verification
+
+Exact PR-head commit 319f072204a89fcac8e3676739c582e87cdd81b3 passed all four
+jobs in [CI run 249](https://github.com/wefalltomorrow/Soggfy/actions/runs/45782945346):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, Windows
+media-observer and maintenance tests, publication/settings/logging/metadata/
+quality tests, and x64 release build/package checks. GitHub artifact 15099799070
+is bound to that exact commit. The 3,323,976-byte outer ZIP SHA-256 is
+5538f989b5aed52b5c35693fe554a30a2575cb81bcf1caa484ff2363f11ff928; the
+3,325,930-byte RC88 package SHA-256 is
+7e3c4bcad410618a7f673622d25e3f1af8fcd2c626eee01c3fbdfda35ea48020.
+
+Independent verification passed both ZIP integrity checks, safe paths, all
+seven manifest hashes, required contents, helper digest binding, AMD64 PE/import
+checks, and normalized source matching for all 27 packaged source/text files.
+The packaged helper SHA-256 is
+d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f. The
+verifier, report, and downloaded artifact are
+outputs/verify_run249.py, outputs/Soggfy-run249-package-evidence.json, and
+outputs/Soggfy-Windows-x64-run249.zip.
+
+These CI/package checks do not establish live Spotify behavior. The installed
+Spotify DLL identity is confirmed, but runtime provider selection, callback
+completion and synchronized teardown, decoder-to-playback association,
+ad/DJ/interstitial isolation and transitions, and exact-instance current-track
+skip remain unverified. Production native MP3 capture and saved-recording
+metadata refresh remain disabled pending provenance, completeness, ownership,
+freshness, and lifecycle evidence. Live Spotify installation/restart and
+Classic save-dialog acceptance have not been performed. PR #64 remains open and
+unmerged; official release remains a separate gate, with v3.0.0-rc.61 the
+latest official release.
+
 ## November 26 CI run 248 and independent package verification
 
 PR-head commit `3ae577053a4ec3d326f1665194f95807556ccc17` passed all four

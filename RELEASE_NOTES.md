@@ -1,28 +1,44 @@
-# Soggfy v3.0.0-rc.88 - Classic export bounds and package checks
+# Soggfy v3.0.0-rc.88 - Classic export bounds and safe failed-write cleanup
 
-Classic M3U export now checks its 10,000-track maximum before appending each
+Classic M3U export checks its 10,000-track maximum before appending each
 paginated API response. A regression passes a single 200,000-item page and
 confirms that export stops without sending a save request.
 
-Failed writes now mark the exact open file handle for deletion before closing
-it. This prevents cleanup from deleting a different file created at the same
-path after the failed file closes. A Windows regression renames the owned file,
-creates a replacement at its former path, and verifies that cleanup removes
-only the owned file.
+Failed writes mark the exact open file handle for deletion before closing it.
+This prevents cleanup from deleting a different file created at the same path
+after the failed file closes. A Windows regression renames the owned file,
+creates a replacement at its former path, and verifies cleanup removes only
+the owned file.
 
-The validation-helper import verifier now accepts both GNU and LLVM PE metadata
+The validation-helper import verifier accepts both GNU and LLVM PE metadata
 formats while keeping the x64 architecture checks and strict kernel32.dll /
 msvcrt.dll import allowlist. Floggfy v1.4.1 was reviewed against its source and
-release; no unverified Spotify hooks or native MP3 capture were enabled.
+release; no unverified Spotify hooks or production native MP3 capture were
+enabled.
 
-All four CI jobs passed at exact PR head commit
-`2eed5e000a271b40a851401c98a2406a6c230e40` in [run 237](https://github.com/wefalltomorrow/Soggfy/actions/runs/45745148727).
-Independent verification of its 3,322,211-byte package (SHA-256
-`be0bc452914340c684bc7e00e96ea5076fa9234f65665f75747c342014def6c5`) is
-recorded in the local project outputs as
-`outputs/Soggfy-run237-package-evidence.json`. Runtime capture and live Spotify
-acceptance remain unverified. This candidate is not an official release; live
-installation, PR merge and official release remain separate gates.
+## CI and independent package verification
+
+Exact PR-head commit 319f072204a89fcac8e3676739c582e87cdd81b3 passed all four
+jobs in [CI run 249](https://github.com/wefalltomorrow/Soggfy/actions/runs/45782945346).
+The bound GitHub artifact 15099799070 has SHA-256
+5538f989b5aed52b5c35693fe554a30a2575cb81bcf1caa484ff2363f11ff928; the
+3,325,930-byte RC88 package SHA-256 is
+7e3c4bcad410618a7f673622d25e3f1af8fcd2c626eee01c3fbdfda35ea48020.
+Independent verification passed ZIP integrity, safe paths, all seven manifest
+hashes, required contents, helper binding, AMD64 PE/import checks, and all 27
+packaged source/text comparisons. Full evidence is in MILESTONES.md.
+
+## Acceptance gates
+
+The pinned Spotify DLL identity is confirmed, but runtime provider selection,
+callback completion and synchronized teardown, decoder-to-playback association,
+ad/DJ/interstitial isolation and transitions, and exact-instance current-track
+skip still require direct runtime evidence. Production native MP3 capture and
+saved-recording metadata refresh remain disabled pending provenance,
+completeness, ownership, freshness, and lifecycle evidence. Live Spotify
+installation/restart and Classic save-dialog acceptance have not been
+performed. PR #64 remains unmerged; this RC candidate is not an official
+release, and official release remains a separate gate.
 
 ## RC87 background - supervised artwork validation foundation
 
