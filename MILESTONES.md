@@ -1,5 +1,41 @@
 # Engineering milestones
 
+## November 26 CI run 234, package verification and native-provider recheck
+
+RC88 at exact source commit `684758e6f173f2b20527d3cee0082fc50ce7fbb4` passed
+all four jobs in [CI run 234](https://github.com/wefalltomorrow/Soggfy/actions/runs/45736957010):
+native regressions; both seeded 20,000-iteration ASan/UBSan campaigns; Windows
+media-observer and maintenance transaction/watch tests; Windows publication,
+settings, logging, metadata and quality tests; and the x64 release build/package
+checks. Artifact `15079619167` is bound to that commit. The 3,319,001-byte outer
+ZIP SHA-256 is `06365337f29d8229d43bd1116535b6816a44a72133a41d67ed0d7bb2b699c792`;
+the 3,320,975-byte RC88 package SHA-256 is
+`48ebdc94c6531603617572d3d0e7f845a8b19da650f63b75869b0d5f3915a60d`.
+Independent verification passed both ZIP integrity checks, safe paths, all
+seven manifest hashes, required contents, validation-helper digest binding,
+AMD64 PE/import checks, and normalized source matching for all 27 packaged
+source/text files. The verifier and report are `outputs/verify_run234.py` and
+`outputs/Soggfy-run234-package-evidence.json`.
+
+On November 26 the installed Spotify 1.3.1.234 DLL was measured at 42,852,224
+bytes with SHA-256
+`210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f`, matching
+the pinned artifact. This confirms file identity only. Spotify was not running.
+The current REA session has no active binary target; Ghidra is unconfigured,
+Hopper is unsupported on Windows, and no IDA adapter is configured. No client
+code was executed. Provider selection, callback completion and synchronized
+lifetime, decoder-to-playback association, ad/DJ/interstitial isolation and
+transitions, and exact-instance current-track skip remain unverified.
+
+Maintenance transactions, bounded watch scans, playlist-save acknowledgements,
+diagnostics, sanitizer campaigns, and package verification are implemented and
+CI-covered. The Classic M3U 10,000-track guard remains covered by its 200,000-item
+single-page regression. Production native MP3 capture and saved-recording
+metadata refresh remain disabled pending runtime ownership, provenance,
+freshness and lifecycle evidence. Live installation/restart and Classic
+save-dialog acceptance have not been performed. PR #64 merge and official
+release remain separate gates.
+
 ## November 26 CI run 233 and independent package verification
 
 RC88 at exact source commit `d393ff540e39d451713226e1ca87f820b4f64025` passed
