@@ -1,5 +1,32 @@
 # Engineering milestones
 
+## November 26 CI run 242 and independent package verification
+
+Candidate commit `cd7c2354f861db8d089d793bce91374a94e3751d` passed all four
+jobs in [CI run 242](https://github.com/wefalltomorrow/Soggfy/actions/runs/45757426193):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, and the
+Windows media-observer, maintenance transaction/watch, publication/settings/
+logging/diagnostics/metadata/quality, release build and package checks. Artifact
+`15090025792` is bound to that exact commit. The 3,321,571-byte outer ZIP
+SHA-256 is
+`683f5c5b0f6c1c70452df9843243e61cab4bfbb80dae8944bb70bcf46e0a763b`; the
+3,323,537-byte RC88 package SHA-256 is
+`b77e33bdb75a18c4066069a1773f17453402dafc14480cae7a3eea0ba7a8d432`.
+Independent verification passed outer and inner ZIP integrity, safe paths, all
+seven manifest hashes, required contents, helper digest binding, AMD64 PE/import
+checks, and normalized source matching for all 27 packaged source/text files.
+The local verifier and report are `outputs/verify_run242.py` and
+`outputs/Soggfy-run242-package-evidence.json`.
+
+This validation adds no live Spotify evidence. Provider selection, callback
+completion and synchronized lifetime, decoder-to-playback association,
+ad/DJ/interstitial isolation and transitions, and exact-instance current-track
+skip remain unverified. Production native MP3 capture and saved-recording
+metadata refresh remain disabled pending runtime provenance, ownership, freshness
+and lifecycle evidence. Live installation/restart and Classic save-dialog
+acceptance have not been performed. PR merge and official release remain
+separate gates.
+
 ## November 26 CI run 241 and independent package verification
 
 RC88 candidate commit `28e5a5c21cb47757aaae414458dfeb903d8141e4` passed all four
