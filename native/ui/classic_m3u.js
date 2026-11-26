@@ -41,8 +41,8 @@ async function pages(fetch){
     const result=await bounded(()=>fetch(items.length));
     const next=result?.items;
     if(!Array.isArray(next))throw Error('Unsupported playlist response');
+    if(items.length+next.length>MAX_TRACKS)throw Error('M3U export supports up to 10,000 tracks');
     items.push(...next);
-    if(items.length>MAX_TRACKS)throw Error('M3U export supports up to 10,000 tracks');
     if(Number.isFinite(result.total)&&items.length>=result.total)return items;
     if(!next.length){
       if(Number.isFinite(result.total)&&items.length<result.total)

@@ -54,5 +54,10 @@ function harness(items=tracks,ack='saved'){
  release({name:'Busy'});await first;assert.strictEqual(busy.sends.length,1);
  const oversized=harness(Array.from({length:10001},()=>tracks[0]));
  await oversized.sgf.generateM3U();assert.strictEqual(oversized.sends.length,0);assert(oversized.messages.at(-1).includes('10,000'));
+ const oversizedPage=harness();
+ oversizedPage.api.getContents=async()=>({items:Array.from({length:200000},()=>tracks[0]),totalLength:200000});
+ await oversizedPage.sgf.generateM3U();
+ assert.strictEqual(oversizedPage.sends.length,0);
+ assert(oversizedPage.messages.at(-1).includes('10,000'),'Oversized API page is rejected before spreading it into the result');
  console.log('PASS: complete M3U pagination, 128-status batches, duplicates, partial failures, concurrent clicks and limits');
 })().catch(error=>{console.error(error);process.exitCode=1;});
