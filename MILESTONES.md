@@ -1,5 +1,33 @@
 # Engineering milestones
 
+## November 26 CI run 248 and independent package verification
+
+PR-head commit `3ae577053a4ec3d326f1665194f95807556ccc17` passed all four
+jobs in [CI run 248](https://github.com/wefalltomorrow/Soggfy/actions/runs/45779105462):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, and the
+Windows media-observer, maintenance, publication/settings/logging/diagnostics/
+metadata/quality, release-build and package checks. Artifact `15098687755` is
+bound to that exact commit. The 3,323,654-byte outer ZIP SHA-256 is
+`b31fe11ca2a12885922f9d70d31f0d92bca3da284cf4a2e53a035a38d45dafad`; the
+3,325,600-byte RC88 package SHA-256 is
+`c0a69c95a7d56c77b4a2b5c427b67bd6b9483c4e932572192bd711d18a258b72`.
+Independent verification passed outer and inner ZIP integrity, safe paths, all
+seven manifest hashes, required contents, helper digest binding, AMD64 PE/import
+checks, and normalized source matching for all 27 packaged source/text files.
+The verifier and report are `outputs/verify_run248.py` and
+`outputs/Soggfy-run248-package-evidence.json`; the downloaded outer artifact is
+preserved as `outputs/Soggfy-Windows-x64-run248.zip`.
+
+These CI/package results add no live Spotify evidence. The pinned Spotify DLL
+identity remains confirmed, but provider selection, callback completion and
+synchronized teardown, decoder-to-playback association, ad/DJ/interstitial
+isolation and transitions, and exact-instance current-track skip remain
+unverified. Production native MP3 capture and saved-recording metadata refresh
+remain disabled pending their stated runtime provenance, ownership, freshness
+and lifecycle evidence. Live installation/restart and Classic save-dialog
+acceptance have not been performed. PR #64 remains open and unmerged; official
+release remains a separate gate, with v3.0.0-rc.61 the latest published build.
+
 ## November 26 CI run 247 and independent package verification
 
 PR-head commit 599955af2ae67bf5d7d1bd2c659b67e626da3755 for run 247 passed all
