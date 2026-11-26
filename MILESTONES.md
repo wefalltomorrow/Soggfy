@@ -1,5 +1,34 @@
 # Engineering milestones
 
+## November 26 CI run 239 and independent package verification
+
+PR #64 head commit `a7662d05eb9e890d2006d82ce1d6edc0c9604ac4` passed all four
+jobs in [CI run 239](https://github.com/wefalltomorrow/Soggfy/actions/runs/45750140372):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, and the
+Windows media-observer, maintenance transaction/watch, publication/settings/
+logging/diagnostics/metadata/quality, release build and package checks. Artifact
+`15086211334` is bound to that exact commit. The 3,320,838-byte outer ZIP
+SHA-256 is
+`0455c1a6acc637a72fcdcd3965dd6a89dd4ac94d6332c5914d892acfff7329cf`; the
+3,322,796-byte RC88 package SHA-256 is
+`a67d2a545ba433b80e5b2f81e65726083e5fcfb221a146ada4186190b5c39968`.
+Independent verification passed outer and inner ZIP integrity, safe paths, all
+seven manifest hashes, required contents, helper digest binding, AMD64 PE/import
+checks, and normalized source matching for all 27 packaged source/text files.
+The local verifier and report are `outputs/verify_run239.py` and
+`outputs/Soggfy-run239-package-evidence.json`.
+
+This run adds no live Spotify evidence. The installed Spotify DLL still matches
+the pinned 1.3.1.234 artifact, but Spotify is not running and no usable native
+analysis provider is available on this host. Provider selection, callback
+completion and synchronized lifetime, decoder-to-playback association,
+ad/DJ/interstitial isolation and transitions, and exact-instance current-track
+skip remain unverified. Production native MP3 capture and saved-recording
+metadata refresh remain disabled pending their runtime provenance, ownership,
+freshness and lifecycle evidence. Live installation/restart and Classic
+save-dialog acceptance have not been performed. PR merge and official release
+remain separate gates.
+
 ## November 26 CI run 238 and independent package verification
 
 PR #64 head commit `7d963170728783725ee36e888f565364a67eb207` passed all four
