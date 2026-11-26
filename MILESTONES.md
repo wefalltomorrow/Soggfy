@@ -1,5 +1,36 @@
 # Engineering milestones
 
+## November 26 CI run 238 and independent package verification
+
+PR #64 head commit `7d963170728783725ee36e888f565364a67eb207` passed all four
+jobs in [CI run 238](https://github.com/wefalltomorrow/Soggfy/actions/runs/45747176011):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, and the
+Windows tests/build/package checks. GitHub artifact `15085225429` is bound to
+that exact commit. The 3,320,442-byte outer ZIP SHA-256 is
+`58ab196311bf72ff0c33c1c62440578b249eed5b6fabb90814eac66fb5f19469`; the
+3,322,399-byte RC88 package SHA-256 is
+`6b1d3eb0df05cc33c4a83f970d2008471a6a81d3981924611472949b8d269448`.
+Independent verification passed both ZIP integrity checks, safe paths, all seven
+manifest hashes, required contents, helper digest binding, AMD64 PE/import
+checks, and normalized source matching for all 27 packaged source/text files.
+The verifier and evidence report are `outputs/verify_run238.py` and
+`outputs/Soggfy-run238-package-evidence.json`.
+
+The installed Spotify `Spotify.dll` was rechecked at 42,852,224 bytes with SHA-256
+`210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f`, matching
+the pinned 1.3.1.234 artifact. Spotify is not running. The current REA session
+reports Ghidra unconfigured, Hopper unsupported on Windows, and no IDA provider
+registration. Thus no new native-analysis or runtime observation was obtained.
+Provider selection, callback completion and synchronized lifetime,
+decoder-to-playback association, ad/DJ/interstitial isolation and transitions,
+and exact-instance current-track skip remain unverified. Production native MP3
+capture and saved-recording metadata refresh remain disabled pending their
+runtime provenance, ownership, freshness and lifecycle evidence.
+
+Run 238 does not perform live installation/restart or Classic save-dialog
+acceptance. PR merge and official release remain separate gates. This evidence
+refresh does not change the preserved UI, playback-speed target, or output paths.
+
 ## November 26 CI run 237 and independent package verification
 
 Documentation follow-up commit `2eed5e000a271b40a851401c98a2406a6c230e40`
