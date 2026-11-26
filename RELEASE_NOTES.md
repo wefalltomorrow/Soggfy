@@ -19,7 +19,17 @@ enabled.
 RC88 is available as a [GitHub prerelease candidate](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.88);
 the latest official release remains v3.0.0-rc.61.
 
-## CI and independent package verification
+## PR-head CI checkpoint: run 255
+
+Documentation-only PR-head commit `c99be2db84bbe16d7c6367588b32d8a73fa2a8e6`
+passed all four jobs in [CI run 255](https://github.com/wefalltomorrow/Soggfy/actions/runs/45815884067):
+native regressions, both sanitizer campaigns, and the Windows tests/build/package
+checks. GitHub artifact `15117035731` is 3,326,478 bytes with the recorded
+SHA-256 `4f2779c693edb079189500af1aefdd0c7f59f2aba7985611bce109613a8cef27`.
+The functional source tree is unchanged from the independently verified run-254
+package, but this run-255 ZIP itself has not been independently inspected.
+
+## Functional source CI and independent package verification
 
 Exact PR-head commit `1e55d2085d79e1ec5ab4112de60d189e4e68eb7c` passed all four
 jobs in [CI run 254](https://github.com/wefalltomorrow/Soggfy/actions/runs/45811303180).

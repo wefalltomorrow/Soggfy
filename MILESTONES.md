@@ -1,5 +1,19 @@
 # Engineering milestones
 
+## November 26 CI run 255 evidence checkpoint
+
+At this checkpoint, PR-head commit `c99be2db84bbe16d7c6367588b32d8a73fa2a8e6` passed all
+four jobs in [CI run 255](https://github.com/wefalltomorrow/Soggfy/actions/runs/45815884067):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, Windows
+maintenance/publication/settings/logging/metadata/quality tests, x64 release
+build, and package checks. The bound GitHub artifact `15117035731` is 3,326,478
+bytes with digest `4f2779c693edb079189500af1aefdd0c7f59f2aba7985611bce109613a8cef27`.
+This commit only updates documentation relative to the run-254 evidence commit;
+the functional source tree is unchanged. The run-255 ZIP itself has not been
+independently downloaded and inspected, so its package-verification milestone
+remains open even though run 254's package for the same functional source passed
+independent verification below. The public RC88 prerelease has not been updated.
+
 ## November 26 CI run 254 and independent package verification
 
 Exact PR-head commit `1e55d2085d79e1ec5ab4112de60d189e4e68eb7c` passed all
