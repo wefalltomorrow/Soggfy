@@ -1,5 +1,35 @@
 # Engineering milestones
 
+## November 26 CI run 247 and independent package verification
+
+PR-head commit 599955af2ae67bf5d7d1bd2c659b67e626da3755 for run 247 passed all
+four jobs in [CI run 247](https://github.com/wefalltomorrow/Soggfy/actions/runs/45771781561):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, and the
+Windows media-observer, maintenance transaction/watch, publication/settings/
+logging/diagnostics/metadata/quality, release-build and package checks. Artifact
+15096210940 is bound to that exact commit. The 3,322,540-byte outer ZIP SHA-256
+is facfcc12981a50b6d538c46aa3f3a267d02c4ce729bdddae2faa9a61cd6195e7; the
+3,324,459-byte RC88 package SHA-256 is
+a312fffd53ce12ba1f104edf0783c7d887dfa8ada87698dcf951b9a02d7b835f.
+Independent verification passed outer and inner ZIP integrity, safe paths, all
+seven manifest hashes, required contents, helper digest binding, AMD64 PE/import
+checks, and normalized source matching for all 27 packaged source/text files.
+The verifier and report are outputs/verify_run247.py and
+outputs/Soggfy-run247-package-evidence.json.
+
+On November 26, the installed Spotify.dll again matched the pinned 1.3.1.234
+artifact (42,852,224 bytes; SHA-256
+210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f); Spotify was
+not running. Ghidra is unconfigured, Hopper is unsupported on this Windows host,
+and no IDA provider is registered. This confirms artifact identity only. Runtime
+provider selection, callback completion and synchronized teardown,
+decoder-to-playback association, ad/DJ/interstitial isolation and transitions,
+and exact-instance current-track skip remain unverified. Production native MP3
+capture and saved-recording metadata refresh remain disabled pending the stated
+runtime provenance, ownership, freshness and lifecycle evidence. Live
+installation/restart and Classic save-dialog acceptance have not been performed.
+PR #64 remains open and unmerged; official release remains a separate gate.
+
 ## November 26 CI run 246 and independent package verification
 
 Candidate documentation commit `9be27af791a124122378ded618fd98eaf107d141`

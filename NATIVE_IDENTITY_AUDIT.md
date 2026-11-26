@@ -613,3 +613,60 @@ the existing hash-pinned Capstone probes or turn their static findings into
 runtime evidence. Production capture therefore remains disabled pending direct
 evidence of selected provider, emitted-audio identity, callback completion and
 synchronized lifetime across playback transitions.
+
+## Hash-pinned static follow-up — November 25; environment recheck — November 26
+
+Three additional probes were run against the pinned Spotify.dll SHA-256
+210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f. They use
+PE mapping and Capstone instruction checks; Spotify code was not executed and
+no hooks were installed. The retained reports are
+outputs/Soggfy-native-identity-parent-20261125-followup1.json,
+outputs/Soggfy-native-identity-dispatch-context-20261125-followup1.json, and
+outputs/Soggfy-native-notification-scheduler-boundary-20261125-followup1.json.
+
+The parent-path probe validates 1,299 instruction locations. It traces a
+configured 16-byte candidate value through its generator and consumer path,
+including a separate 32-character hexadecimal representation, a guarded
+callback wrapper, and a provider pointer reaching a service-table entry. Static
+construction evidence places the candidate field at streaming-object +0x350
+and a transferred callback wrapper at +0x3a8. It also traces conditional
+configuration moves and cleanup. The service implementation and runtime
+selection are not established, and the field's semantic identity, uniqueness,
+reuse, preload behavior, and decoder association remain unknown.
+
+Two submitted cleanup operations on the inspected streaming-object path use a
+shared completion counter and wait for it to reach zero before the retained
+wrapper is destroyed. This establishes ordering for those two submissions on
+normal returning paths only. It does not establish that all audio callbacks or
+decoder work have completed, nor cover exception paths. The notification route
+traces a provider-produced 32-byte context into the streaming object and
+subsequent task dispatch/cleanup. Its 16-byte notification snapshot comes from
+object +0xa0, distinct from the candidate field at +0x350; this is a notification
+route, not evidence of sample-buffer delivery. The concrete scheduler and
+whether cleanup cancels queued work, drains running work, or both remain unknown.
+
+The dispatch-context probe also verifies a one-time initialization path: the
+callback initializes state at inner-object +0x70 before selecting a value at
++0x78 or the conditional +0x80. This verifies static initialization ordering,
+not the values' meaning, runtime factory selection, identity correctness, or
+synchronization of later reads and replacement.
+
+On November 26, the installed Spotify.dll at
+C:\Users\Shimon\AppData\Roaming\Spotify\Spotify.dll was rechecked at
+42,852,224 bytes and SHA-256
+210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f. No Spotify
+process was running. REA reports Ghidra unavailable because GHIDRA_INSTALL_DIR
+is unset, Hopper unsupported on Windows, and IDA unavailable because no MCP
+registration is configured. These conditions prevent provider-backed analysis
+here; they do not upgrade static results to runtime observations.
+
+The remaining acceptance evidence must establish: (1) which provider and value
+are selected by the pinned client for the active decoder/playback instance,
+including reuse, preloading and track/ad/DJ/interstitial transitions; (2) that
+callbacks actually complete and teardown safely orders against queued and
+running work, including cancellation/race and failure paths; (3) that captured
+audio bytes correspond to that instance and form complete, correctly attributed
+recordings; and (4) that current-track skip acts on the exact active instance.
+Production native MP3 capture remains disabled until these checks, including
+recording provenance and completeness, pass against the running pinned client.
+Live installation/restart remains a separate gate.
