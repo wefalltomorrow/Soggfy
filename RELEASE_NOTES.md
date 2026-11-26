@@ -16,11 +16,11 @@ msvcrt.dll import allowlist. Floggfy v1.4.1 was reviewed against its source and
 release; no unverified Spotify hooks or native MP3 capture were enabled.
 
 All four CI jobs passed at exact PR head commit
-`ca8c046a2c3413cfa1a7fff8302c7633bc6bd2d5` in [run 236](https://github.com/wefalltomorrow/Soggfy/actions/runs/45742512762).
-Independent verification of its 3,321,859-byte package (SHA-256
-`00a8776e6e6e3532d290c604f23190a86d794c0c25dba44c4f93213e723801ca`) is
+`2eed5e000a271b40a851401c98a2406a6c230e40` in [run 237](https://github.com/wefalltomorrow/Soggfy/actions/runs/45745148727).
+Independent verification of its 3,322,211-byte package (SHA-256
+`be0bc452914340c684bc7e00e96ea5076fa9234f65665f75747c342014def6c5`) is
 recorded in the local project outputs as
-`outputs/Soggfy-run236-package-evidence.json`. Runtime capture and live Spotify
+`outputs/Soggfy-run237-package-evidence.json`. Runtime capture and live Spotify
 acceptance remain unverified. This candidate is not an official release; live
 installation, PR merge and official release remain separate gates.
 
