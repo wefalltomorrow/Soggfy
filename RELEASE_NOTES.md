@@ -21,18 +21,19 @@ the latest official release remains v3.0.0-rc.61.
 
 ## CI and independent package verification
 
-PR-head commit `e7aafcc7ca9ab4faccc7ea9c3084a1d104b2b664` passed all four jobs
-in [CI run 252](https://github.com/wefalltomorrow/Soggfy/actions/runs/45794576492).
-The bound GitHub artifact `15105875844` is 3,325,277 bytes with SHA-256
-`2849a6244e556f08490574fc2f1705c1c64328bfbf15a59fe2f69dee69ccebc7`; the
-3,327,264-byte RC88 package SHA-256 is
-`65b4f1dd8bee391f464dd204724eb6d2e9078d29cc787b0af0b1a4af3d88a4d4`.
+Exact PR-head commit `5f435c951a5b931a6c26edabbcff61208f9056e4` passed all four
+jobs in [CI run 253](https://github.com/wefalltomorrow/Soggfy/actions/runs/45799282075).
+The bound GitHub artifact `15107083471` is 3,325,847 bytes with SHA-256
+`50d5e4dcd6e540706ba68e3249b3f4ff95b755ac2c8dfddab5703ed36d3c5194`; the
+3,327,856-byte RC88 package SHA-256 is
+`2c76efda1602c940cebb645620b194fea5c2fd5276f4470654328942ff5a4df6`.
 Independent verification passed both ZIP integrity checks, safe paths, all
-seven manifest hashes, required contents, helper binding, AMD64 PE/import
+seven manifest hashes, required contents, helper digest binding, AMD64 PE/import
 checks, and all 27 packaged source/text comparisons. Full evidence is in
-MILESTONES.md and `outputs/Soggfy-run252-package-evidence.json`; the verifier
-is `outputs/verify_run252.py`. The package was added as a separate asset to the
-existing RC88 prerelease, preserving the earlier asset.
+MILESTONES.md and `outputs/Soggfy-run253-package-evidence.json`; the verifier
+is `outputs/verify_run253.py`. The package is verified and ready as a distinct
+RC88 prerelease asset; run 252 and the earlier asset are preserved. At the time
+of this note, run 253 has not yet been uploaded to the public prerelease.
 
 ## Acceptance gates
 
