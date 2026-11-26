@@ -1,4 +1,8 @@
-# Soggfy v3.0.0-rc.88 - handle-bound cleanup and portable package checks
+# Soggfy v3.0.0-rc.88 - Classic export bounds and package checks
+
+Classic M3U export now checks its 10,000-track maximum before appending each
+paginated API response. A regression passes a single 200,000-item page and
+confirms that export stops without sending a save request.
 
 Failed writes now mark the exact open file handle for deletion before closing
 it. This prevents cleanup from deleting a different file created at the same
@@ -11,16 +15,13 @@ formats while keeping the x64 architecture checks and strict kernel32.dll /
 msvcrt.dll import allowlist. Floggfy v1.4.1 was reviewed against its source and
 release; no unverified Spotify hooks or native MP3 capture were enabled.
 
-The Windows regression suite, isolated release build and package checks passed
-locally. All four CI jobs passed in [run 231](https://github.com/wefalltomorrow/Soggfy/actions/runs/45729218270)
-at exact source commit `978b1d9195360e767b39097a7d65ae6ccacd12e8`;
-independent verification of the 3,320,059-byte package (SHA-256
-`b379145d4060ed8d225814be9c5cc27c6f98ffa25231de3efdca07e262f09652`) is
-recorded in `outputs/Soggfy-run231-package-evidence.json`. This run refreshes
-the documentation/evidence for the same RC88 implementation and adds no new
-runtime evidence. Pinned Spotify live acceptance remains pending. This candidate
-is not an official release; installation, merge and official release remain
-separate gates.
+All four CI jobs passed in [run 233](https://github.com/wefalltomorrow/Soggfy/actions/runs/45734307041)
+at exact source commit `d393ff540e39d451713226e1ca87f820b4f64025`;
+independent verification of the 3,320,425-byte package (SHA-256
+`1cf6d99cfd55b611ca4efb56991cd185ba9bd0acec36bb13a0b736d5d383f750`) is
+recorded in `outputs/Soggfy-run233-package-evidence.json`. Runtime capture and
+live Spotify acceptance remain unverified. This candidate is not an official
+release; installation, merge and official release remain separate gates.
 
 ## RC87 background - supervised artwork validation foundation
 

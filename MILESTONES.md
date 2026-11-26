@@ -1,5 +1,39 @@
 # Engineering milestones
 
+## November 26 CI run 233 and independent package verification
+
+RC88 at exact source commit `d393ff540e39d451713226e1ca87f820b4f64025` passed
+all four jobs in [CI run 233](https://github.com/wefalltomorrow/Soggfy/actions/runs/45734307041):
+native regressions; both 20,000-iteration seeded ASan/UBSan campaigns; the
+Windows media-observer, maintenance transaction/watch, publication, settings,
+logging, metadata and quality suites; and the x64 release build/package checks.
+GitHub artifact `15079286443` is bound to that commit. Its 3,318,456-byte outer
+ZIP has SHA-256
+`0559ce70a2f0ba60fd63f055f53f07d6677cdf9370a3ba655899fad884790cb0`; the
+3,320,425-byte RC88 package has SHA-256
+`1cf6d99cfd55b611ca4efb56991cd185ba9bd0acec36bb13a0b736d5d383f750`.
+Independent verification passed outer and inner ZIP integrity, safe paths, all
+seven manifest hashes, required contents, helper digest binding, AMD64 PE/import
+checks, and normalized source matching for all 27 packaged source/text files.
+The helper SHA-256 remains
+`d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f`. The
+reproducible verifier and report are `outputs/verify_run233.py` and
+`outputs/Soggfy-run233-package-evidence.json`.
+
+The Classic M3U exporter now checks the cumulative 10,000-track limit before
+appending each API page. Its regression rejects a single 200,000-item page
+without sending a save request. This preserves the existing Classic interface,
+paths and playback-speed behavior.
+
+The installed Spotify DLL was rechecked against the pinned 1.3.1.234 artifact
+identity as detailed below. This proves which artifact is installed, not that
+runtime providers, callback completion/lifetime, decoder association,
+ad/DJ/interstitial transitions or exact-instance skip are compatible. No usable
+native analysis provider was available and no Spotify process was running.
+Production native MP3 capture and saved-recording metadata refresh remain
+disabled. Live installation/restart and Classic save-dialog acceptance have
+not been performed; PR #64 merge and official release remain separate gates.
+
 ## November 26 CI run 231 and independent package verification
 
 RC88 at exact source commit `978b1d9195360e767b39097a7d65ae6ccacd12e8` passed
