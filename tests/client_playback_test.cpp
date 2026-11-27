@@ -1,9 +1,11 @@
 #include "../native/client_playback.h"
 #include "../native/ogg_history_core.h"
 #include <cassert>
+#include <cmath>
 #include <thread>
 #include <cstdio>
 using namespace history;
+static bool near(double a,double b) { return std::abs(a-b)<1e-9; }
 int main() {
     const std::string base="v=1&title=Song&artist=Artist&album=Album&uri=spotify%3Atrack%3A0000000000000000000001&duration=120";
     const std::string id="1234567890abcdef1234567890abcdef";

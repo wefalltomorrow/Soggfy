@@ -1059,10 +1059,11 @@ static DWORD WINAPI Worker(LPVOID) {
                 double prior_position=listen.last_position,prior_duration=listen.duration,prior_time=listen.last_time;
                 if(DebugLoggingEnabled()) {
                     char line[1200];snprintf(line,sizeof(line),
-                        "media_sample title=%s artist=%s key=%s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d prior=%.3f prior_duration=%.3f wall_delta=%.3f speed_config=%.3f speed_hook=%d rate=%.3f eligible=%d active=%zu ready=%zu",
+                        "media_sample title=%s artist=%s key=%s pos=%.3f raw=%.3f duration=%.3f timeline_age=%.3f playing=%d prior=%.3f prior_duration=%.3f wall_delta=%.3f speed_config=%.3f speed_hook=%d rate=%.3f eligible=%d active=%zu ready=%zu client_seen=%d client_available=%d exact_identity=%d",
                         Utf8(media.title).c_str(),Utf8(media.artist).c_str(),media.Key().c_str(),media.position,media.raw_position,
                         media.duration,media.timeline_age,media.playing,prior_position,prior_duration,observed_at-prior_time,
-                        preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,listen.eligible,active.size(),ready.size());
+                        preferences.playback_speed,PlaybackSpeedSupported(),playback_rate,listen.eligible,active.size(),ready.size(),
+                        client.seen,client.available,!client.instance.empty());
                     Log(line);
                 }
                 std::string done=listen.Observe(listen_key,media.position,media.duration,media.playing,observed_at,playback_rate,!client.instance.empty());
