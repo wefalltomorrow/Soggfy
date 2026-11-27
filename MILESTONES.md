@@ -1,5 +1,37 @@
 # Engineering milestones
 
+## November 27 CI run 260 and independent package verification
+
+Exact PR-head commit 5fa7ef6f3992b5afd31ba2078b1c4e6ba505beda passed all
+four jobs in [CI run 260](https://github.com/wefalltomorrow/Soggfy/actions/runs/45933391718):
+native tests, two seeded 20,000-iteration ASan/UBSan campaigns, and the Windows
+maintenance/publication/settings/diagnostics/build/package job. GitHub artifact
+15169483767 is 3,328,960 bytes with SHA-256
+64b96adc7693d4b278553ad44d368551df4486332ab77f57e96c65d435edc0be. Its
+3,330,969-byte RC88 package has SHA-256
+5bb6969e75de81a312f4daf63112a7c6df5744b19ad040bc3fa26502025dcbc8.
+
+Independent verification passed both ZIP integrity and safe-path checks, all
+seven manifest hashes, required-content and helper-digest binding checks, AMD64
+PE/import checks, and normalized source matching for all 27 packaged
+source/text files against the exact commit. The evidence report, reproducible
+verifier, downloaded artifact, and extracted package are preserved locally as
+outputs/Soggfy-run260-package-evidence.json, outputs/verify_run260.py,
+outputs/Soggfy-run260-artifact.zip, and
+outputs/Soggfy-v3.0.0-rc.88-Windows-x64-run260.zip.
+
+The run-260 package has not yet been uploaded to the public RC88 prerelease.
+This verifies CI and package contents, not live Spotify behavior. The pinned
+Spotify DLL identity is confirmed, but runtime provider selection, callback
+completion and synchronized teardown, decoder-to-playback association,
+ad/DJ/interstitial isolation and transitions, and exact-instance current-track
+skip remain unverified. Production native podcast MP3 capture and saved-recording
+metadata refresh remain disabled pending provenance, completeness, ownership,
+freshness, replacement-preservation, and lifecycle evidence. Live Spotify
+installation/restart and Classic save-dialog acceptance have not been
+performed. PR #64 remains open and unmerged; live installation, merging, and
+official release remain separate gates.
+
 ## November 26 CI run 258 and independent package verification
 
 Exact PR-head commit a91ca19838dc297e4b39f6c9b02523b9f01708b6 passed all four

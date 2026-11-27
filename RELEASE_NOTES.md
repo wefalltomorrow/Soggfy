@@ -19,6 +19,8 @@ enabled.
 RC88 is available as a [GitHub prerelease candidate](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.88);
 the latest official release remains v3.0.0-rc.61.
 
+The current PR head passed all four CI jobs in [run 260](https://github.com/wefalltomorrow/Soggfy/actions/runs/45933391718), and its exact Windows package passed independent integrity, manifest, architecture/import, and source-content verification. The run-260 package is preserved locally and is not yet attached to the public prerelease. This build confirms CI and package contents; it does not establish the outstanding live Spotify runtime compatibility described in MILESTONES.md.
+
 ## PR-head CI and independent package verification: run 258
 
 Exact PR-head commit a91ca19838dc297e4b39f6c9b02523b9f01708b6 passed all four
