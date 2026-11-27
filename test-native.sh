@@ -107,6 +107,7 @@ node tests/classic_row_binding_test.js
 node tests/classic_skip_downloaded_test.js
 node tests/classic_status_protocol_test.js
 node tests/classic_m3u_test.js
+node tests/classic_context_test.js
 python3 tests/package_release_test.py
 node tests/classic_log_level_test.js
 node tests/classic_speed_limit_test.js
