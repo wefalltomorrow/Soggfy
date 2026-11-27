@@ -1,5 +1,13 @@
 # Engineering milestones
 
+## November 27 CI run 271 and independent RC88 package verification
+
+Exact PR-head commit `7e3d8eb25bb2fc203f5193927274ee8721b632ab` passed all four jobs in [CI run 271](https://github.com/wefalltomorrow/Soggfy/actions/runs/45964917414): native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, Windows maintenance/diagnostics tests, x64 release build, and package checks. GitHub artifact `15183082834` is 3,332,418 bytes with SHA-256 `b3b84e389f11dfc997d2dd51ac481ef500eadde04dc6a5f8ba873896d66ce485`; its 3,334,454-byte RC88 package has SHA-256 `a0b53efa26a58f9af81387fefd454bea5713e6d1666ba4ce797d72edc0a1f666`.
+
+Independent verification passed outer and inner ZIP integrity and safe-path checks, all seven manifest hashes, required content, helper digest binding, AMD64/PE32+ and import checks, and normalized comparisons of all 27 packaged source/text files against the exact PR head and parent. The release DLL, launcher, and validation worker are byte-identical to the independently verified run-270 package. The verifier, report, artifact, and package are preserved under `outputs/` as `verify_run271_independent.py`, `Soggfy-run271-package-evidence.json`, `Soggfy-run271-artifact.zip`, and `Soggfy-v3.0.0-rc.88-Windows-x64-run271.zip`.
+
+Run 271 verifies CI and package provenance, not pinned-client runtime compatibility. Runtime provider selection, callback completion and synchronized teardown, decoder-to-playback association, ad/DJ/interstitial isolation and transitions, exact-instance current-track skip, live installation/restart, and Classic save-dialog acceptance remain unverified. Production native MP3 capture and saved-recording metadata refresh remain disabled pending ownership, provenance, freshness, completeness, replacement-preservation, and lifecycle evidence. PR merge and official release remain separate gates.
+
 ## November 27 CI run 270 and independent RC88 package verification
 
 Exact PR-head commit `56641253b090e334ff9b1c102e61f58d1046fca2` passed all four jobs in [CI run 270](https://github.com/wefalltomorrow/Soggfy/actions/runs/45961174202): native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, Windows maintenance/diagnostics tests, x64 release build, and package checks. GitHub artifact `15181348236` is 3,331,846 bytes with SHA-256 `d6014b59948e3771bdae3067015bdd81109b346ddd2472e2c8725ad7b6681196`; its 3,333,935-byte RC88 package has SHA-256 `a26c9399d22c3181e7545ac230a1b5a32280cab8a50fcb6dd5e6ad33ec6892ba`.

@@ -1,12 +1,12 @@
 # Soggfy v3.0.0-rc.88 - Classic export bounds and safe failed-write cleanup
 
-The exact PR-head commit `56641253b090e334ff9b1c102e61f58d1046fca2` passed all
-four jobs in [CI run 270](https://github.com/wefalltomorrow/Soggfy/actions/runs/45961174202)
+The exact PR-head commit `7e3d8eb25bb2fc203f5193927274ee8721b632ab` passed all
+four jobs in [CI run 271](https://github.com/wefalltomorrow/Soggfy/actions/runs/45964917414)
 on November 27, 2026: native tests, both seeded sanitizer campaigns, Windows
 maintenance and diagnostics, and x64 package checks. Independent verification
-checked the run-270 package against the exact tested source. The outer artifact
-SHA-256 is `d6014b59948e3771bdae3067015bdd81109b346ddd2472e2c8725ad7b6681196`;
-the package SHA-256 is `a26c9399d22c3181e7545ac230a1b5a32280cab8a50fcb6dd5e6ad33ec6892ba`.
+checked the run-271 package against the exact tested source. The outer artifact
+SHA-256 is `b3b84e389f11dfc997d2dd51ac481ef500eadde04dc6a5f8ba873896d66ce485`;
+the package SHA-256 is `a0b53efa26a58f9af81387fefd454bea5713e6d1666ba4ce797d72edc0a1f666`.
 See MILESTONES.md for full evidence and remaining pinned-client acceptance gates.
 
 Classic M3U export checks its 10,000-track maximum before appending each
@@ -26,7 +26,7 @@ release; no unverified Spotify hooks or production native MP3 capture were
 enabled.
 
 RC88 is available as a [GitHub prerelease candidate](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.88);
-the latest official release remains v3.0.0-rc.61. The run-270 package has not
+the latest official release remains v3.0.0-rc.61. The run-271 package has not
 been attached to the public prerelease. No official release date is set.
 
 The documentation-only PR head 613acf21d0821efcb3234e1cdf6bf3a3bae053fb (functional parent 2b1ee347786a8729ad171e415a2165a341947efb) passed all four CI jobs in [run 268](https://github.com/wefalltomorrow/Soggfy/actions/runs/45955316436). Its 3,331,409-byte Windows artifact (ID 15178858217) has SHA-256 b2de32354e28416996c068aac8d781c95bc854c3d0376ba10ae42017dfb36a9a; the embedded 3,333,429-byte RC88 package has SHA-256 4d9155df4882961d28748dff4f4de371b52e6f573077e853a16e6a1b1b587f87.
