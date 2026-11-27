@@ -1,25 +1,26 @@
 # Engineering milestones
 
-## November 27 CI run 262 and independent RC88 package verification
+## November 27 CI run 263 and independent RC88 package verification
 
-The exact PR-head commit 04cc784b18c4b730ea37cd5d9c9c02fda7eac0ea passed all
-four jobs in [CI run 262](https://github.com/wefalltomorrow/Soggfy/actions/runs/45939375494):
+The exact PR-head commit c61e2c77ec47c804339e3b1ebcfd4590763968c5 passed all
+four jobs in [CI run 263](https://github.com/wefalltomorrow/Soggfy/actions/runs/45941874459):
 native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, and the
 Windows maintenance, diagnostics, release-build and package checks. The
-3,330,168-byte GitHub artifact (ID 15172586361) has SHA-256
-800d624853378331264915fd9d7a3530897ff9fe84492bffaeb3b7ace47f397b; its
-3,332,193-byte RC88 package has SHA-256
-c545879555b29320ce36b0ecfce8864897823657e099eb94620773903fe4ef33.
+3,330,101-byte GitHub artifact (ID 15173499129) has SHA-256
+fdd8123587de8f312a29f4e4f045e2ec83c0b91ba91513545ff39e593f0c5ff9; its
+3,332,125-byte RC88 package has SHA-256
+536151c006f83e76ba2cf8fcbaa42eb859b83bcd20c0a364e7aa9ab659211511.
 
 Independent verification passed both ZIP integrity and safe-path checks, all
 seven manifest hashes, required package contents, validation-helper digest
 binding, AMD64 PE/import constraints, and normalized comparisons of all 27
-packaged source/text files to the exact head and parent. The verifier,
-evidence, artifact, and package are preserved under outputs/ as
-verify_run262_independent.py, Soggfy-run262-package-evidence.json,
-Soggfy-run262-artifact.zip, and
-Soggfy-v3.0.0-rc.88-Windows-x64-run262.zip. The public RC88 prerelease still
-carries the run-261 package; the run-262 package has not been attached.
+packaged source/text files to the exact head and parent. The packaged DLL,
+launcher and validation worker are byte-identical to the independently
+verified run-262 package. The verifier, evidence, artifact, and package are
+preserved under outputs/ as verify_run263_independent.py,
+Soggfy-run263-package-evidence.json, Soggfy-run263-artifact.zip, and
+Soggfy-v3.0.0-rc.88-Windows-x64-run263.zip. The public RC88 prerelease still
+carries the run-261 package; the run-263 package has not been attached.
 
 The installed Spotify 1.3.1.234 DLL was rechecked on November 27: 42,852,224
 bytes and SHA-256

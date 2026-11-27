@@ -6,7 +6,7 @@
 - Bind failed-write cleanup to the original open file handle so a replacement at the old path is preserved.
 - Accept GNU and LLVM x64 PE metadata in helper-import verification while retaining the strict system-runtime allowlist.
 - Review Floggfy v1.4.1 selectively; keep native MP3 capture and saved-file metadata refresh disabled pending pinned-client and lifecycle evidence.
-- Pass all four CI jobs in run 262 and independently verify the exact-head RC88 package; see MILESTONES.md for hashes and remaining acceptance gates.
+- Pass all four CI jobs in run 263 and independently verify the exact-head RC88 package; see MILESTONES.md for hashes and remaining acceptance gates.
 
 ## 3.0.0-rc.87
 
