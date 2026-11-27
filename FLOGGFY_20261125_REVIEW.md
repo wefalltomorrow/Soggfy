@@ -1,9 +1,9 @@
-# Floggfy upstream review — November 26, 2026
+# Floggfy upstream review — November 27, 2026
 
 ## Reviewed source
 
 The current `main` branch and `v1.4.1` tag both resolve to
-`15e1e286ea1ac474be4aff30e6db1541ba790340` (rechecked November 26, 2026).
+`15e1e286ea1ac474be4aff30e6db1541ba790340` (rechecked November 27, 2026).
 The releases list still identifies v1.4.1, published November 21, 2026, as
 the newest release. The comparison uses the tagged release and its source, rather than treating release
 notes as a compatibility or correctness test for Soggfy. References: [v1.4.1
@@ -57,5 +57,7 @@ An isolated full release build, package construction, PE/import checks, ZIP
 manifest verification, and comparison of the packaged helper to the tested
 helper also passed. The locally built ZIP SHA-256 is
 2f34b35288caf0e178f65d845af2d0a0669f634339ec57e880e34ad1c4110cb1. The package
-atomicity/determinism regression and git diff --check passed. CI and live Spotify
-acceptance have not been run for these uncommitted source changes.
+atomicity/determinism regression and git diff --check passed. The exact
+functional source including this fix passed all four jobs in CI run 260; run
+261 independently reverified the exact PR-head package and attached it to the
+public RC88 prerelease. Neither run provides live Spotify acceptance.

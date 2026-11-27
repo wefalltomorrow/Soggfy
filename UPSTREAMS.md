@@ -209,7 +209,10 @@ RC78 strengthens existing Classic queue removal with cached playback identity an
 policy rechecks. It does not port upstream's native current-song skip or recent
 playback metadata refresh. Outstanding queue mutations retain their UID reservations.
 
-## Floggfy v1.4.1 review — November 26, 2026
+## Floggfy v1.4.1 review — November 27, 2026
+
+The repository and release list were rechecked November 27; no newer Floggfy
+source commit or release was found.
 
 Floggfy `main` and `v1.4.1` both resolve to `15e1e286ea1ac474be4aff30e6db1541ba790340`; the release list still names v1.4.1 (published November 21) as latest.
 The review covers the Saved-date catalog/order, expanded telemetry and diagnostics,
@@ -227,5 +230,7 @@ This review also validates the local file-cleanup race fix: failed new-file writ
 mark their open handles for deletion before close, preventing cleanup from deleting a
 replacement created at the original path. The Windows history regression and complete
 `test-native-windows.sh` suite passed locally with MinGW x64 GCC 16.2.0/MSVCRT;
-an isolated full release build and package verification passed as well. CI and
-live-client acceptance are not claimed for these uncommitted changes.
+an isolated full release build and package verification passed as well. The
+functional source including this fix passed all four jobs in CI run 260; run
+261 independently verified the exact PR-head package and attached it to the
+public RC88 prerelease. Live-client acceptance remains separate.

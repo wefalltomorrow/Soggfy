@@ -19,7 +19,9 @@ enabled.
 RC88 is available as a [GitHub prerelease candidate](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.88);
 the latest official release remains v3.0.0-rc.61.
 
-The current PR head passed all four CI jobs in [run 260](https://github.com/wefalltomorrow/Soggfy/actions/runs/45933391718), and its exact Windows package passed independent integrity, manifest, architecture/import, and source-content verification. The run-260 package is preserved locally and is not yet attached to the public prerelease. This build confirms CI and package contents; it does not establish the outstanding live Spotify runtime compatibility described in MILESTONES.md.
+The exact PR head passed all four CI jobs in [run 261](https://github.com/wefalltomorrow/Soggfy/actions/runs/45935894730). Its 3,329,414-byte Windows artifact has SHA-256 54eb37b6834658ab5e48fdf6dcf46633353e9eda10b6242f791ce568e60540c9; the embedded 3,331,428-byte RC88 package has SHA-256 52812b92e119ff80c35ea893af7989d859fc378a8a819d3bb808b4900cc2522c. Independent verification passed ZIP integrity and safe paths, all seven manifest hashes, required contents, helper binding, AMD64 PE/import checks, and all 27 packaged source/text comparisons. The exact verified package is attached to the public prerelease. This verifies CI and package contents; it does not establish the outstanding live Spotify runtime compatibility described in MILESTONES.md.
+
+The installed Spotify DLL identity was rechecked November 27, 2026. Runtime provider selection, callback lifetime, decoder association, ad/DJ/interstitial isolation, live installation, and Classic save-dialog acceptance remain unverified; production native MP3 capture and saved-recording metadata refresh remain disabled. See MILESTONES.md for the remaining evidence and separate gates.
 
 ## PR-head CI and independent package verification: run 258
 

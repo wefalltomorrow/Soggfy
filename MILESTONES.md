@@ -1,5 +1,43 @@
 # Engineering milestones
 
+## November 27 CI run 261 and public RC88 package verification
+
+The exact PR-head commit 060fa63837617e3e398370eacf10ba384dc588c3 passed all
+four jobs in [CI run 261](https://github.com/wefalltomorrow/Soggfy/actions/runs/45935894730):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, and the
+Windows maintenance, diagnostics, release-build and package checks. The
+3,329,414-byte GitHub artifact (ID 15170489756) has SHA-256
+54eb37b6834658ab5e48fdf6dcf46633353e9eda10b6242f791ce568e60540c9; its
+3,331,428-byte RC88 package has SHA-256
+52812b92e119ff80c35ea893af7989d859fc378a8a819d3bb808b4900cc2522c.
+
+Independent verification passed both ZIP integrity and safe-path checks, all
+seven manifest hashes, required package contents, validation-helper digest
+binding, AMD64 PE/import constraints, and normalized comparisons of all 27
+packaged source/text files to the exact head and parent. The verifier,
+evidence, artifact, and package are preserved under outputs/ as
+verify_run261_independent.py, Soggfy-run261-package-evidence.json,
+Soggfy-run261-artifact-independent.zip, and
+Soggfy-v3.0.0-rc.88-Windows-x64-run261.zip. The exact verified package is
+also attached to the [public RC88 prerelease](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.88)
+as Soggfy-v3.0.0-rc.88-Windows-x64-run261.zip; its published size and SHA-256
+match the local evidence.
+
+The installed Spotify 1.3.1.234 DLL was rechecked on November 27: 42,852,224
+bytes and SHA-256
+210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f, matching
+the pinned artifact. Spotify was not running. Ghidra remains unconfigured,
+Hopper is unsupported on Windows, and no IDA provider is registered, so no new
+runtime evidence was obtained. Provider selection, callback completion and
+synchronized teardown, decoder-to-playback association, ad/DJ/interstitial
+isolation and transitions, and exact-instance current-track skip remain
+unverified. Production native podcast MP3 capture and saved-recording metadata
+refresh remain disabled pending provenance, completeness, ownership, freshness,
+replacement-preservation, and lifecycle evidence. Live installation/restart
+and Classic save-dialog acceptance have not been performed. PR #64 remains
+open and unmerged; live installation, merge, and official release remain
+separate gates.
+
 ## November 27 CI run 260 and independent package verification
 
 Exact PR-head commit 5fa7ef6f3992b5afd31ba2078b1c4e6ba505beda passed all
