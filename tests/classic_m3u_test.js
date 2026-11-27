@@ -1,20 +1,26 @@
 const assert=require('assert'),fs=require('fs'),vm=require('vm');
 const tracks=Array.from({length:257},(_,i)=>({uri:'spotify:track:'+i,name:'Song '+i,artists:[{name:'Artist'}],album:{name:'Album'}}));
-function harness(items=tracks,ack='saved'){
+function harness(items=tracks,ack='saved',pathname='/playlist/test',historyPathname=''){
  const window={};
- const sends=[],messages=[],offsets=[],batches=[],saveTimers=[];
- const api={getMetadata:async()=>({name:'Playlist'}),getContents:async(_,options)=>{
+ if(historyPathname)window.Spicetify={Platform:{History:{location:{pathname:historyPathname}}}};
+ const sends=[],messages=[],offsets=[],batches=[],saveTimers=[],metadataUris=[];
+ const api={getMetadata:async uri=>{metadataUris.push(uri);return {name:'Playlist'};},getContents:async(_,options)=>{
    offsets.push(options.offset);return {items:items.slice(options.offset,options.offset+100),totalLength:items.length};}};
  const sgf={FS:'',RS:'',Icons:{},platform:{getPlaylistAPI:()=>api},
    notify:text=>messages.push(text),send:(...args)=>{sends.push(args);if(ack)Promise.resolve().then(()=>window.__soggfyM3UResult(args[1].split(String.fromCharCode(29))[0]+String.fromCharCode(29)+ack));},
    requestStatuses:async page=>{batches.push(page.length);return new Map(page.map(t=>[t.uri,{status:'DONE',path:'C:/Music/'+t.title+'.mp3'}]));}};
  window.__SoggfyClassic=sgf;
  vm.runInNewContext(fs.readFileSync('native/ui/classic_m3u.js','utf8'),{
-   window,location:{pathname:'/playlist/test'},document:{querySelector:()=>null},
+   window,location:{pathname},document:{querySelector:()=>null},
    console:{warn(){}},setTimeout:(fn,ms)=>{if(ms===600000){saveTimers.push(fn);return 0;}return setTimeout(fn,ms);},clearTimeout});
- return {sgf,api,sends,messages,offsets,batches,window,saveTimers};
+ return {sgf,api,sends,messages,offsets,batches,window,saveTimers,metadataUris};
 }
 (async()=>{
+ const routed=harness(tracks,'saved','/index.html','/playlist/routerId');
+ assert.strictEqual(routed.sgf.hasM3UContext(),true,'Spotify router playlist is recognized when the embedded document stays at /index.html');
+ await routed.sgf.generateM3U();
+ assert.deepStrictEqual(routed.metadataUris,['spotify:playlist:routerId']);
+ assert.strictEqual(harness(tracks,'saved','/index.html').sgf.hasM3UContext(),false,'An unrelated index route is not treated as a collection');
  const h=harness([...tracks,tracks[0]]);await h.sgf.generateM3U();
  assert.deepStrictEqual(h.offsets,[0,100,200]);assert.deepStrictEqual(h.batches,[128,128,1]);
  assert.strictEqual(h.sends.length,1);const records=h.sends[0][1].split(String.fromCharCode(29))[1].split('');

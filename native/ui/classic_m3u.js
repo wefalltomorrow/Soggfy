@@ -53,7 +53,11 @@ async function pages(fetch){
   throw Error('Playlist pagination did not finish');
 }
 const collectionFromLocation=()=>{
-  const m=location.pathname.match(/\/(playlist|album)\/([A-Za-z0-9]+)/);
+  // Spotify keeps the embedded document at /index.html while its client router
+  // holds the active collection route in Spicetify's History location.
+  const routePathname=window.Spicetify?.Platform?.History?.location?.pathname;
+  const pathname=typeof routePathname==='string'&&routePathname?routePathname:location.pathname;
+  const m=pathname.match(/\/(playlist|album)\/([A-Za-z0-9]+)/);
   return m?{type:m[1],uri:'spotify:'+m[1]+':'+m[2]}:null;
 };
 const durationMs=item=>{
