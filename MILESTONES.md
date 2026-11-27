@@ -1,5 +1,39 @@
 # Engineering milestones
 
+## November 27 CI run 266 and independent RC88 package verification
+
+Exact PR-head commit 618efeb640646e0b35d98b5e30f8e6f5b0bc90cb passed all four jobs in
+[CI run 266](https://github.com/wefalltomorrow/Soggfy/actions/runs/45950304335):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, and the
+Windows maintenance, diagnostics, build and package checks. The 3,330,879-byte
+GitHub artifact (ID 15177321522) has SHA-256
+5ddc26d6bfb090159351b0f050829881f1d1731e26e5e987c95a9a76c14e7a59; its
+3,332,888-byte RC88 package has SHA-256
+08733e1331e0abef2afb29872a976c6df861ede471d27af2957c9742165a1a88.
+
+Independent verification passed outer and inner ZIP integrity and safe-path
+checks, all seven manifest hashes, required package content, validation-helper
+digest binding, AMD64/PE32+ and import checks, and normalized comparisons of all
+27 packaged source/text files against the designated head and parent. The
+release DLL, launcher and validation worker are byte-identical to the
+independently verified run-265 package. The verifier, evidence, artifact and
+package are preserved under outputs/ as verify_run266_independent.py,
+Soggfy-run266-package-evidence.json, Soggfy-run266-artifact.zip, and
+Soggfy-v3.0.0-rc.88-Windows-x64-run266.zip. The public RC88 prerelease still
+carries the run-261 package; run 266's verified package has not been attached.
+
+The installed Spotify 1.3.1.234 DLL identity remains 42,852,224 bytes, SHA-256
+210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f. This
+confirms file identity only. Runtime provider selection, callback completion and
+synchronized teardown, decoder-to-playback association, ad/DJ/interstitial
+isolation and transitions, and exact-instance current-track skip remain
+unverified. Production native MP3 capture and saved-recording metadata refresh
+remain disabled pending completeness, provenance, ownership, freshness,
+replacement-preservation and lifecycle evidence. Live Spotify installation/
+restart and Classic save-dialog acceptance have not been performed. PR #64
+remains open and unmerged; live installation, merge and an official release
+remain separate gates.
+
 ## November 27 CI run 265 and independent RC88 package verification
 
 Documentation-only PR-head commit `42078f390ce68e23f300a750a3dc8314520259d2`,
