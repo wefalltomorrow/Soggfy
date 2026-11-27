@@ -1,5 +1,41 @@
 # Engineering milestones
 
+## November 27 CI run 264 and independent RC88 package verification
+
+Documentation-only PR-head commit 814dee9c189e3aa6d27fba8c365ff0eaa6a856d4,
+whose parent is the run-263 implementation commit
+c61e2c77ec47c804339e3b1ebcfd4590763968c5, passed all four jobs in
+[CI run 264](https://github.com/wefalltomorrow/Soggfy/actions/runs/45944286876):
+native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, and the
+Windows maintenance, diagnostics, build and package checks. The 3,330,217-byte
+GitHub artifact (ID 15175111073) has SHA-256
+74b03d094b214a1baaea06bde7d7d86b072764f64e94726900fcf3ac11fa49f2; its
+3,332,244-byte RC88 package has SHA-256
+78f952c409237a78d3f542e5f225e4a8441f77ac0d0e4db35979d9cac9411e30.
+
+Independent verification passed ZIP integrity and safe-path checks, all seven
+manifest hashes, required package content, validation-helper digest binding,
+AMD64/PE32+ and import checks, and normalized comparisons of all 27 packaged
+source/text files against the designated head and parent. The release DLL,
+launcher and validation worker are byte-identical to the independently verified
+run-263 package. The verifier, evidence, artifact and package are preserved
+under outputs/ as verify_run264_independent.py,
+Soggfy-run264-package-evidence.json, Soggfy-run264-artifact.zip, and
+Soggfy-v3.0.0-rc.88-Windows-x64-run264.zip. The public RC88 prerelease still
+carries the run-261 package; run 264's verified package has not been attached.
+
+The installed Spotify 1.3.1.234 DLL identity remains 42,852,224 bytes, SHA-256
+210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f. This
+confirms file identity only. Runtime provider selection, callback completion
+and synchronized teardown, decoder-to-playback association, ad/DJ/interstitial
+isolation and transitions, and exact-instance current-track skip remain
+unverified. Production native MP3 capture and saved-recording metadata refresh
+remain disabled pending completeness, provenance, ownership, freshness,
+replacement-preservation and lifecycle evidence. Live Spotify
+installation/restart and Classic save-dialog acceptance have not been
+performed. PR #64 remains open and unmerged; live installation, merge and an
+official release remain separate gates.
+
 ## November 27 CI run 263 and independent RC88 package verification
 
 The exact PR-head commit c61e2c77ec47c804339e3b1ebcfd4590763968c5 passed all
