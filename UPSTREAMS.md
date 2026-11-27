@@ -1,14 +1,13 @@
-## November 20, 2026 update review
+## November 27, 2026 Floggfy update review
 
-Rechecked the release references on November 20: stable Floggfy v1.3
-(fa26418728074e2823384b097eecfde6fde69ddf) and prerelease v1.4-RC2
-(660ba79409629b8d572b12c420ada71ad1e55dde) remain the reviewed releases.
-See FLOGGFY_20261119_REVIEW.md for pinned references, confirmed gaps, existing
-overlap and implementation order. Main alone excludes the RC2 telemetry work.
-This is source comparison, not a port or new runtime validation. An accompanying
-local fix separates canceled publication results from successful duplicate skips.
-In particular,
-the newer upstream client's tests do not resolve our pinned native identity audit.
+Rechecked Floggfy main, releases and tagged source on November 27. Main and
+v1.4.1 resolve to 15e1e286ea1ac474be4aff30e6db1541ba790340; v1.4.1, published
+November 21, is the newest release found. See FLOGGFY_20261125_REVIEW.md for
+the feature comparison, selective port decisions, and test evidence. This is a
+source/release comparison, not pinned-Spotify runtime validation. Compatible
+maintenance and Classic behavior is covered by Soggfy's Windows tests; upstream
+tests do not resolve the pinned native identity audit, so no unverified hooks or
+production native MP3 capture were enabled.
 
 ## RC74 client playback boundaries — November 8, 2026
 
