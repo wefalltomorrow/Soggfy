@@ -1,5 +1,27 @@
 # Engineering milestones
 
+## November 26 CI run 258 and independent package verification
+
+Exact PR-head commit a91ca19838dc297e4b39f6c9b02523b9f01708b6 passed all four
+jobs in [CI run 258](https://github.com/wefalltomorrow/Soggfy/actions/runs/45835430295): native
+regressions, both seeded 20,000-iteration ASan/UBSan campaigns, Windows
+maintenance/publication/settings/logging/metadata/quality tests, x64 release
+build, and package checks. GitHub artifact 15125373611 is 3,328,214 bytes
+with SHA-256
+1909d1de037cde9313ce3678e15312c76fa9592785253c90bd349de7191c276f. Its
+3,330,211-byte RC88 package has SHA-256
+f72293040937af0ffe772b9ac01ad2de71c1296982d63a5c4192a83b429a8f58.
+
+Independent verification passed both ZIP integrity checks, safe archive paths,
+all seven manifest hashes, required contents, helper digest binding, AMD64
+PE/import checks, and normalized source matching for all 27 packaged
+source/text files against the exact PR-head source commit. The reproducible
+verifier and report are outputs/verify_run258.py and
+outputs/Soggfy-run258-package-evidence.json; the exact outer artifact and
+inner package are preserved in the local outputs folder. This commit adds
+verification documentation/evidence on top of the run-257 checkpoint; it does
+not change functional source.
+
 ## November 26 CI run 257 and independent package verification
 
 Exact PR-head commit `15cf607e768e3035c833dd673017db3ad9895a7e` passed all four
