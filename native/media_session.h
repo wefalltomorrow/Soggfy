@@ -36,7 +36,8 @@ class MediaSnapshotReader {
 public:
     // Test/provider context must outlive outstanding work, even after Stop.
     using Fetch=bool(*)(Media&,double&,const MediaReadOptions&,void*);
-    explicit MediaSnapshotReader(Fetch fetch=nullptr,void* context=nullptr) noexcept;
+    explicit MediaSnapshotReader(Fetch fetch=nullptr,void* context=nullptr,
+                                 Fetch artwork_fetch=nullptr) noexcept;
     ~MediaSnapshotReader();
     MediaSnapshotReader(const MediaSnapshotReader&)=delete;
     MediaSnapshotReader& operator=(const MediaSnapshotReader&)=delete;
@@ -55,7 +56,9 @@ private:
     struct State;
     std::shared_ptr<State> state_;
     Fetch fetch_;
+    Fetch artwork_fetch_;
     void* context_;
     static DWORD WINAPI Run(void*);
+    static DWORD WINAPI RunArtwork(void*);
 };
 }

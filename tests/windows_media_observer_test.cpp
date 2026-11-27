@@ -29,6 +29,28 @@ struct Source {
         AcquireSRWLockShared(&lock);auto value=requested;ReleaseSRWLockShared(&lock);return value;
     }
 };
+struct ArtworkGate {
+    HANDLE entered=CreateEventW(nullptr,FALSE,FALSE,nullptr);
+    HANDLE release=CreateEventW(nullptr,TRUE,FALSE,nullptr);
+    std::atomic<unsigned> fast_calls{0};
+    std::atomic<unsigned> artwork_calls{0};
+    ArtworkGate(){assert(entered&&release);}
+    ~ArtworkGate(){CloseHandle(entered);CloseHandle(release);}
+};
+bool FastFetch(Media& media,double& observed,const MediaReadOptions& options,void* context) {
+    auto& gate=*static_cast<ArtworkGate*>(context);
+    assert(!options.artwork);
+    ++gate.fast_calls;observed=Now();media.title=L"Fresh Track";media.artist=L"Artist";
+    media.duration=180;media.position=1;media.playing=true;return true;
+}
+bool BlockedArtworkFetch(Media&,double&,const MediaReadOptions& options,void* context) {
+    auto& gate=*static_cast<ArtworkGate*>(context);
+    assert(options.artwork);
+    ++gate.artwork_calls;
+    SetEvent(gate.entered);
+    assert(WaitForSingleObject(gate.release,10000)==WAIT_OBJECT_0);
+    return false;
+}
 bool Fetch(Media& media,double& observed,const MediaReadOptions& options,void* context) {
     auto& source=*static_cast<Source*>(context);
     const auto call=++source.calls;
@@ -135,5 +157,33 @@ void SequenceAndStop() {
     source.Entered();reader.Stop();source.Release();Wait([&]{return reader.IsStopped();});
     std::puts("PASS: skipped observations fail closed; stop never waits on provider; restart is single-worker and sequenced");
 }
+void ArtworkDoesNotStallMediaPolling() {
+    ArtworkGate gate;MediaSnapshotReader reader(FastFetch,&gate,BlockedArtworkFetch);
+    Consumer consumer;MediaReadOptions options{1,1,30,true};
+    assert(reader.Start(options));
+    assert(WaitForSingleObject(gate.entered,5000)==WAIT_OBJECT_0);
+    unsigned ready=0;const auto start=GetTickCount64();
+    while(GetTickCount64()-start<3300) {
+        const auto result=consumer.Poll(reader,options);
+        assert(result!=MediaRead::Failed);
+        if(result==MediaRead::Ready) {
+            assert(consumer.out.title==L"Fresh Track");
+            assert(Now()-consumer.observed<3);
+            ++ready;
+        }
+        Sleep(2);
+    }
+    assert(ready>=5&&gate.fast_calls>=5);
+    reader.Stop();
+    assert(!reader.IsStopped());
+    SetEvent(gate.release);
+    Wait([&]{return reader.IsStopped();});
+    assert(reader.Start(options));
+    const auto retry_start=GetTickCount64();
+    while(gate.artwork_calls.load()<3&&GetTickCount64()-retry_start<5000)Sleep(10);
+    assert(gate.artwork_calls>=3);
+    reader.Stop();Wait([&]{return reader.IsStopped();});
+    std::puts("PASS: artwork cannot stall media sampling; stop, restart, and failed-lookup retry work");
 }
-int main(){BlockedAndInvalid();ConfigurationRevisions();SequenceAndStop();}
+}
+int main(){BlockedAndInvalid();ConfigurationRevisions();SequenceAndStop();ArtworkDoesNotStallMediaPolling();}

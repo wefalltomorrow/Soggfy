@@ -8,6 +8,7 @@
 #include <cwctype>
 #include <cmath>
 #include <atomic>
+#include <new>
 namespace history {
 // These slots are the public WinRT COM ABI, copied from Windows SDK 26100.
 // No Spotify UI internals, generated projections or runtime helpers are used.
@@ -180,14 +181,28 @@ struct MediaSnapshotReader::State {
         Media media;double observed=0;
         uint64_t sequence=0,revision=0;bool valid=false;
     };
+    struct ArtworkRequest {
+        std::string key;
+        double playback_rate=1.0;
+        unsigned generation=0,capture_epoch=0;
+        uint64_t sequence=0;
+        uint64_t retry_at=0;
+        bool in_flight=true;
+    };
     SRWLOCK lock=SRWLOCK_INIT;
     MediaReadOptions options;
     uint64_t revision=1;
     std::shared_ptr<const Result> result;
     std::atomic<bool> running{true},finished{false};
     std::atomic<uint64_t> sequence{0};
-    HANDLE wake=nullptr;Fetch fetch=nullptr;void* context=nullptr;
-    ~State(){if(wake)CloseHandle(wake);}
+    SRWLOCK artwork_lock=SRWLOCK_INIT;
+    std::string artwork_key;
+    std::shared_ptr<const Media> artwork;
+    std::shared_ptr<ArtworkRequest> artwork_request;
+    uint64_t artwork_request_sequence=0;
+    std::atomic<bool> artwork_enabled{false},artwork_finished{true};
+    HANDLE wake=nullptr,artwork_wake=nullptr;Fetch fetch=nullptr,artwork_fetch=nullptr;void* context=nullptr;
+    ~State(){if(wake)CloseHandle(wake);if(artwork_wake)CloseHandle(artwork_wake);}
 };
 static bool BoundedMedia(const Media& media) {
     return !media.title.empty() && media.title.size()<=4096 && media.artist.size()<=4096 &&
@@ -197,30 +212,52 @@ static bool BoundedMedia(const Media& media) {
         std::isfinite(media.raw_position) && std::isfinite(media.timeline_age) &&
         media.duration>0 && media.duration<=86400 && media.position>=0 && media.position<=media.duration;
 }
-MediaSnapshotReader::MediaSnapshotReader(Fetch fetch,void* context) noexcept:fetch_(fetch),context_(context) {}
+MediaSnapshotReader::MediaSnapshotReader(Fetch fetch,void* context,Fetch artwork_fetch) noexcept:
+    fetch_(fetch),artwork_fetch_(artwork_fetch),context_(context) {}
 MediaSnapshotReader::~MediaSnapshotReader(){Stop();}
 bool MediaSnapshotReader::Start(const MediaReadOptions& options) noexcept {
     try {
         uint64_t previous=0;
         if(state_) {
-            if(!state_->finished.load(std::memory_order_acquire))
+            if(!state_->finished.load(std::memory_order_acquire) ||
+               !state_->artwork_finished.load(std::memory_order_acquire))
                 return state_->running.load(std::memory_order_acquire);
             previous=state_->sequence.load(std::memory_order_acquire);
         }
         auto next=std::make_shared<State>();
-        next->options=options;next->fetch=fetch_;next->context=context_;next->sequence=previous;
-        next->wake=CreateEventW(nullptr,FALSE,FALSE,nullptr);if(!next->wake)return false;
+        next->options=options;next->fetch=fetch_;next->artwork_fetch=artwork_fetch_;
+        next->context=context_;next->sequence=previous;
+        next->wake=CreateEventW(nullptr,FALSE,FALSE,nullptr);
+        next->artwork_wake=CreateEventW(nullptr,FALSE,FALSE,nullptr);
+        if(!next->wake)return false;
         auto* argument=new std::shared_ptr<State>(next);
         HANDLE thread=CreateThread(nullptr,0,Run,argument,0,nullptr);
         if(!thread){delete argument;return false;}
-        CloseHandle(thread);state_=std::move(next);return true;
+        CloseHandle(thread);state_=std::move(next);
+        if((!fetch_ || artwork_fetch_) && state_->artwork_wake) {
+            auto* artwork_argument=new(std::nothrow) std::shared_ptr<State>(state_);
+            if(artwork_argument) {
+                state_->artwork_finished.store(false,std::memory_order_release);
+                HANDLE artwork_thread=CreateThread(nullptr,0,RunArtwork,artwork_argument,0,nullptr);
+                if(!artwork_thread) {
+                    delete artwork_argument;
+                    state_->artwork_finished.store(true,std::memory_order_release);
+                } else {
+                    state_->artwork_enabled.store(true,std::memory_order_release);
+                    CloseHandle(artwork_thread);
+                }
+            }
+        }
+        return true;
     }catch(...){return false;}
 }
 void MediaSnapshotReader::Stop() noexcept {
-    if(state_){state_->running.store(false,std::memory_order_release);SetEvent(state_->wake);}
+    if(state_){state_->running.store(false,std::memory_order_release);SetEvent(state_->wake);
+        if(state_->artwork_wake)SetEvent(state_->artwork_wake);}
 }
 bool MediaSnapshotReader::IsStopped() const noexcept {
-    return !state_ || state_->finished.load(std::memory_order_acquire);
+    return !state_ || (state_->finished.load(std::memory_order_acquire) &&
+        state_->artwork_finished.load(std::memory_order_acquire));
 }
 MediaRead MediaSnapshotReader::TryRead(Media& out,double& observed_at,uint64_t& sequence,
                                         const MediaReadOptions& options) noexcept {
@@ -264,12 +301,42 @@ DWORD WINAPI MediaSnapshotReader::Run(void* argument) {
                 auto result=std::make_shared<State::Result>();result->revision=revision;
                 bool ready=false;
                 try {
-                    ready=state->fetch?state->fetch(result->media,result->observed,options,state->context):
-                        reader.Read(result->media,result->observed,options.artwork,options.playback_rate);
+                    auto fast_options=options;
+                    if(state->artwork_fetch)fast_options.artwork=false;
+                    ready=state->fetch?state->fetch(result->media,result->observed,fast_options,state->context):
+                        reader.Read(result->media,result->observed,false,options.playback_rate);
                 }catch(...){/* A provider exception is an explicit failed observation. */}
                 const double completed=double(GetTickCount64())/1000.0;
                 result->valid=ready && BoundedMedia(result->media) && std::isfinite(result->observed) &&
                     result->observed>0 && result->observed<=completed;
+                if(result->valid && (!state->fetch || state->artwork_fetch) && options.artwork &&
+                   state->artwork_enabled.load(std::memory_order_acquire)) {
+                    const std::string key=result->media.Key();
+                    std::shared_ptr<const Media> artwork;
+                    AcquireSRWLockShared(&state->artwork_lock);
+                    if(state->artwork && state->artwork_key==key)artwork=state->artwork;
+                    ReleaseSRWLockShared(&state->artwork_lock);
+                    if(artwork) {
+                        result->media.cover=artwork->cover;
+                        result->media.cover_extension=artwork->cover_extension;
+                    } else {
+                        auto request=std::make_shared<State::ArtworkRequest>();
+                        request->key=key;request->playback_rate=options.playback_rate;
+                        request->generation=options.generation;request->capture_epoch=options.capture_epoch;
+                        bool wake_artwork=false;
+                        AcquireSRWLockExclusive(&state->artwork_lock);
+                        const auto& prior=state->artwork_request;
+                        if(!prior || prior->key!=key || prior->generation!=options.generation ||
+                           prior->capture_epoch!=options.capture_epoch ||
+                           prior->playback_rate!=options.playback_rate ||
+                           (!prior->in_flight && GetTickCount64()>=prior->retry_at)) {
+                            request->sequence=++state->artwork_request_sequence;
+                            state->artwork_request=std::move(request);wake_artwork=true;
+                        }
+                        ReleaseSRWLockExclusive(&state->artwork_lock);
+                        if(wake_artwork)SetEvent(state->artwork_wake);
+                    }
+                }
                 if(!result->valid){result->media={};result->observed=completed;}
                 std::shared_ptr<const State::Result> retired;
                 bool published=false;
@@ -290,5 +357,49 @@ DWORD WINAPI MediaSnapshotReader::Run(void* argument) {
         }
     }
     state->finished.store(true,std::memory_order_release);return 0;
+}
+DWORD WINAPI MediaSnapshotReader::RunArtwork(void* argument) {
+    std::unique_ptr<std::shared_ptr<State>> owner(static_cast<std::shared_ptr<State>*>(argument));
+    const auto state=*owner;owner.reset();
+    SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL);
+    MediaReader reader;uint64_t processed=0;
+    while(state->running.load(std::memory_order_acquire)) {
+        if(WaitForSingleObject(state->artwork_wake,INFINITE)!=WAIT_OBJECT_0)break;
+        while(state->running.load(std::memory_order_acquire)) {
+            std::shared_ptr<State::ArtworkRequest> request;
+            AcquireSRWLockShared(&state->artwork_lock);
+            request=state->artwork_request;
+            ReleaseSRWLockShared(&state->artwork_lock);
+            if(!request || request->sequence==processed)break;
+            processed=request->sequence;
+            std::shared_ptr<Media> artwork;
+            try {
+                Media media;double observed=0;
+                MediaReadOptions options;
+                options.generation=request->generation;options.capture_epoch=request->capture_epoch;
+                options.playback_rate=request->playback_rate;options.artwork=true;
+                const bool ready=state->artwork_fetch
+                    ?state->artwork_fetch(media,observed,options,state->context)
+                    :reader.Read(media,observed,true,request->playback_rate);
+                if(ready &&
+                   media.Key()==request->key && !media.cover.empty()) {
+                    artwork=std::make_shared<Media>(std::move(media));
+                }
+            }catch(...){/* Artwork is optional; playback samples continue independently. */}
+            AcquireSRWLockExclusive(&state->artwork_lock);
+            if(state->artwork_request &&
+               state->artwork_request->sequence==request->sequence) {
+                if(artwork) {
+                    std::string artwork_key=request->key;
+                    state->artwork_key.swap(artwork_key);state->artwork=std::move(artwork);
+                } else {
+                    state->artwork_request->in_flight=false;
+                    state->artwork_request->retry_at=GetTickCount64()+1000;
+                }
+            }
+            ReleaseSRWLockExclusive(&state->artwork_lock);
+        }
+    }
+    state->artwork_finished.store(true,std::memory_order_release);return 0;
 }
 }
