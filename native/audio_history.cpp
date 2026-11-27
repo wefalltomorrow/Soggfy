@@ -65,6 +65,7 @@ unsigned head=0,tail=0,count=0;
 SRWLOCK queue_lock=SRWLOCK_INIT;
 HANDLE event;
 volatile LONG dropped=0,calls=0,pages=0;
+volatile LONG ogg_hook_entries=0,ogg_hook_returns=0,ogg_hook_queued=0;
 std::atomic<bool> quality_enabled{false};
 std::wstring output;
 size_t memory_limit=500*1024*1024;
@@ -81,6 +82,27 @@ static bool EventCurrent(const CaptureEvent& e) {
     return e.epoch==CaptureEpoch()&&e.loss==InterlockedCompareExchange(&dropped,0,0)&&e.boundary==client_playback.Token();
 }
 static double Now() { return double(GetTickCount64())/1000.0; }
+static uint32_t ReadLe32(const unsigned char* bytes) {
+    return uint32_t(bytes[0])|(uint32_t(bytes[1])<<8)|(uint32_t(bytes[2])<<16)|(uint32_t(bytes[3])<<24);
+}
+static void TraceOggHookPage(LONG entry_order,LONG return_order,LONG queue_order,DWORD thread_id,
+                             const DecoderContext& scope,const CaptureEvent& entry,uintptr_t context,
+                             uint32_t serial,uint32_t sequence,uint8_t flags,int quality,
+                             const char* state,int32_t result) {
+    if(!DebugLoggingEnabled())return;
+    char line[560];
+    snprintf(line,sizeof(line),
+        "ogg_hook entry=%ld return=%ld queue=%ld tid=%lu scope=%d owner=%llx scope_epoch=%u scope_boundary=%llu event_epoch=%u event_boundary=%llu ctx=%llx serial=%u seq=%u flags=0x%02x capture=%d quality=%d state=%s result=%d",
+        entry_order,return_order,queue_order,static_cast<unsigned long>(thread_id),scope.active,
+        static_cast<unsigned long long>(scope.owner),scope.epoch,
+        static_cast<unsigned long long>(scope.boundary),entry.epoch,
+        static_cast<unsigned long long>(entry.boundary),
+        static_cast<unsigned long long>(context),serial,sequence,flags,entry.capture,quality,
+        state,static_cast<int>(result));
+    // This uses the independent, nonblocking diagnostic lane. It never reserves
+    // space in or increments the loss counter for the audio capture queue.
+    QueueDiagnostic(line);
+}
 static void Log(const char* message) {
     HistoryLog(message);
 }
@@ -116,26 +138,51 @@ static void* DiscoveredTarget(HMODULE module,const spotify::HookTargets& targets
 }
 static int32_t Hook(void* sync,OggPage* page) {
     auto callback=audio_callbacks.Enter();
+    const LONG entry_order=InterlockedIncrement(&ogg_hook_entries);
+    const auto scope=decoder_context;
+    const DWORD thread_id=GetCurrentThreadId();
     const auto entry=BeginEvent(false);
     int32_t result=original(sync,page);
+    const LONG return_order=InterlockedIncrement(&ogg_hook_returns);
     InterlockedIncrement(&calls);
     const bool capture=entry.capture;
-    if(!capture && !quality_enabled.load(std::memory_order_relaxed)) return result;
-    if(result<=0 || !page || page->header_length<27 || page->header_length>282 ||
-       page->body_length<0 || page->body_length>65025 ||
-       page->header_length+page->body_length!=result || result>65307) return result;
+    const int quality=quality_enabled.load(std::memory_order_relaxed);
+    const bool valid=result>0 && page && page->header && page->header_length>=27 && page->header_length<=282 &&
+       (page->body_length==0 || page->body) &&
+       page->body_length>=0 && page->body_length<=65025 &&
+       page->header_length+page->body_length==result && result<=65307;
+    const bool has_ogg_header=valid && std::memcmp(page->header,"OggS",4)==0;
+    const uint32_t serial=has_ogg_header?ReadLe32(page->header+14):0xffffffffu;
+    const uint32_t sequence=has_ogg_header?ReadLe32(page->header+18):0xffffffffu;
+    const uint8_t flags=valid?page->header[5]:0xff;
+    if(!valid) {
+        if(capture||quality)TraceOggHookPage(entry_order,return_order,0,thread_id,scope,entry,
+            reinterpret_cast<uintptr_t>(sync),serial,sequence,flags,quality,"invalid_page",result);
+        return result;
+    }
+    if(!capture && !quality) {
+        TraceOggHookPage(entry_order,return_order,0,thread_id,scope,entry,
+            reinterpret_cast<uintptr_t>(sync),serial,sequence,flags,quality,"not_queued",result);
+        return result;
+    }
     InterlockedIncrement(&pages);
+    LONG queue_order=0;
+    const char* queue_state="stale";
     AcquireSRWLockExclusive(&queue_lock);
-    if(!EventCurrent(entry)){ReleaseSRWLockExclusive(&queue_lock);return result;}
-    if(count==capacity) InterlockedIncrement(&dropped);
+    if(!EventCurrent(entry))queue_state="stale";
+    else if(count==capacity) {InterlockedIncrement(&dropped);queue_state="queue_full";}
     else {
         Slot& s=queue[tail]; s.context=reinterpret_cast<uintptr_t>(sync);
         s.length=unsigned(result); s.time=Now(); s.kind=0; s.epoch=entry.epoch; s.capture=capture;s.owner=entry.owner;s.loss=entry.loss;s.boundary=entry.boundary;
         std::memcpy(s.bytes,page->header,page->header_length);
         if(page->body_length) std::memcpy(s.bytes+page->header_length,page->body,page->body_length);
-        tail=(tail+1)%capacity; ++count;
+        queue_order=InterlockedIncrement(&ogg_hook_queued);
+        tail=(tail+1)%capacity; ++count;queue_state="queued";
     }
-    ReleaseSRWLockExclusive(&queue_lock); SetEvent(event); return result;
+    ReleaseSRWLockExclusive(&queue_lock); SetEvent(event);
+    TraceOggHookPage(entry_order,return_order,queue_order,thread_id,scope,entry,
+        reinterpret_cast<uintptr_t>(sync),serial,sequence,flags,quality,queue_state,result);
+    return result;
 }
 static void* FormatHook(void* out,const void* input) {
     auto callback=audio_callbacks.Enter();
