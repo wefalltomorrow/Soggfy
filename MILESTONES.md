@@ -1,5 +1,13 @@
 # Engineering milestones
 
+## November 27 CI run 269 and independent RC88 package verification
+
+Exact PR-head commit `538beb48eb78dd8b5c44a150fc4f61904d89f8f2` passed all four jobs in [CI run 269](https://github.com/wefalltomorrow/Soggfy/actions/runs/45958709502): native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, Windows maintenance/diagnostics tests, x64 release build and package checks. GitHub artifact 15180013476 is 3,331,558 bytes with SHA-256 `bea0eccd360b8002fd56f4099083ab1ada72ab783f18f181718047a417fc46cf`; its 3,333,591-byte RC88 package has SHA-256 `2524d21bc063fbc35bb67f1e601f00a688b72b43b03b1ffe3eb2cfc1adf640a3`.
+
+Independent verification passed outer and inner ZIP integrity and safe-path checks, all seven manifest hashes, required content, validation-helper digest binding, AMD64/PE32+ and import checks, and normalized comparisons of all 27 packaged source/text files against the exact PR head and parent. The release DLL, launcher and validation worker are byte-identical to the independently verified run-268 package. The verifier, report, artifact and package are preserved under outputs/ as `verify_run269_independent.py`, `Soggfy-run269-package-evidence.json`, `Soggfy-run269-artifact.zip`, and `Soggfy-v3.0.0-rc.88-Windows-x64-run269.zip`. The public RC88 prerelease still carries the run-261 package; run 269 has not been attached.
+
+Run 269 verifies CI and package provenance, not pinned-client runtime compatibility. Runtime provider selection, callback completion and synchronized teardown, decoder-to-playback association, ad/DJ/interstitial isolation and transitions, exact-instance current-track skip, live Spotify installation/restart, and Classic save-dialog acceptance remain unverified. Production native MP3 capture and saved-recording metadata refresh remain disabled pending the required ownership, provenance, freshness, completeness, replacement-preservation and lifecycle evidence. PR merge and official release remain separate gates.
+
 ## November 27 CI run 268 and independent RC88 package verification
 
 The documentation-only PR-head commit 613acf21d0821efcb3234e1cdf6bf3a3bae053fb (functional parent 2b1ee347786a8729ad171e415a2165a341947efb) passed all four jobs in [CI run 268](https://github.com/wefalltomorrow/Soggfy/actions/runs/45955316436): native regressions, both seeded 20,000-iteration ASan/UBSan campaigns, and the Windows maintenance, diagnostics, build and package checks. GitHub artifact 15178858217 is 3,331,409 bytes with SHA-256 b2de32354e28416996c068aac8d781c95bc854c3d0376ba10ae42017dfb36a9a; its 3,333,429-byte RC88 package has SHA-256 4d9155df4882961d28748dff4f4de371b52e6f573077e853a16e6a1b1b587f87.

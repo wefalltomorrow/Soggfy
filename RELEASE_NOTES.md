@@ -1,5 +1,11 @@
 # Soggfy v3.0.0-rc.88 - Classic export bounds and safe failed-write cleanup
 
+The exact PR head passed all four jobs in CI run 269 on November 27, 2026,
+including native tests, both seeded sanitizer campaigns, Windows maintenance
+and diagnostics, and x64 package checks. Independent verification checked the
+run-269 package against the exact tested source; see MILESTONES.md for hashes
+and the remaining pinned-client acceptance evidence.
+
 Classic M3U export checks its 10,000-track maximum before appending each
 paginated API response. A regression passes a single 200,000-item page and
 confirms that export stops without sending a save request.
