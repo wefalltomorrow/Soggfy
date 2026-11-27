@@ -670,3 +670,23 @@ recordings; and (4) that current-track skip acts on the exact active instance.
 Production native MP3 capture remains disabled until these checks, including
 recording provenance and completeness, pass against the running pinned client.
 Live installation/restart remains a separate gate.
+
+## Read-only pinned-artifact recheck — November 27
+
+The installed `C:\Users\Shimon\AppData\Roaming\Spotify\Spotify.dll` was
+re-read without launching Spotify. Its size remains 42,852,224 bytes and its
+SHA-256 remains
+`210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f`. Spotify
+had no running process. REA classified the exact file as an x86-64 PE and
+reported the same SHA-256; this confirms identity and file format only.
+
+A fresh REA provider check could not start deep analysis: Ghidra is not
+configured (`GHIDRA_INSTALL_DIR` is unset and its headless/native-decompiler
+files are unavailable), Hopper is unsupported on this Windows host, and no IDA
+provider is configured. The existing hash-pinned Capstone probes remain the
+available static evidence. No Spotify code was executed, no hook or installation
+was changed, and this recheck adds no runtime capture-compatibility evidence.
+Provider selection, decoder/playback association, callback completion and
+teardown races, transition isolation, exact-instance skip, and recording
+provenance/completeness remain unresolved. Production native MP3 capture and
+saved-recording metadata refresh remain disabled.

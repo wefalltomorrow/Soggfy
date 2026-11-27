@@ -50,6 +50,12 @@ int main() {
     std::thread consumer([&]{
         StreamDumpRecord item;
         for(;;) {
+            // Acquire the completion counter before the final queue check. A
+            // failed Pop followed by observing both producers as done is not
+            // enough: that Pop may have read the queue index before the
+            // producer's final release publication became visible.
+            const bool all_producers_done=
+                producers_done.load(std::memory_order_acquire)==2;
             if(concurrent.Pop(item)) {
                 assert(item.length==sizeof(uint64_t));
                 uint64_t sequence=0;std::memcpy(&sequence,item.bytes,sizeof(sequence));
@@ -58,7 +64,7 @@ int main() {
                 seen.push_back((item.stream_id<<32)|sequence);
                 accepted.fetch_add(1,std::memory_order_relaxed);
                 dropped_total+=item.dropped_before;
-            } else if(producers_done.load(std::memory_order_acquire)==2) {
+            } else if(all_producers_done) {
                 break;
             } else {
                 std::this_thread::yield();
