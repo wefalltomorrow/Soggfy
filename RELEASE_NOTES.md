@@ -1,5 +1,7 @@
 # Soggfy v3.0.0-rc.88 - Classic export bounds and safe failed-write cleanup
 
+Run 273 tested source commit `20035afb012925bc2a8dc9a10ef865545f88d6e7` on November 27, 2026; all four CI jobs passed. Independent verification passed for its Windows package: artifact ID 15184919221 (3,332,789 bytes; SHA-256 `67d6c1c1889c20a0d22663a2b3249563bd742b656858b39a558786164efee739`) contains the 3,334,820-byte RC88 package (SHA-256 `f081f2baed2fbbbcc92f18c4cb7317e89bdcd2b183d893859f8e114239a9698a`). The run-273 package is attached to the existing public RC88 prerelease. See MILESTONES.md for detailed checks and the remaining pinned-client acceptance gates.
+
 The exact PR-head commit `f79e378818ab60b38ef19b1eaa5687222d63dab1` passed all four jobs in [CI run 272](https://github.com/wefalltomorrow/Soggfy/actions/runs/45967978993) on November 27, 2026: native tests, both seeded sanitizer campaigns, Windows maintenance and diagnostics, and x64 package checks. Independent verification checked the run-272 package against the exact tested source. The outer artifact SHA-256 is `79ace462b841aaed547f013fea4909dc345aacbf114a5d7249b9bd1d65d55e1`; the package SHA-256 is `4aa7b7dd55e45c7aed0ac9679f6c9a975fe9148263cc011a6eec018920ed544e`. See MILESTONES.md for the full evidence and remaining pinned-client acceptance gates.
 
 Classic M3U export checks its 10,000-track maximum before appending each
@@ -19,8 +21,7 @@ release; no unverified Spotify hooks or production native MP3 capture were
 enabled.
 
 RC88 is available as a [GitHub prerelease candidate](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.88);
-the latest official release remains v3.0.0-rc.61. The run-272 package has not
-been attached to the public prerelease. No official release date is set.
+the latest official release remains v3.0.0-rc.61. The independently verified run-273 package is attached to the public prerelease. No official release date is set while pinned-client runtime and live-acceptance gates remain open.
 
 The documentation-only PR head 613acf21d0821efcb3234e1cdf6bf3a3bae053fb (functional parent 2b1ee347786a8729ad171e415a2165a341947efb) passed all four CI jobs in [run 268](https://github.com/wefalltomorrow/Soggfy/actions/runs/45955316436). Its 3,331,409-byte Windows artifact (ID 15178858217) has SHA-256 b2de32354e28416996c068aac8d781c95bc854c3d0376ba10ae42017dfb36a9a; the embedded 3,333,429-byte RC88 package has SHA-256 4d9155df4882961d28748dff4f4de371b52e6f573077e853a16e6a1b1b587f87.
 
