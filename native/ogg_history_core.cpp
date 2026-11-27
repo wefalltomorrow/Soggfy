@@ -193,7 +193,19 @@ std::string Listen::Observe(const std::string& key,double pos,double length,
     }
     if(eligible) {
         if(elapsed<0 || elapsed>3)Invalidate(ListenReject::ClockDiscontinuity);
-        else if(pos<last_position-tolerance)Invalidate(ListenReject::PositionRewind);
+        else if(pos<last_position-tolerance) {
+            // Spotify can restart the same exact playback instance in place
+            // (for example, Previous on the current track). Abandon its old
+            // coverage and begin a fresh listen only when playback returns
+            // near the start; never complete the interrupted generation.
+            if(exact_identity && is_playing && pos<=start_window &&
+               std::fabs(length-duration)<=1) {
+                BeginListen(*this,key,pos,length,is_playing,time,playback_rate,
+                            time-pos/playback_rate);
+                return {};
+            }
+            Invalidate(ListenReject::PositionRewind);
+        }
         else if(pos>expected+tolerance)Invalidate(ListenReject::PositionAhead);
         else if(std::fabs(length-duration)>1)Invalidate(ListenReject::DurationChanged);
     }

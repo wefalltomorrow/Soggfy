@@ -58,11 +58,22 @@ int main() {
         assert(l.Observe("spotify:track:one/new-instance",0,120,true,120/rate,rate,true)==first);
         assert(l.completed_generation==generation&&l.generation==generation+1&&l.eligible);
         assert(l.Observe("spotify:track:one/new-instance",rate*.5,120,true,120/rate+.5,rate,true).empty());
-        // A rewind with the SAME explicit ID cannot manufacture a repeat.
+        // A same-instance rewind cannot complete the interrupted listen, but
+        // a restart near the beginning starts fresh coverage for this replay.
         Listen seek;seek.Observe(first,0,120,true,0,rate,true);
         for(double t=.5;t<120/rate;t+=.5)seek.Observe(first,t*rate,120,true,t,rate,true);
-        assert(seek.Observe(first,0,120,true,120/rate,rate,true).empty());
-        assert(!seek.eligible&&seek.phase==ListenPhase::Tracking);
+        const auto interrupted_generation=seek.generation;
+        const double replay_start=120/rate;
+        assert(seek.Observe(first,0,120,true,replay_start,rate,true).empty());
+        assert(seek.completed_generation==0&&seek.generation==interrupted_generation+1&&
+               seek.eligible&&!seek.pending_start&&seek.phase==ListenPhase::Tracking);
+        assert(near(seek.start_time,replay_start));
+        for(double t=.5;t<120/rate;t+=.5)
+            assert(seek.Observe(first,t*rate,120,true,replay_start+t,rate,true).empty());
+        const auto next="spotify:track:two/"+id;
+        assert(seek.Observe(next,0,120,true,2*replay_start,rate,true)==first);
+        assert(seek.completed_generation==interrupted_generation+1&&
+               near(seek.completed_start,replay_start));
         Listen pause;pause.Observe(first,0,120,true,0,rate,true);
         pause.Observe(first,rate,120,false,1,rate,true);
         pause.Observe(first,rate,120,false,2,rate,true);
