@@ -690,3 +690,29 @@ Provider selection, decoder/playback association, callback completion and
 teardown races, transition isolation, exact-instance skip, and recording
 provenance/completeness remain unresolved. Production native MP3 capture and
 saved-recording metadata refresh remain disabled.
+
+## Read-only identity and capture-evidence recheck — November 28
+
+The installed `Spotify.dll` was rehashed without running Spotify: 42,852,224
+bytes and SHA-256
+`210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f`, matching
+the pinned artifact. The installed `version.dll` SHA-256 is
+`b247df28755d2d593bba79e73d9aff590d762e7182e311215c7a8e28a826052d`, matching
+the run-279 build; the independently verified run-280 package has not been
+installed. No Spotify process was running for this check. This is artifact
+identity evidence only; the pinned native discovery and field-layout audit
+above remains static and does not identify the runtime-selected provider or
+prove callback completion, synchronization, decoder association, or audio-byte
+attribution.
+
+The supplied runtime diagnostics are not acceptance evidence for native
+capture. The 1,493 diagnostic samples for “The Sweet Escape” are paused
+(`playing=0`, `ready=0`); the separate active exact-identity sample is not
+ready. The accompanying capture log contains rejected sequence gaps and ended
+streams with no matching publication in the supplied trace. Keep strict Ogg
+sequence rejection. Provider selection, active-stream completeness, playback
+association through track/ad/DJ/interstitial transitions, exact-instance skip,
+callback shutdown, and full publication provenance remain open. Do not enable
+production native MP3 capture or saved-recording metadata refresh on this
+evidence. The run-280 Classic context fix has CI/unit coverage, but live menu
+visibility and save-dialog acceptance remain unverified.
