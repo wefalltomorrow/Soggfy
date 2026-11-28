@@ -1,5 +1,13 @@
 # Engineering milestones
 
+## November 28 CI run 281 and independent RC88 package verification
+
+Exact PR-head commit `59afbcc54791882220767f33dcecde296161ee66` passed all four jobs in [CI run 281](https://github.com/wefalltomorrow/Soggfy/actions/runs/46137448208): native tests, both seeded sanitizer campaigns, and the Windows x64 release/package job. GitHub artifact `15260643116` is 3,342,299 bytes with SHA-256 `fee78ce84d15c902d5e1e80b31bdb48052de3935450932c1e6ee570b58c8bd6e`; it contains the 3,344,393-byte RC88 package with SHA-256 `d327adbc2b1ea7f22bf56f9dc6d16adc17c23f104ee1d0ebf5da6cb441c408a3`.
+
+Independent verification passed outer/inner ZIP integrity and safe paths, all seven manifest hashes, required content, validation-helper digest binding, AMD64 PE32+ and import checks, and all 27 packaged source/text comparisons against the exact PR head and parent. The reproducible verifier and report are `outputs/verify_run281_independent.py` and `outputs/Soggfy-run281-package-evidence.json`. The package is attached to the existing [RC88 prerelease](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.88) as `Soggfy-v3.0.0-rc.88-Windows-x64-run281.zip` (asset ID 804293148).
+
+This establishes CI and package provenance, not live Spotify compatibility. Runtime provider selection, callback completion and synchronized teardown, decoder-to-playback association, ad/DJ/interstitial isolation and transitions, exact-instance current-track skip, complete-attribution capture, and saved-recording metadata refresh remain unresolved. Production native MP3 capture and metadata refresh remain disabled. Live installation, PR merge, and official release remain separate gates.
+
 ## November 28 CI run 280 and independent RC88 package verification
 
 PR-head commit `ea74873503b714b6c442cac441f25bab2e824988` (parent `2011cd1f93fbbcb90ff50e7b0a98686cb3381d97`) passed all four jobs in [CI run 280](https://github.com/wefalltomorrow/Soggfy/actions/runs/46018833226): native tests, both seeded sanitizer campaigns, and the Windows x64 release/package job. GitHub artifact `15207174542` is 3,340,688 bytes with SHA-256 `a083b988957afc3fce503fe8bee21ff87ad271ae068351522647445ee4aee039`. It contains the 3,342,749-byte RC88 package with SHA-256 `7797ea61ca1f6e077f2b329bc718631340d69d6dcc18352e53348dda08ff6278`.
