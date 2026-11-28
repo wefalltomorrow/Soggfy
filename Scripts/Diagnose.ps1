@@ -64,13 +64,15 @@ if (-not $saveRoot) {
 }
 if ($saveRoot) {
     Add-Line ('Resolved save root: ' + $saveRoot)
-    $logPath = Join-Path $saveRoot 'Soggfy.log'
-    if (Test-Path -LiteralPath $logPath -PathType Leaf) {
-        Add-Line ('Log: ' + $logPath)
-        Add-Line 'Last 80 log lines:'
-        Get-Content -LiteralPath $logPath -Tail 80 | ForEach-Object { Add-Line ('  ' + $_) }
-    } else {
-        Add-Line ('Log not found: ' + $logPath)
+    foreach ($name in @('Soggfy.log', 'Soggfy-diagnostics.log')) {
+        $logPath = Join-Path $saveRoot $name
+        if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+            Add-Line ('Log: ' + $logPath)
+            Add-Line 'Last 80 log lines:'
+            Get-Content -LiteralPath $logPath -Tail 80 | ForEach-Object { Add-Line ('  ' + $_) }
+        } else {
+            Add-Line ('Log not found: ' + $logPath)
+        }
     }
 }
 

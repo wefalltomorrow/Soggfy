@@ -33,6 +33,11 @@ int main(int argc, char **argv) {
     assert(MergeCachedMetadata(m, live) && live.fields.at("ARTIST") == "Lead; Guest" &&
            live.artist == "Lead");
     auto stale = m;
+    assert(live.album_uri==m.album_uri&&live.fields.at("SPOTIFY_ALBUM_URI")==m.album_uri);
+    live.album_uri="spotify:album:0000000000000000000009";
+    const auto unchanged=live.fields;
+    assert(!MergeCachedMetadata(m,live)&&live.fields==unchanged);
+    live.album_uri=m.album_uri;
     stale.fields["ARTIST"] = "Lead; Old Guest; Other";
     live.fields["ARTIST"] = "Lead; Current Guest";
     assert(MergeCachedMetadata(stale, live) && live.fields.at("ARTIST") == "Lead; Current Guest");

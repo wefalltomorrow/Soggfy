@@ -45,5 +45,39 @@ int main() {
     }
     check(listener.Observe("next",3.0,618.0,true,11.5,50)=="magumba",
           "natural 50x transition produces a completed listen");
-    std::puts("PASS: accelerated timeline stability and completed 50x listens");
+    // RC64: Windows delivery may lag a sample. Use observation timestamps for
+    // both the accelerated clock and Listen, never the later delivery time.
+    MediaPositionClock thirty;history::Listen sampled,delivered;
+    sampled.Observe("30x",0,180,true,100,30);
+    delivered.Observe("30x",0,180,true,100.70,30);
+    thirty.Observe("30x",0,180,true,30,100);
+    const auto second=thirty.Observe("30x",0.5,180,true,30,100.5);
+    check(second==15,"30x sample uses observation time before delayed delivery");
+    sampled.Observe("30x",second,180,true,100.5,30);
+    delivered.Observe("30x",second,180,true,100.75,30);
+    check(sampled.eligible&&!delivered.eligible,"variable delivery delays cannot create false position-ahead rejection");
+    for(int i=2;i<12;++i) {
+        const double t=100+i*0.5;
+        const auto position=thirty.Observe("30x",i*0.5,180,true,30,t);
+        check(sampled.Observe("30x",position,180,true,t,30).empty()&&sampled.eligible,
+              "30x complete coverage survives refreshed 1x timeline");
+    }
+    check(sampled.Observe("next",0,180,true,106,30)=="30x","30x natural transition retains complete listen");
+    MediaPositionClock paused;history::Listen paused_listen;
+    auto sample=[&](bool playing,double time,double rate=30) {
+        const auto position=paused.Observe("pause",0,180,playing,rate,time);
+        paused_listen.Observe("pause",position,180,playing,time,rate);return position;
+    };
+    sample(true,100);check(sample(true,100.5)==15,"30x progresses before pause");
+    check(sample(false,101)==15&&sample(false,102)==15,"paused observations never invent progress");
+    check(sample(true,102.5)==15&&sample(true,103)==30&&paused_listen.eligible,
+          "30x pause/resume preserves coverage without pause-time advance");
+    // The clock accounts for the last interval at its previous rate; after
+    // Downloads-off's effective-1x change, subsequent intervals advance at 1x.
+    check(paused.Observe("pause",0,180,true,1,103.5)==45,"speed change preserves previous interval rate");
+    check(paused.Observe("pause",0,180,true,1,104)==45.5,"effective 1x advances only half a second");
+    history::Listen gap;gap.Observe("gap",0,180,true,100,30);
+    gap.Observe("gap",105,180,true,103.5,30);
+    check(!gap.eligible,"a real observation gap still rejects 30x coverage");
+    std::puts("PASS: accelerated timeline stability, delayed observations, 30x pause/resume and complete listens");
 }

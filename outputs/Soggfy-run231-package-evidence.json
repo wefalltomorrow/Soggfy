@@ -1,0 +1,46 @@
+{
+  "verified_at_local_date": "2026-11-26",
+  "source_commit": "978b1d9195360e767b39097a7d65ae6ccacd12e8",
+  "workflow_run_id": 45729218270,
+  "artifact_id": 15076671809,
+  "artifact_name": "Soggfy-Windows-x64",
+  "artifact_size": 3318096,
+  "artifact_sha256": "6ac306da54af3c1f368642250e40b0999c93ed95017fcd4e5750f6bf74630427",
+  "package": "Soggfy-v3.0.0-rc.88-Windows-x64.zip",
+  "package_size": 3320059,
+  "package_sha256": "b379145d4060ed8d225814be9c5cc27c6f98ffa25231de3efdca07e262f09652",
+  "entry_count": 35,
+  "manifest_entry_count": 7,
+  "helper_sha256": "d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f",
+  "source_files_matched_source_commit": 27,
+  "pe_checks": {
+    "version.dll": {
+      "machine": "0x8664",
+      "optional_header": "0x20b",
+      "imports": [
+        "bcrypt.dll",
+        "iphlpapi.dll",
+        "kernel32.dll",
+        "msvcrt.dll",
+        "ole32.dll",
+        "api-ms-win-core-winrt-l1-1-0.dll",
+        "api-ms-win-core-winrt-string-l1-1-0.dll",
+        "shell32.dll",
+        "user32.dll",
+        "winhttp.dll"
+      ]
+    },
+    "Launcher/Soggfy.exe": {
+      "machine": "0x8664",
+      "optional_header": "0x20b",
+      "imports": [
+        "kernel32.dll",
+        "msvcrt.dll",
+        "user32.dll"
+      ]
+    }
+  },
+  "zip_integrity": "passed",
+  "manifest_hashes": "passed",
+  "safety_and_required_content": "passed"
+}

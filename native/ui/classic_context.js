@@ -6,6 +6,11 @@ sgf.__contextLoaded=true;
 
 let contextInfo=null,contextUris=[];
 
+function routePathname(){
+  const route=window.Spicetify?.Platform?.History?.location?.pathname;
+  return typeof route==='string'&&route?route:location.pathname;
+}
+
 const isSpotifyUri=value =>
   typeof value==='string' &&
   /^spotify:(track|episode|album|playlist|artist):[A-Za-z0-9]+$/.test(value);
@@ -71,7 +76,7 @@ function collectContextUris(target){
     return;
   }
 
-  const match=location.pathname.match(/\/(playlist|album|artist)\/([A-Za-z0-9]+)/);
+  const match=routePathname().match(/\/(playlist|album|artist)\/([A-Za-z0-9]+)/);
   contextUris=match?['spotify:'+match[1]+':'+match[2]]:[];
 }
 

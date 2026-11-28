@@ -23,6 +23,18 @@ const count=output.length;context.window.__floggfyPoll();assert.equal(output.len
 elapsed=16000;context.window.__floggfyPoll();assert.equal(output.length,count+2);
 query.state.data.lyrics.lines.push({words:'cached update'});
 context.window.__floggfyPoll();assert(output.at(-1).includes('cached%20update'));
+query.state.data.lyrics={syncType:'LINE_SYNCED',lines:[{words:'one',startTimeMs:'1000'},{words:'two é',startTimeMs:'2345'}]};
+context.window.__floggfyPoll();assert(output.at(-1).includes('LYRICS=%5B00%3A01.000%5Done%0A%5B00%3A02.345%5Dtwo%20%C3%A9'));
+state.item.metadata.lyrics='one\ntwo é';context.window.__floggfyPoll();
+assert(output.at(-1).includes('LYRICS=%5B00%3A01.000%5Done%0A%5B00%3A02.345%5Dtwo%20%C3%A9'));
+delete state.item.metadata.lyrics;
+for(const time of ['999','-1','200001','bad']){
+ query.state.data.lyrics.lines[1].startTimeMs=time;context.window.__floggfyPoll();
+ assert(output.at(-1).includes('LYRICS=one%0Atwo%20%C3%A9'));
+}
+query.state.data.lyrics.lines[1].startTimeMs='2345';
+Object.defineProperty(query.state.data.lyrics.lines[0],'startTimeMs',{configurable:true,get(){getters++;forbidden();}});
+context.window.__floggfyPoll();assert(output.at(-1).includes('LYRICS=one%0Atwo%20%C3%A9'));
 state.item={uri:'spotify:track:0000000000000000000003',metadata:{title:'Other',artist_name:'Artist',album_title:'Album',duration:'100000'}};
 context.window.__floggfyPoll();assert(currentMessages().at(-1).includes('title=Other'));assert(!output.at(-1).includes('DATE=')&&!output.at(-1).includes('LYRICS='));
 state.item.metadata.year='2024';state.item.metadata.genre='Jazz';
@@ -67,6 +79,16 @@ fresh.metadata.year='2024';context.window.__floggfyPoll();
 assert(output.at(-1).includes('DATE=2024-05-06')); // Do not replace a full date with a coarse year.
 const indexed=[];Object.defineProperty(indexed,'0',{get(){getters++;forbidden();}});fresh.metadata.genres=indexed;
 context.window.__floggfyPoll();
+// Current album identity takes precedence over conflicting cached release data.
+fresh.metadata.album_uri='spotify:album:0000000000000000000007';
+query.queryKey=['cached-track',fresh.uri];
+query.state.data={album:{uri:'spotify:album:0000000000000000000008',label:'FOREIGN ALBUM'}};
+context.window.__floggfyPoll();
+assert(output.at(-1).includes('SPOTIFY_ALBUM_URI=spotify%3Aalbum%3A0000000000000000000007'));
+assert(!output.at(-1).includes('FOREIGN'));
+fresh.metadata.album_uri='invalid';fresh.album.uri=undefined;
+context.window.__floggfyPoll();
+assert(!output.at(-1).includes('SPOTIFY_ALBUM_URI=invalid'));
 // Current-item heartbeat must keep episode titles even when music-style tags are absent.
 const musicMessages=output.filter(x=>x.startsWith('FLOGGFY_METADATA_V1:')).length;
 state.playback_quality=undefined;

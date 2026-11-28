@@ -2,7 +2,9 @@
 
 A maintained Windows x64 continuation of Soggfy with the old Soggfy Spotify UI on top of the modern Floggfy capture engine.
 
-The goal is to keep the interaction model people used in old Soggfy on the modern x64 capture backend. RC40 deliberately uses Spotify 1.3.1.234 as the supported playback-speed baseline after abandoning the unstable 1.3.3.264 experiment line.
+**Release status (November 28, 2026):** The latest official release remains [v3.0.0-rc.61](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.61). [v3.0.0-rc.88](https://github.com/wefalltomorrow/Soggfy/releases/tag/v3.0.0-rc.88) is a prerelease candidate under open [PR #64](https://github.com/wefalltomorrow/Soggfy/pull/64). PR-head commit `ea74873503b714b6c442cac441f25bab2e824988` passed all four jobs in [CI run 280](https://github.com/wefalltomorrow/Soggfy/actions/runs/46018833226): native tests, both seeded sanitizer jobs, and the Windows x64 release/package job. Independent verification passed ZIP integrity and safe paths, all seven manifest hashes, required contents, helper binding, AMD64/import checks, and all 27 packaged source/text comparisons against the exact commit and parent. The 3,340,688-byte workflow artifact (ID 15207174542; SHA-256 `a083b988957afc3fce503fe8bee21ff87ad271ae068351522647445ee4aee039`) contains the 3,342,749-byte RC88 package (SHA-256 `7797ea61ca1f6e077f2b329bc718631340d69d6dcc18352e53348dda08ff6278`). The verified run-280 package is the current test candidate; CI/package success does not close pinned-client runtime or live Classic acceptance. PR #64 is not merged and no official release date is set.
+
+The installed Spotify 1.3.1.234 DLL was rechecked on November 27, 2026: 42,852,224 bytes and SHA-256 `210dcf0de1d9641e7860a183205e20bc4d55e659994a4f73f9d9412ddd0e516f`, matching the pinned artifact; Spotify was not running. Ghidra is not configured, Hopper is unsupported on Windows, and no IDA provider is registered. Static evidence does not establish runtime provider selection, callback completion and synchronized teardown, decoder-to-playback association, ad/DJ/interstitial isolation or transitions, or exact-instance current-track skip. Production native MP3 capture and saved-recording metadata refresh remain disabled pending the required runtime ownership, provenance, freshness, completeness, replacement-preservation, and lifecycle evidence. Live installation/restart and Classic save-dialog acceptance have not been performed. PR merge and official release remain separate gates. Floggfy v1.4.1’s source comparison and selective port decisions are recorded in [FLOGGFY_20261125_REVIEW.md](FLOGGFY_20261125_REVIEW.md): compatible maintenance, diagnostics, capture safeguards, and Classic improvements are incorporated; several upstream-specific behaviors remain deliberately unported or unverified. The maintained playback-speed target remains Spotify Windows x64 1.3.1.234.g59d6bf59; the abandoned 1.3.3.264 experiment line is not supported.
 
 ## What it does
 
@@ -11,12 +13,12 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Restores Skip Downloaded Tracks, Skip Ignored Tracks, Ignore/Unignore and Generate M3U.
 - Offers a conservative 1–30x playback-speed control only on explicitly runtime-validated Spotify player ABIs. Unsupported or newer builds fail closed at 1x instead of risking startup.
 - Restores old-style output presets including MP3, M4A/AAC, Opus and custom FFmpeg output.
-- Always captures Spotify's native Ogg or FLAC first, and keeps native FLAC lossless.
+- Captures Spotify's native Ogg or FLAC data and keeps native FLAC lossless. Direct native podcast MP3 capture remains disabled pending stronger playback-identity and lifetime evidence.
 - Embeds artwork, lyrics and rich locally cached metadata when enabled.
 - Can save cover art, synchronized lyrics as .lrc, plain lyrics as .txt, and Spotify Canvas video.
 - Uses separate track and podcast path templates.
 - Refuses incomplete, skipped, seeked or broken captures instead of publishing partial files.
-- Skips equal or better existing files and atomically replaces lower-quality copies.
+- Skips equal or better existing files and protects quality upgrades with identity checks and destination locks.
 - Uses dynamic x64 hook discovery instead of fixed Spotify offsets.
 - Keeps capture, UI, metadata and playback-speed integrations independent. Soggfy handles telemetry privacy filtering; SpotX handles ads and Spotify update blocking.
 - Preserves Floggfy RC5's current Song / Quality / Format / Sample-rate information inside the Classic settings UI.
@@ -24,9 +26,51 @@ The goal is to keep the interaction model people used in old Soggfy on the moder
 - Recognizes legacy Soggfy libraries, including flat `Artist - Track` / `All Artists - Track` files and existing audio in a different output format.
 - Keeps Floggfy's native To Disk menu only as an optional troubleshooting fallback.
 
+RC82 packages a build-bound validation helper beside each DLL. The installer
+uses a filename containing its build hash and retains older helpers for rollback.
+Uninstall retains the matching helper when restoring a DLL backup. Saved-recording
+metadata rewriting remains disabled pending the preservation and coordination
+work described in METADATA_REFRESH_DESIGN.md. Keep the extracted package complete.
+
+RC75 adds installation-directory rollback, bounded event-driven manual watch
+conversion and native playlist save acknowledgements. Failed rollback retains
+recovery files; only confirmed publication reports Saved. See RELEASE_NOTES.md
+for scope and MILESTONES.md for remaining work.
+
+RC74 adds cached playback IDs, pause/buffering checks and capture fences around
+observed unsupported, remote or stale playback. The heartbeat runs with metadata
+enrichment off. Exact decoder-to-playback binding and live acceptance remain open;
+one-second polling does not guarantee all ads are isolated. See RELEASE_NOTES.md.
+
+RC73 isolates decoder events across settings changes and queue loss, carries
+scoped decoder ownership through nested calls, and rejects known owner conflicts.
+It does not yet establish Spotify playback-instance or advertisement identity.
+
+RC72 adds track-identity duplicate routing and album URI tags. A verified different
+track at the configured path routes to Duplicates with escalating ID suffixes;
+legacy files keep their established paths. Classic recognizes tagged duplicates,
+and native/manual conversion copies both container and audio-stream metadata.
+Identity reads support Ogg, FLAC and MP3 ID3; unsupported or oversized metadata
+does not authorize an identity-based upgrade. See RELEASE_NOTES.md for limits.
+
+RC71 fixes buffer allocation recovery, checks launcher architecture before stopping
+Spotify, and requires a matching package to verify DLL ownership before uninstall.
+An unrelated DLL is retained even with -Force; use the package matching the installed
+version. See UPSTREAMS.md for the Floggfy v1.3-RC6 comparison and remaining gaps.
+RC70 bounds manual conversion time, supervises converter child processes, and
+protects conversion sources against concurrent writes and replacement at deletion.
+It retains RC69 conversion/watch reliability, queue recovery and complete M3U export.
+It also retains the RC68 large-library lookup and paged visible-track improvements.
+Incomplete library scans show a warning. Conversion retries can reuse a validated
+retained Ogg/FLAC file while preserving it; retries occur when a capture reaches
+publication, so Skip Downloaded may need to be disabled for a replay. The manual
+PostProcess script validates output before deleting an original and uses MP3
+320 kbps. See RELEASE_NOTES.md and VALIDATION.md for candidate test results and
+the remaining live Spotify validation requirement.
+
 ## Install
 
-**RC40 targets Spotify Windows x64 1.3.1.234.** That is the runtime-validated baseline for Soggfy's native 1-30x playback-speed hook. The Spotify 1.3.3.264 experiment line has been rolled back rather than carried into this build. Existing saved speeds above 30x are automatically limited to 30x. Other Spotify versions fail closed for native playback speed. Microsoft Store installs remain unvalidated.
+**The published RC61 package targets Spotify Windows x64 1.3.1.234.g59d6bf59.** That is the supported target for Soggfy's native 1–30x playback-speed hook. Existing saved speeds above 30x are automatically limited to 30x. Other Spotify versions fail closed for native playback speed. Microsoft Store installs remain unvalidated. RC88 is available as a prerelease candidate, not an official release; use the [Releases page](https://github.com/wefalltomorrow/Soggfy/releases) for the current package.
 
 Releases use a single all-in-one Windows x64 ZIP. It contains both startup modes; install **only one**.
 
@@ -73,6 +117,8 @@ The context menu restores Ignore / Unignore and Generate M3U. Ignore rules can a
 
 Capture always starts from Spotify's native compressed Ogg or FLAC data. Optional FFmpeg conversion happens only after the complete native file has been validated and published.
 
+MP3 presets convert a validated native Ogg/FLAC capture. They do not enable direct capture of Spotify's native podcast MP3 stream; that feature remains disabled until decoder association, recording completeness and native lifetime are established.
+
 Built-in presets include:
 
 - Original OGG / FLAC
@@ -88,6 +134,18 @@ Built-in presets include:
 If an FFmpeg build does not include libfdk_aac, the old FDK-labelled M4A presets automatically fall back to FFmpeg's native AAC encoder instead of simply failing.
 
 By default the validated native Ogg/FLAC is retained after conversion. Scripts\PostProcess.ps1 is also included for manual/batch conversion workflows.
+
+The manual converter supports Windows PowerShell 5.1 and PowerShell 7. Keep
+Scripts/ConverterProcess.cs beside PostProcess.ps1. FFmpegPath accepts an .exe or
+.ps1 wrapper. Successful converters and wrappers must leave stderr empty;
+informational wrapper output can use stdout. FFmpeg runs at error log level,
+and any stderr byte rejects that attempt even if its exit code is zero. Encoding
+and full output validation share one deadline: by default,
+five minutes plus one second per 64 KiB of source data, capped at six hours.
+Use -TimeoutSeconds 900 to choose a 15-minute budget per file. A timed-out file is
+retained; watch mode continues to other files and retries it with bounded backoff.
+Stopping PowerShell terminates supervised converter descendants. Forcibly ending
+PowerShell can leave a temporary output because script cleanup cannot then run.
 
 ## Output paths
 
@@ -125,9 +183,35 @@ If the injected UI is unavailable after a Spotify update, capture can still be e
 
 ## Diagnostics
 
-`Soggfy.log` is written in the configured save root when Log is enabled. Normal logging includes per-track start/failure/completion information, effective playback speed, Ogg BOS/EOS and rejection context, stream/listen association and publication/post-processing stages.
+### Optional connectivity workaround
 
-Enable **Debug log** in Soggfy settings for the high-volume timeline trace: each media-session sample plus replayed Ogg-page details. This is intended for short troubleshooting runs because the log is capped and rotates by truncation when it reaches its size limit.
+RC83 changes the legacy connectivity override from unconditional to explicit
+opt-in. If Windows incorrectly reports no Internet and you rely on this workaround,
+set NetworkPatch=1 under [To Disk] in SpotifyHistory.ini, then restart Spotify.
+The default and missing-key behavior is off. Only the unquoted value 1 enables it;
+duplicate keys, malformed/unreadable input and files larger than 64 KiB opt out.
+This option is separate from Block telemetry and SpotX. It treats a usable adapter
+address as Internet connectivity; it does not test actual Internet reachability.
+Edits take effect at the next startup and survive unrelated Classic settings saves.
+
+### Logging
+
+Choose **Log detail** in Classic settings, or set **LogLevel** under **[To Disk]**:
+0 disables logging; 1 records completions, warnings and failures; 2 adds activity;
+4 adds diagnostics. Fresh installs default to 1. Existing INIs without LogLevel
+retain their Log/DebugLog behavior (off=0, normal=2, debug=4). Explicit invalid
+levels normalize to 1; exact values 0, 1, 2 and 4 are accepted.
+
+Activity goes to Soggfy.log; diagnostic traces go to Soggfy-diagnostics.log
+in the save root. Each has an independent 128-record queue and a 5 MiB file cap.
+Producers do not wait for queue space. Overflow/lock-contention drops are reported
+per lane; a diagnostic burst cannot consume activity queue slots. Both lanes use
+one disk worker, so this does not isolate disk latency. Files reset at their cap.
+Scripts/Diagnose.ps1 includes the last 80 lines from each file.
+
+For a bounded raw-stream investigation, set `StreamDump=1` under `[To Disk]`
+in `SpotifyHistory.ini` and restart. The default is off. Session payloads and
+replay instructions are documented in [AUDIO-HISTORY.md](AUDIO-HISTORY.md).
 
 ## Safety / implementation notes
 

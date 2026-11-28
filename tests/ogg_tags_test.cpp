@@ -88,6 +88,9 @@ int main(int argc,char** argv) {
           preserved.find("METADATA_BLOCK_PICTURE=")!=std::string::npos,
           "existing source picture survives missing replacement artwork");
 
+    history::Tags excessive;excessive.fields.resize(100001,{"X",""});
+    check(!history::TagOgg(source,excessive,output,error)&&output.empty(),
+          "writer cannot produce more comment fields than its reader accepts");
     auto corrupt=source; corrupt.back()^=1;
     check(!history::TagOgg(corrupt,tags,output,error),"damaged source cannot be tagged");
     if(argc==4) {

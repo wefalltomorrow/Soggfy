@@ -1,0 +1,66 @@
+{
+  "verified_at_local_date": "2026-11-27",
+  "source_commit": "a91ca19838dc297e4b39f6c9b02523b9f01708b6",
+  "source_parent_commit": "15cf607e768e3035c833dd673017db3ad9895a7e",
+  "changed_source_git_blob_shas": {
+    "README.md": "d162787e1c461a45c018c37eb7fe885d8626a285",
+    "RELEASE_NOTES.md": "2b44bd7fe579cba3c7df9facee38b226976f0a59",
+    "MILESTONES.md": "9d10f83f9f9744996d087ff2fc768a06c1f161b8"
+  },
+  "github_commit_changed_files": [
+    "MILESTONES.md",
+    "README.md",
+    "RELEASE_NOTES.md",
+    "outputs/Soggfy-run257-package-evidence.json",
+    "outputs/verify_run257.py"
+  ],
+  "ci_conclusion": "success",
+  "ci_job_conclusions": {
+    "native-tests": "success",
+    "sanitizer-tests (1592594996)": "success",
+    "sanitizer-tests (4043931417)": "success",
+    "windows-release-build": "success"
+  },
+  "workflow_run_id": 45835430295,
+  "artifact_id": 15125373611,
+  "artifact_name": "Soggfy-Windows-x64",
+  "artifact_size": 3328214,
+  "artifact_sha256": "1909d1de037cde9313ce3678e15312c76fa9592785253c90bd349de7191c276f",
+  "package": "Soggfy-v3.0.0-rc.88-Windows-x64.zip",
+  "package_size": 3330211,
+  "package_sha256": "f72293040937af0ffe772b9ac01ad2de71c1296982d63a5c4192a83b429a8f58",
+  "entry_count": 35,
+  "manifest_entry_count": 7,
+  "helper_sha256": "d0e60dd3662ee57d585cb961f66b1617608e8f50b6cd11a120bc0831f190bd1f",
+  "source_files_matched_source_commit": 27,
+  "pe_checks": {
+    "version.dll": {
+      "machine": "0x8664",
+      "optional_header": "0x20b",
+      "imports": [
+        "bcrypt.dll",
+        "iphlpapi.dll",
+        "kernel32.dll",
+        "msvcrt.dll",
+        "ole32.dll",
+        "api-ms-win-core-winrt-l1-1-0.dll",
+        "api-ms-win-core-winrt-string-l1-1-0.dll",
+        "shell32.dll",
+        "user32.dll",
+        "winhttp.dll"
+      ]
+    },
+    "Launcher/Soggfy.exe": {
+      "machine": "0x8664",
+      "optional_header": "0x20b",
+      "imports": [
+        "kernel32.dll",
+        "msvcrt.dll",
+        "user32.dll"
+      ]
+    }
+  },
+  "zip_integrity": "passed",
+  "manifest_hashes": "passed",
+  "safety_and_required_content": "passed"
+}

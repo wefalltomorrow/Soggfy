@@ -7,6 +7,23 @@ tracks, run FFmpeg, transcode audio, or require an external runtime helper.
 
 ## Settings
 
+RC66 assigns separate listening instances to confirmed same-title repeats. A
+natural end and visible reset must be followed by one second of continuous
+playback. A delayed title may relabel that instance within two seconds of the
+original reset without completing it again. Captures retain their original
+instance and completion deadline. At accelerated speeds, only a newer raw
+backward timeline change breaks the monotonic clock; ordinary SMTC timestamp
+refreshes do not. Missing or ambiguous repeat evidence is not certified.
+
+RC65 keeps an unfinished capture through a track transition only when a completed
+listen is waiting for it. The original ten-second completion deadline, shared
+memory limit, strict codec validation and -20/+3-second capture-start window
+still apply. A retained candidate belongs to that completed listen and cannot
+be reassigned or have its deadline extended by later transitions. If another
+retained candidate is still incomplete, selection waits; unresolved competitors
+or multiple complete matches are rejected. This handles late callbacks without
+treating incomplete audio as a completed file.
+
 `SpotifyHistory.ini` is included with the release and is created beside
 `version.dll` on first launch when missing.
 The top-left menu contains **To Disk** with Downloads, Save Location, FLAC and Ogg.
@@ -39,6 +56,13 @@ MaxBufferedMiB=500
 - **Metadata:** optional existing client state/cache enrichment; no endpoint requests; set 0 and restart to disable its hooks.
 - **Log:** default on; started/failed/finished activity in the save root, capped at 5 MiB.
 - **DebugLog:** default off; opt-in diagnostic detail in the same bounded log.
+- **StreamDump:** default off. Set `StreamDump=1` under `[To Disk]` and restart to
+  save bounded raw Ogg-page and FLAC-read evidence while capture is active. Each
+  process session is stored under Soggfy-stream-dump in the save root, with a
+  48 MiB payload cap and a 16 MiB JSONL index cap (64 MiB combined). The payload
+  contains source audio bytes. From a source checkout, validate and reconstruct
+  completed streams with `python tools/replay_stream_dump.py <session-folder>`;
+  incomplete evidence requires `--allow-incomplete` and reconstructs prefixes only.
 - **MaxBufferedMiB:** 8–512 MiB, default 500, limits compressed capture allocations.
   There is also an approximately 8 MiB event queue, artwork, and a temporary
   completed-file buffer during native tagging. Oversized tracks are discarded.

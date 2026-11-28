@@ -23,10 +23,10 @@ static std::vector<std::uint8_t> Image(bool duplicate=false,bool old_anchor=fals
     Put<std::uint32_t>(image,sections+40+8,0x1d000);Put<std::uint32_t>(image,sections+40+12,0x2000);
     Put<std::uint32_t>(image,sections+40+16,0x1d000);Put<std::uint32_t>(image,sections+40+36,0x60000020);
 
-    struct F{std::uint32_t b,e;};std::vector<F> funcs={{0x4000,0x5400}};
-    if(duplicate)funcs.push_back({0x7000,0x8400});
-    Put<std::uint32_t>(image,0x98+112+3*8+4,std::uint32_t(funcs.size()*12));
-    for(size_t i=0;i<funcs.size();++i){
+    struct F{std::uint32_t b,e;};const F funcs[]={{0x4000,0x5400},{0x7000,0x8400}};
+    const size_t function_count=duplicate?2:1;
+    Put<std::uint32_t>(image,0x98+112+3*8+4,std::uint32_t(function_count*12));
+    for(size_t i=0;i<function_count;++i){
         Put<std::uint32_t>(image,0x1000+i*12,funcs[i].b);
         Put<std::uint32_t>(image,0x1000+i*12+4,funcs[i].e);
         Put<std::uint32_t>(image,0x1000+i*12+8,0x1800);
